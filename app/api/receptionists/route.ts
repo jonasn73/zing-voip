@@ -1,0 +1,56 @@
+// ============================================
+// GET /api/receptionists
+// POST /api/receptionists
+// ============================================
+// List or create receptionists. Protected: requires session.
+
+import { NextRequest, NextResponse } from "next/server"
+import { getUserIdFromRequest } from "@/lib/auth"
+import { getReceptionists, insertReceptionist } from "@/lib/db"
+
+export async function GET(req: NextRequest) {
+  const userId = getUserIdFromRequest(req.headers.get("cookie"))
+  if (!userId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+  }
+  try {
+    const receptionists = await getReceptionists(userId)
+    return NextResponse.json({ data: receptionists })
+  } catch (error) {
+    console.error("[Zing] List receptionists error:", error)
+    return NextResponse.json(
+      { error: "Failed to list receptionists" },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const userId = getUserIdFromRequest(req.headers.get("cookie"))
+  if (!userId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+  }
+  try {
+    const body = await req.json()
+    const name = String(body?.name ?? "").trim()
+    const phone = String(body?.phone ?? "").trim()
+    if (!name || !phone) {
+      return NextResponse.json(
+        { error: "Name and phone are required" },
+        { status: 400 }
+      )
+    }
+    const receptionist = await insertReceptionist({
+      user_id: userId,
+      name,
+      phone,
+    })
+    return NextResponse.json({ data: receptionist })
+  } catch (error) {
+    console.error("[Zing] Create receptionist error:", error)
+    return NextResponse.json(
+      { error: "Failed to add receptionist" },
+      { status: 500 }
+    )
+  }
+}

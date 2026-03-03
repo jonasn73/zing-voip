@@ -1,0 +1,110 @@
+# Zing - Cursor Rules
+# Receptionist & Dispatch Call Routing App for Small Business
+
+## Project Overview
+Zing is a VoIP call routing app that lets small business owners manage who answers their business calls. Think Grasshopper/RingCentral but radically simpler. The UI is fully built in Next.js -- your job is to wire it to real backend services and optionally port the frontend to React Native/Expo for mobile.
+
+## Tech Stack
+- **Frontend**: Next.js 16, React 19, TailwindCSS v4, shadcn/ui
+- **Backend**: Next.js API routes (already scaffolded)
+- **Database**: Postgres via Supabase or Neon (schema in scripts/001-create-schema.sql)
+- **Telephony**: Twilio (voice, numbers, recordings)
+- **AI**: Vercel AI SDK v6 for AI receptionist fallback
+- **Auth**: Supabase Auth or custom (bcrypt + HTTP-only cookies)
+
+## Architecture
+
+### How Call Routing Works
+1. Caller dials the business Twilio number
+2. Twilio hits POST /api/voice/incoming
+3. Server checks routing_config for this user
+4. If receptionist selected: Dial receptionist with timeout
+5. If no answer: POST /api/voice/fallback checks fallback_type
+   - "owner" -> Dial owner's cell
+   - "ai" -> Connect to AI assistant
+   - "voicemail" -> Play greeting + record
+6. POST /api/voice/status logs final call data
+
+### Database Schema (scripts/001-create-schema.sql)
+- users: business owners
+- receptionists: agents who answer calls, each has rate_per_minute
+- routing_config: who receives calls + fallback settings (one row per user)
+- phone_numbers: Twilio numbers owned/ported
+- call_logs: every call with duration, recording URL, who it was routed to
+
+### Shared Types (lib/types.ts)
+All TypeScript interfaces for the database models and API request/response shapes.
+
+### Database Client (lib/db.ts)
+Placeholder query functions. Every function has the correct signature and return type -- implement with your DB provider's client.
+
+### Twilio Client (lib/twilio.ts)
+REST client factory, webhook validator, TwiML builder, and app URL helper.
+
+## App Screens (components/)
+| File | Screen | Purpose |
+|------|--------|---------|
+| dashboard-page.tsx | Routing | Main screen. Shows who calls route to. Tap name to switch. Fallback settings (owner/AI/voicemail). Call stats + recent calls. |
+| activity-page.tsx | Activity | Full call log with search, filters, expandable rows, inline audio player for recordings. |
+| contacts-page.tsx | Contacts | Manage receptionists. Add/remove/toggle/prioritize. |
+| analytics-page.tsx | Pay | Per-agent talk time tracking. Configurable $/min rate. Auto-calculated weekly earnings. Payout summary. |
+| settings-page.tsx | Settings | DND, voicemail, business hours, SMS forwarding, push notifications. Buy/port phone numbers. |
+| app-shell.tsx | Shell | Bottom tab navigation + header. Accepts activePage prop. |
+
+## API Routes (app/api/)
+| Route | Method | Purpose |
+|-------|--------|---------|
+| /api/voice/incoming | POST | Twilio webhook: routes incoming calls |
+| /api/voice/fallback | POST | Twilio webhook: handles no-answer fallback |
+| /api/voice/status | POST | Twilio webhook: logs call completion data |
+| /api/voice/recording-status | POST | Twilio webhook: attaches recording URLs |
+| /api/voice/ai-assistant | POST | Twilio webhook: AI answers + converses with caller |
+| /api/routing | GET/PUT | Read/update routing config |
+| /api/calls | GET | Paginated call history |
+| /api/numbers | GET/POST | List owned numbers / search available |
+| /api/numbers/buy | POST | Purchase a Twilio number |
+| /api/numbers/port | POST | Submit a port request |
+| /api/analytics | GET | Agent talk time + pay calculations |
+
+## Environment Variables Required
+```
+# Database (pick one)
+DATABASE_URL=                           # Neon
+NEXT_PUBLIC_SUPABASE_URL=               # Supabase
+SUPABASE_SERVICE_ROLE_KEY=              # Supabase
+
+# Twilio
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+NEXT_PUBLIC_APP_URL=                    # Your deployed URL (for webhook URLs)
+
+# AI (for AI receptionist fallback)
+OPENAI_API_KEY=                         # Or use Vercel AI Gateway
+```
+
+## Implementation Order
+1. Connect database (Supabase or Neon) - implement lib/db.ts functions
+2. Add authentication (Supabase Auth or custom)
+3. Wire UI components to real API routes (replace useState with SWR/fetch)
+4. Set up Twilio account + buy first number
+5. Configure Twilio webhooks to point to /api/voice/incoming
+6. Test call routing flow end-to-end
+7. Implement AI assistant fallback
+8. Add push notifications for missed calls
+
+## Coding Conventions
+- Use `async/await` for all DB and API calls
+- Validate all Twilio webhooks with `validateTwilioRequest()`
+- Use parameterized queries only (never string interpolation for SQL)
+- All API routes return JSON with `{ data }` or `{ error }` shape
+- Phone numbers stored in E.164 format (+15551234567) internally
+- UI uses semantic Tailwind tokens (bg-card, text-foreground, etc.)
+- Components use cn() from lib/utils for conditional classes
+
+## Mobile (React Native / Expo)
+If porting to mobile:
+- Each *-page.tsx maps 1:1 to a tab screen
+- app-shell.tsx bottom nav -> Expo Router tabs or React Navigation BottomTabNavigator
+- Replace shadcn components with React Native equivalents (react-native-paper, nativewind)
+- API routes stay as-is on the Next.js backend
+- Mobile app calls the same /api/* endpoints

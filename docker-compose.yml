@@ -1,0 +1,20 @@
+# Zing - Local Postgres (no signup required)
+# Run: docker compose up -d
+# Then: pnpm db:schema
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: zing
+    ports:
+      - "5432:5432"
+    volumes:
+      - zing_pg_data:/var/lib/postgresql/data
+
+volumes:
+  zing_pg_data:

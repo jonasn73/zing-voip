@@ -622,7 +622,12 @@ export function SettingsPage() {
           Account
         </h3>
         <div className="flex flex-col gap-2">
-          <button className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5">
+          <a
+            href={process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL || "/privacy"}
+            target={process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL ? "_blank" : undefined}
+            rel={process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL ? "noopener noreferrer" : undefined}
+            className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
+          >
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
                 <Shield className="h-4 w-4 text-muted-foreground" />
@@ -632,9 +637,14 @@ export function SettingsPage() {
               </p>
             </div>
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </button>
+          </a>
 
-          <button className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5">
+          <a
+            href={process.env.NEXT_PUBLIC_SUPPORT_URL || "/support"}
+            target={process.env.NEXT_PUBLIC_SUPPORT_URL ? "_blank" : undefined}
+            rel={process.env.NEXT_PUBLIC_SUPPORT_URL ? "noopener noreferrer" : undefined}
+            className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
+          >
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
                 <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -644,7 +654,7 @@ export function SettingsPage() {
               </p>
             </div>
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </button>
+          </a>
 
           <button className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:bg-destructive/5">
             <div className="flex items-center gap-3">

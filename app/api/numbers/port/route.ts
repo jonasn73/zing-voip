@@ -15,10 +15,10 @@ export async function POST(req: NextRequest) {
   try {
     const body: PortNumberRequest = await req.json()
 
-    // Validate input
-    if (!body.number || !body.current_carrier) {
+    // Validate input (number only required; carrier is optional and can be looked up if needed)
+    if (!body.number) {
       return NextResponse.json(
-        { error: "Phone number and current carrier are required" },
+        { error: "Phone number is required" },
         { status: 400 }
       )
     }
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       message: "Port request submitted. This typically takes 24-48 hours.",
       port: {
         number: body.number,
-        carrier: body.current_carrier,
+        carrier: body.current_carrier ?? null,
         status: "porting",
       },
     })

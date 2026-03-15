@@ -387,10 +387,10 @@ export function SettingsPage() {
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-semibold text-muted-foreground">Current Carrier</label>
+                      <label className="text-[11px] font-semibold text-muted-foreground">Current carrier (optional)</label>
                       <input
                         type="text"
-                        placeholder="e.g. AT&T, Verizon, T-Mobile"
+                        placeholder="e.g. AT&T, Verizon, T-Mobile — we can look it up if you don't know"
                         value={portCarrier}
                         onChange={(e) => setPortCarrier(e.target.value)}
                         className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
@@ -398,7 +398,7 @@ export function SettingsPage() {
                     </div>
                     <button
                       onClick={handlePortSubmit}
-                      disabled={!portNumber || !portCarrier}
+                      disabled={!portNumber}
                       className="mt-1 w-full rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
                     >
                       Submit Port Request

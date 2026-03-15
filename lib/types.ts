@@ -109,7 +109,7 @@ export interface BuyNumberRequest {
 
 export interface PortNumberRequest {
   number: string
-  current_carrier: string
+  current_carrier?: string // optional; carrier can often be looked up from the number
 }
 
 export interface SearchNumbersResponse {

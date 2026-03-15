@@ -104,9 +104,9 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
           {step === 1 && (
             <div className="flex flex-col gap-6">
               <div>
-                <h1 className="text-2xl font-bold text-foreground">Get your business number</h1>
+                <h1 className="text-2xl font-bold text-foreground">Add your business number</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  This is the number your customers will call. Buy a new one or bring your own.
+                  The number customers will call. Buy new or port existing. Calls route to your cell (or receptionists).
                 </p>
               </div>
 

@@ -22,16 +22,49 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
 
   const isSignup = mode === "signup"
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
     setLoading(true)
-
-    // Simulate auth -- in production this calls your API
-    setTimeout(() => {
+    try {
+      if (isSignup) {
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            name: ownerName,
+            phone: ownerPhone,
+            business_name: businessName || "My Business",
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.error || "Signup failed")
+          setLoading(false)
+          return
+        }
+        onAuth()
+      } else {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.error || "Login failed")
+          setLoading(false)
+          return
+        }
+        onAuth()
+      }
+    } catch {
+      setError("Something went wrong. Try again.")
+    } finally {
       setLoading(false)
-      onAuth()
-    }, 1000)
+    }
   }
 
   return (
@@ -55,7 +88,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {isSignup
-                ? "Set up your business phone system in minutes"
+                ? "Use your cell as your main line. Add a business number to port or buy after signup."
                 : "Log in to manage your calls"}
             </p>
           </div>
@@ -93,7 +126,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="ownerPhone" className="text-xs font-semibold text-muted-foreground">
-                    Your Cell Phone
+                    Your cell phone (main line)
                   </label>
                   <input
                     id="ownerPhone"
@@ -104,6 +137,9 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
                     required
                     className="rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Calls will ring here by default. Add a business number (buy or port) in Settings after signup.
+                  </p>
                 </div>
               </>
             )}

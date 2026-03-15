@@ -35,7 +35,17 @@ interface SettingToggle {
   iconColor: string
 }
 
+// Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567
+function formatPhoneDisplay(phone: string | undefined): string {
+  if (!phone) return "your cell"
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+  if (digits.length === 11 && digits.startsWith("1")) return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
+  return phone
+}
+
 export function SettingsPage() {
+  const [user, setUser] = useState<{ name: string; email: string; phone: string } | null>(null)
   const [settings, setSettings] = useState<SettingToggle[]>([
     {
       id: "dnd",
@@ -91,6 +101,24 @@ export function SettingsPage() {
   const [portingLoading, setPortingLoading] = useState(false)
   const [portSubmitLoading, setPortSubmitLoading] = useState(false)
   const [portError, setPortError] = useState<string | null>(null)
+
+  // Load current user so we can show main line (cell) in profile
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/auth/session", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.data?.user) {
+          setUser({
+            name: data.data.user.name ?? "My Business",
+            email: data.data.user.email ?? "",
+            phone: data.data.user.phone ?? "",
+          })
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   // Load porting orders so dashboard shows progress
   useEffect(() => {
@@ -172,7 +200,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-4 pb-8">
-      {/* Profile card */}
+      {/* Profile card: main line = owner's cell (default destination for calls) */}
       <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
         <Avatar className="h-14 w-14">
           <AvatarFallback className="bg-primary text-primary-foreground text-lg font-semibold">
@@ -180,8 +208,11 @@ export function SettingsPage() {
           </AvatarFallback>
         </Avatar>
         <div className="flex-1">
-          <p className="text-base font-semibold text-foreground">My Business</p>
-          <p className="text-sm text-muted-foreground">owner@mybusiness.com</p>
+          <p className="text-base font-semibold text-foreground">{user?.name ?? "My Business"}</p>
+          <p className="text-sm text-muted-foreground">{user?.email || "owner@mybusiness.com"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Main line: {formatPhoneDisplay(user?.phone)} — calls default here when no receptionist is selected
+          </p>
           <Badge variant="secondary" className="mt-1 text-[10px]">
             Pro Plan
           </Badge>
@@ -189,11 +220,14 @@ export function SettingsPage() {
         <ChevronRight className="h-5 w-5 text-muted-foreground" />
       </div>
 
-      {/* Phone Numbers - at top so it's easy to find */}
+      {/* Business numbers: the numbers customers call; buy or port; route to cell or receptionists */}
       <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Phone Numbers
+        <h3 className="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Business numbers
         </h3>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Numbers your customers call. Buy or port; calls route to your cell or receptionists.
+        </p>
         <div className="flex flex-col gap-2">
           {myNumbers.map((num) => (
             <div
@@ -250,8 +284,8 @@ export function SettingsPage() {
                 <Plus className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-medium text-primary">Get a Number</p>
-                <p className="text-xs text-muted-foreground">Buy new or port existing</p>
+                <p className="text-sm font-medium text-primary">Add business number</p>
+                <p className="text-xs text-muted-foreground">Buy new or port existing — calls route to your cell</p>
               </div>
             </div>
             <ChevronRight className="h-5 w-5 text-primary/60" />

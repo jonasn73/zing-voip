@@ -16,6 +16,22 @@ export async function GET(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+    // Dev bypass: no DB call for dev-user (used when database is not connected)
+    if (process.env.NODE_ENV === "development" && userId === "dev-user") {
+      const devEmail = process.env.DEV_LOGIN_EMAIL?.trim().toLowerCase() ?? "dev@zing.local"
+      return NextResponse.json({
+        data: {
+          user: {
+            id: "dev-user",
+            email: devEmail,
+            name: "Dev User",
+            phone: "+15551234567",
+            business_name: "My Business",
+            created_at: new Date().toISOString(),
+          },
+        },
+      })
+    }
     const user = await getUser(userId)
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 401 })

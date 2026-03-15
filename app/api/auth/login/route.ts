@@ -25,6 +25,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Optional: dev login when database is not connected (set DEV_LOGIN_EMAIL + DEV_LOGIN_PASSWORD in .env.local)
+    const devEmail = process.env.DEV_LOGIN_EMAIL?.trim().toLowerCase()
+    const devPassword = process.env.DEV_LOGIN_PASSWORD
+    if (process.env.NODE_ENV === "development" && devEmail && devPassword && email === devEmail && password === devPassword) {
+      const devUser = {
+        id: "dev-user",
+        email: devEmail,
+        name: "Dev User",
+        phone: "+15551234567",
+        business_name: "My Business",
+        created_at: new Date().toISOString(),
+      }
+      const cookieValue = createSessionCookie(devUser.id)
+      const res = NextResponse.json({ data: { user: devUser } })
+      res.cookies.set(getSessionCookieName(), cookieValue, getSessionCookieOptions())
+      return res
+    }
+
     const authUser = await getAuthUserByEmail(email)
     if (!authUser) {
       return NextResponse.json(

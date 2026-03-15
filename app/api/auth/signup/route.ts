@@ -55,6 +55,19 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       )
     }
+    // Helpful message when database or schema is not set up
+    if (msg.includes("DATABASE_URL is not set")) {
+      return NextResponse.json(
+        { error: "Database not configured. Add DATABASE_URL in Vercel → Settings → Environment Variables." },
+        { status: 500 }
+      )
+    }
+    if (msg.includes("does not exist") || msg.includes("relation") && msg.includes("users")) {
+      return NextResponse.json(
+        { error: "Database schema missing. In Neon SQL Editor run: 001-create-schema.sql then 002-add-password-hash.sql" },
+        { status: 500 }
+      )
+    }
     console.error("[Zing] Signup error:", error)
     const safeMessage =
       process.env.NODE_ENV === "development" ? msg || "Failed to create account" : "Failed to create account"

@@ -1,0 +1,41 @@
+# Running Zing on your live domain
+
+For the app to work in production (sign up, login, settings, call routing), you need a database and env vars set in Vercel.
+
+## 1. Database (Neon)
+
+1. Go to [neon.tech](https://neon.tech) and create a project (free tier is fine).
+2. In the Neon dashboard, open **SQL Editor** and run these in order:
+   - Copy/paste and run **`scripts/001-create-schema.sql`**
+   - Then run **`scripts/002-add-password-hash.sql`**
+3. In Neon, go to **Connection details** and copy the connection string (URI). It looks like:
+   `postgresql://USER:PASSWORD@ep-xxx.region.aws.neon.tech/neondb?sslmode=require`
+
+## 2. Vercel environment variables
+
+In your Vercel project: **Settings → Environment Variables**. Add:
+
+| Variable           | Description |
+|--------------------|-------------|
+| `DATABASE_URL`     | The Neon connection string from step 1. |
+| `SESSION_SECRET`   | Random string for signing cookies (e.g. run `openssl rand -base64 32` and paste). |
+| `TELNYX_API_KEY`   | Your Telnyx API key (for numbers and voice). |
+
+Save and **redeploy** the project (Deployments → … → Redeploy).
+
+## 3. Sign up on the live site
+
+After redeploying, open your live URL and use **Sign up** (not the dev login). Enter:
+
+- Your real **email**
+- Your **cell phone** (main line — calls default here)
+- A **password** (at least 8 characters)
+- Name and business name
+
+Then you can log in with that email and password on the live app. You do **not** need to “re-sign up” if you already have a user in the database; just use the same email/password to log in.
+
+## Troubleshooting
+
+- **“DATABASE_URL is not set”** — Add `DATABASE_URL` in Vercel and redeploy.
+- **“Invalid email or password”** — Either no user exists yet (sign up first) or the password is wrong.
+- **Login works but dashboard errors** — Ensure you ran both `001-create-schema.sql` and `002-add-password-hash.sql` so `users` has `password_hash` and `routing_config` exists.

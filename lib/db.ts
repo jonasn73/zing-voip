@@ -1,17 +1,11 @@
 // ============================================
 // Zing - Database Client
 // ============================================
-// This file provides database access. Swap the implementation
-// based on your provider (Supabase, Neon, etc.)
-//
-// For Supabase: pnpm add @supabase/supabase-js
-// For Neon: pnpm add @neondatabase/serverless
-//
-// Env vars needed:
-//   DATABASE_URL (for Neon)
-//   -- or --
-//   NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (for Supabase)
+// Uses Neon serverless when DATABASE_URL is set (production / live app).
+// Set DATABASE_URL in Vercel → Settings → Environment Variables, then run
+// scripts/001-create-schema.sql and scripts/002-add-password-hash.sql in your Neon SQL Editor.
 
+import { neon } from "@neondatabase/serverless"
 import type {
   RoutingConfig,
   Receptionist,
@@ -20,46 +14,53 @@ import type {
   PhoneNumber,
 } from "./types"
 
-// ---- PLACEHOLDER: Replace with your actual DB client ----
-// Example using Neon serverless:
-//
-// import { neon } from "@neondatabase/serverless"
-// const sql = neon(process.env.DATABASE_URL!)
-//
-// Example using Supabase:
-//
-// import { createClient } from "@supabase/supabase-js"
-// const supabase = createClient(
-//   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-//   process.env.SUPABASE_SERVICE_ROLE_KEY!
-// )
+// Lazy Neon client so we only connect when DATABASE_URL is set
+function getSql(): ReturnType<typeof neon> {
+  const url = process.env.DATABASE_URL
+  if (!url) throw new Error("DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables (and in .env.local for local dev).")
+  return neon(url)
+}
 
 // --- Query functions ---
 
 // Get routing config for a user
 export async function getRoutingConfig(userId: string): Promise<RoutingConfig | null> {
-  // TODO: Replace with actual query
-  // const result = await sql`SELECT * FROM routing_config WHERE user_id = ${userId}`
-  // return result[0] || null
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    FROM routing_config WHERE user_id = ${userId} LIMIT 1
+  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    selected_receptionist_id: row.selected_receptionist_id != null ? String(row.selected_receptionist_id) : null,
+    fallback_type: row.fallback_type as RoutingConfig["fallback_type"],
+    ai_greeting: String(row.ai_greeting ?? ""),
+    ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+  }
 }
 
-// Update routing config
+// Update routing config (only updates fields that are present in updates; null clears e.g. selected_receptionist_id)
 export async function updateRoutingConfig(
   userId: string,
   updates: Partial<Pick<RoutingConfig, "selected_receptionist_id" | "fallback_type" | "ai_greeting" | "ring_timeout_seconds">>
 ): Promise<void> {
-  // TODO: Replace with actual query
-  // await sql`
-  //   UPDATE routing_config
-  //   SET selected_receptionist_id = COALESCE(${updates.selected_receptionist_id}, selected_receptionist_id),
-  //       fallback_type = COALESCE(${updates.fallback_type}, fallback_type),
-  //       ai_greeting = COALESCE(${updates.ai_greeting}, ai_greeting),
-  //       ring_timeout_seconds = COALESCE(${updates.ring_timeout_seconds}, ring_timeout_seconds),
-  //       updated_at = now()
-  //   WHERE user_id = ${userId}
-  // `
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  if (updates.selected_receptionist_id !== undefined) {
+    await sql`UPDATE routing_config SET selected_receptionist_id = ${updates.selected_receptionist_id}, updated_at = now() WHERE user_id = ${userId}`
+  }
+  if (updates.fallback_type !== undefined) {
+    await sql`UPDATE routing_config SET fallback_type = ${updates.fallback_type}, updated_at = now() WHERE user_id = ${userId}`
+  }
+  if (updates.ai_greeting !== undefined) {
+    await sql`UPDATE routing_config SET ai_greeting = ${updates.ai_greeting}, updated_at = now() WHERE user_id = ${userId}`
+  }
+  if (updates.ring_timeout_seconds !== undefined) {
+    await sql`UPDATE routing_config SET ring_timeout_seconds = ${updates.ring_timeout_seconds}, updated_at = now() WHERE user_id = ${userId}`
+  }
 }
 
 // Get a receptionist by ID
@@ -97,10 +98,25 @@ export async function deleteReceptionist(receptionistId: string, userId: string)
 
 // Get user by email (for auth login; includes password_hash)
 export async function getAuthUserByEmail(email: string): Promise<(User & { password_hash: string }) | null> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, email, name, phone, business_name, password_hash, created_at
+    FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: String(row.id),
+    email: String(row.email),
+    name: String(row.name),
+    phone: String(row.phone),
+    business_name: String(row.business_name ?? "My Business"),
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    password_hash: String(row.password_hash),
+  }
 }
 
-// Create user (for auth signup); also create routing_config in production
+// Create user (for auth signup); also creates routing_config row
 export async function createUser(params: {
   email: string
   name: string
@@ -108,7 +124,24 @@ export async function createUser(params: {
   business_name: string
   password_hash: string
 }): Promise<User> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  await sql`
+    INSERT INTO users (id, email, name, phone, business_name, password_hash, created_at)
+    VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${params.password_hash}, now())
+  `
+  await sql`
+    INSERT INTO routing_config (id, user_id, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
+    VALUES (${crypto.randomUUID()}, ${id}, NULL, 'owner', '', 30, now())
+  `
+  return {
+    id,
+    email: params.email,
+    name: params.name,
+    phone: params.phone,
+    business_name: params.business_name,
+    created_at: new Date().toISOString(),
+  }
 }
 
 // Get user by phone number they own
@@ -120,7 +153,21 @@ export async function getUserByPhoneNumber(toNumber: string): Promise<User | nul
 
 // Get user by ID
 export async function getUser(userId: string): Promise<User | null> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, email, name, phone, business_name, created_at
+    FROM users WHERE id = ${userId} LIMIT 1
+  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: String(row.id),
+    email: String(row.email),
+    name: String(row.name),
+    phone: String(row.phone),
+    business_name: String(row.business_name ?? "My Business"),
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }
 }
 
 // Insert a call log

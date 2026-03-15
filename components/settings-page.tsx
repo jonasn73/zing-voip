@@ -145,9 +145,8 @@ export function SettingsPage() {
     { number: `(${selectedAreaCode || "555"}) 100-4055`, type: "Local", price: "$2.99/mo" },
   ]
 
-  const myNumbers = [
-    { number: "(555) 123-0000", label: "Main Line", type: "Local", status: "active" as const },
-  ]
+  // Business numbers = numbers customers call (bought or ported). Your main line (cell) is in the profile above.
+  const myNumbers: { number: string; label: string; type: string; status: "active" }[] = []
 
   function handleSearchNumbers() {
     setBuyLoading(true)
@@ -309,7 +308,7 @@ export function SettingsPage() {
           Business numbers
         </h3>
         <p className="mb-3 text-xs text-muted-foreground">
-          Numbers your customers call. Buy or port; calls route to your cell or receptionists.
+          Numbers your customers call (buy or port). Calls to these numbers ring your main line above or a receptionist.
         </p>
         <div className="flex flex-col gap-2">
           {myNumbers.map((num) => (

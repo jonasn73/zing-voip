@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Phone,
   PhoneForwarded,
@@ -22,6 +22,15 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 
+// Format E.164 to display, e.g. +15025551234 -> (502) 555-1234
+function formatPhoneDisplay(phone: string | undefined | null): string {
+  if (phone == null || typeof phone !== "string") return "Your cell"
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+  if (digits.length === 11 && digits.startsWith("1")) return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
+  return phone
+}
+
 interface Contact {
   id: string
   name: string
@@ -35,11 +44,6 @@ const receptionists: Contact[] = [
   { id: "2", name: "James Wilson", phone: "(555) 345-6789", initials: "JW", color: "bg-chart-2" },
   { id: "3", name: "Rachel Kim", phone: "(555) 456-7890", initials: "RK", color: "bg-chart-5" },
 ]
-
-const ownerInfo = {
-  name: "You",
-  phone: "(555) 123-0000",
-}
 
 interface CallStat {
   label: string
@@ -96,6 +100,7 @@ const fallbackOptions: { id: FallbackOption; label: string; description: string;
 ]
 
 export function DashboardPage() {
+  const [mainLinePhone, setMainLinePhone] = useState<string | null>(null)
   const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(null)
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [fallback, setFallback] = useState<FallbackOption>("owner")
@@ -104,6 +109,16 @@ export function DashboardPage() {
   const [editingGreeting, setEditingGreeting] = useState(false)
   const [greetingDraft, setGreetingDraft] = useState("")
 
+  useEffect(() => {
+    fetch("/api/auth/session", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.data?.user?.phone) setMainLinePhone(data.data.user.phone)
+      })
+      .catch(() => {})
+  }, [])
+
+  const ownerPhoneDisplay = formatPhoneDisplay(mainLinePhone)
   const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) || null
   const isRoutingToOwner = !selectedReceptionist
 
@@ -177,7 +192,7 @@ export function DashboardPage() {
                 )} />
               </button>
               <p className="text-xs text-muted-foreground">
-                {isRoutingToOwner ? ownerInfo.phone : selectedReceptionist!.phone}
+                {isRoutingToOwner ? ownerPhoneDisplay : selectedReceptionist!.phone}
               </p>
 
               {/* Fallback setting */}
@@ -239,7 +254,7 @@ export function DashboardPage() {
                         </div>
                         <div className="flex-1">
                           <p className="text-sm font-medium leading-tight text-foreground">Your Phone</p>
-                          <p className="text-[11px] text-muted-foreground">{ownerInfo.phone} (default)</p>
+                          <p className="text-[11px] text-muted-foreground">{ownerPhoneDisplay} (default)</p>
                         </div>
                         {isRoutingToOwner && (
                           <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold text-foreground">

@@ -4,7 +4,7 @@
 // Verifies email/password, sets session cookie.
 
 import { NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 import { getAuthUserByEmail } from "@/lib/db"
 import {
   createSessionCookie,

@@ -72,6 +72,45 @@ export async function getReceptionists(userId: string): Promise<Receptionist[]> 
   throw new Error("Not implemented - connect your database")
 }
 
+// Create a receptionist
+export async function insertReceptionist(params: {
+  user_id: string
+  name: string
+  phone: string
+}): Promise<Receptionist> {
+  throw new Error("Not implemented - connect your database")
+}
+
+// Update a receptionist
+export async function updateReceptionist(
+  receptionistId: string,
+  userId: string,
+  updates: Partial<Pick<Receptionist, "name" | "phone" | "is_active" | "rate_per_minute">>
+): Promise<void> {
+  throw new Error("Not implemented - connect your database")
+}
+
+// Delete a receptionist
+export async function deleteReceptionist(receptionistId: string, userId: string): Promise<void> {
+  throw new Error("Not implemented - connect your database")
+}
+
+// Get user by email (for auth login; includes password_hash)
+export async function getAuthUserByEmail(email: string): Promise<(User & { password_hash: string }) | null> {
+  throw new Error("Not implemented - connect your database")
+}
+
+// Create user (for auth signup); also create routing_config in production
+export async function createUser(params: {
+  email: string
+  name: string
+  phone: string
+  business_name: string
+  password_hash: string
+}): Promise<User> {
+  throw new Error("Not implemented - connect your database")
+}
+
 // Get user by phone number they own
 export async function getUserByPhoneNumber(toNumber: string): Promise<User | null> {
   // Look up which user owns the Twilio number being called
@@ -107,6 +146,23 @@ export async function getCallLogs(
 
 // Get phone numbers for a user
 export async function getPhoneNumbers(userId: string): Promise<PhoneNumber[]> {
+  throw new Error("Not implemented - connect your database")
+}
+
+// Get a phone number by number and status (e.g. for porting webhook)
+export async function getPhoneNumberByNumberAndStatus(
+  number: string,
+  status: string
+): Promise<PhoneNumber | null> {
+  throw new Error("Not implemented - connect your database")
+}
+
+// Update a phone number (e.g. after port complete)
+export async function updatePhoneNumber(
+  phoneNumberId: string,
+  userId: string,
+  updates: Partial<Pick<PhoneNumber, "twilio_sid" | "status">>
+): Promise<void> {
   throw new Error("Not implemented - connect your database")
 }
 

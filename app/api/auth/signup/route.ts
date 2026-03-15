@@ -4,7 +4,7 @@
 // Creates a user row and routing_config, then sets session cookie.
 
 import { NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 import { createUser } from "@/lib/db"
 import {
   createSessionCookie,

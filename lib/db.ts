@@ -170,6 +170,23 @@ export async function getUser(userId: string): Promise<User | null> {
   }
 }
 
+// Update current user profile (e.g. main line / cell number, name)
+export async function updateUser(
+  userId: string,
+  updates: { phone?: string; name?: string; business_name?: string }
+): Promise<void> {
+  const sql = getSql()
+  if (updates.phone !== undefined) {
+    await sql`UPDATE users SET phone = ${updates.phone} WHERE id = ${userId}`
+  }
+  if (updates.name !== undefined) {
+    await sql`UPDATE users SET name = ${updates.name} WHERE id = ${userId}`
+  }
+  if (updates.business_name !== undefined) {
+    await sql`UPDATE users SET business_name = ${updates.business_name} WHERE id = ${userId}`
+  }
+}
+
 // Insert a call log
 export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Promise<void> {
   throw new Error("Not implemented - connect your database")

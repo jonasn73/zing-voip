@@ -101,6 +101,10 @@ export function SettingsPage() {
   const [portingLoading, setPortingLoading] = useState(false)
   const [portSubmitLoading, setPortSubmitLoading] = useState(false)
   const [portError, setPortError] = useState<string | null>(null)
+  const [editingMainLine, setEditingMainLine] = useState(false)
+  const [mainLineEdit, setMainLineEdit] = useState("")
+  const [mainLineSaveLoading, setMainLineSaveLoading] = useState(false)
+  const [mainLineError, setMainLineError] = useState<string | null>(null)
 
   // Load current user so we can show main line (cell) in profile
   useEffect(() => {
@@ -187,6 +191,55 @@ export function SettingsPage() {
     )
   }
 
+  function startEditMainLine() {
+    setMainLineError(null)
+    setMainLineEdit(user?.phone ? formatPhoneDisplay(user.phone) : "")
+    setEditingMainLine(true)
+  }
+
+  function cancelEditMainLine() {
+    setEditingMainLine(false)
+    setMainLineEdit("")
+    setMainLineError(null)
+  }
+
+  async function saveMainLine() {
+    if (!mainLineEdit.trim()) return
+    setMainLineError(null)
+    setMainLineSaveLoading(true)
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ phone: mainLineEdit.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMainLineError(data.error || "Failed to update")
+        return
+      }
+      setEditingMainLine(false)
+      setMainLineEdit("")
+      // Refetch session so user state has the updated phone (E.164 from server)
+      const sessionRes = await fetch("/api/auth/session", { credentials: "include" })
+      if (sessionRes.ok) {
+        const sessionData = await sessionRes.json()
+        if (sessionData?.data?.user) {
+          setUser({
+            name: sessionData.data.user.name ?? "My Business",
+            email: sessionData.data.user.email ?? "",
+            phone: sessionData.data.user.phone ?? "",
+          })
+        }
+      }
+    } catch {
+      setMainLineError("Something went wrong")
+    } finally {
+      setMainLineSaveLoading(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 pb-8">
       {/* Profile card: main line = owner's cell (default destination for calls) */}
@@ -196,17 +249,58 @@ export function SettingsPage() {
             ME
           </AvatarFallback>
         </Avatar>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <p className="text-base font-semibold text-foreground">{user?.name ?? "My Business"}</p>
           <p className="text-sm text-muted-foreground">{user?.email || "owner@mybusiness.com"}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Main line: {formatPhoneDisplay(user?.phone)} — calls default here when no receptionist is selected
-          </p>
+          {editingMainLine ? (
+            <div className="mt-2 space-y-2">
+              <input
+                type="tel"
+                value={mainLineEdit}
+                onChange={(e) => setMainLineEdit(e.target.value)}
+                placeholder="(555) 123-4567"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                autoFocus
+              />
+              {mainLineError && (
+                <p className="text-xs text-destructive">{mainLineError}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={saveMainLine}
+                  disabled={mainLineSaveLoading || !mainLineEdit.trim()}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {mainLineSaveLoading ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditMainLine}
+                  disabled={mainLineSaveLoading}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Main line: {formatPhoneDisplay(user?.phone)} — calls default here when no receptionist is selected.{" "}
+              <button
+                type="button"
+                onClick={startEditMainLine}
+                className="font-medium text-primary underline hover:no-underline"
+              >
+                Edit
+              </button>
+            </p>
+          )}
           <Badge variant="secondary" className="mt-1 text-[10px]">
             Pro Plan
           </Badge>
         </div>
-        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        {!editingMainLine && <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />}
       </div>
 
       {/* Business numbers: the numbers customers call; buy or port; route to cell or receptionists */}

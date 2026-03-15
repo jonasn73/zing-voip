@@ -99,4 +99,16 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Show pointer (finger) cursor on all clickable elements */
+  a,
+  button,
+  [role="button"],
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  input[type="checkbox"],
+  input[type="radio"],
+  select {
+    cursor: pointer;
+  }
 }

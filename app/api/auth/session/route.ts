@@ -2,10 +2,16 @@
 // GET /api/auth/session
 // ============================================
 // Returns the current user from the session cookie, or 401.
+// Refreshes the session cookie (sliding expiration) so you stay logged in while using the app.
 
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { verifySessionCookie } from "@/lib/auth"
+import {
+  verifySessionCookie,
+  createSessionCookie,
+  getSessionCookieName,
+  getSessionCookieOptions,
+} from "@/lib/auth"
 import { getUser } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
@@ -16,10 +22,14 @@ export async function GET(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
+    // Refresh cookie so session stays valid while you use the app (sliding expiration)
+    const newCookieValue = createSessionCookie(userId)
+    const opts = getSessionCookieOptions()
+
     // Dev bypass: no DB call for dev-user (used when database is not connected)
     if (process.env.NODE_ENV === "development" && userId === "dev-user") {
       const devEmail = process.env.DEV_LOGIN_EMAIL?.trim().toLowerCase() ?? "dev@zing.local"
-      return NextResponse.json({
+      const res = NextResponse.json({
         data: {
           user: {
             id: "dev-user",
@@ -31,12 +41,16 @@ export async function GET(req: NextRequest) {
           },
         },
       })
+      res.cookies.set(getSessionCookieName(), newCookieValue, opts)
+      return res
     }
     const user = await getUser(userId)
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 401 })
     }
-    return NextResponse.json({ data: { user } })
+    const res = NextResponse.json({ data: { user } })
+    res.cookies.set(getSessionCookieName(), newCookieValue, opts)
+    return res
   } catch (error) {
     console.error("[Zing] Session error:", error)
     return NextResponse.json(

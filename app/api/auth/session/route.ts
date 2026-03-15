@@ -16,8 +16,13 @@ import { getUser } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
   try {
+    // Read session cookie (try both methods so it works across refresh / different Next.js contexts)
     const cookieStore = await cookies()
-    const cookieValue = cookieStore.get("zing_session")?.value
+    let cookieValue = cookieStore.get("zing_session")?.value
+    if (!cookieValue && req.headers.get("cookie")) {
+      const match = req.headers.get("cookie")!.match(/zing_session=([^;]+)/)
+      cookieValue = match?.[1]?.trim()
+    }
     const userId = verifySessionCookie(cookieValue)
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

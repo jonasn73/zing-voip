@@ -8,7 +8,7 @@
 import { createHmac, timingSafeEqual } from "crypto"
 
 const COOKIE_NAME = "zing_session"
-const MAX_AGE_SEC = 60 * 60 * 24 * 7 // 7 days
+const MAX_AGE_SEC = 60 * 60 * 24 * 30 // 30 days so session survives refreshes and long gaps
 
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET
@@ -53,13 +53,22 @@ export function getSessionCookieName(): string {
   return COOKIE_NAME
 }
 
-export function getSessionCookieOptions(): { httpOnly: boolean; secure: boolean; sameSite: "lax"; path: string; maxAge: number } {
+export function getSessionCookieOptions(): {
+  httpOnly: boolean
+  secure: boolean
+  sameSite: "lax"
+  path: string
+  maxAge: number
+  expires: Date
+} {
+  const expires = new Date(Date.now() + MAX_AGE_SEC * 1000)
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: MAX_AGE_SEC,
+    expires, // explicit expiry helps some browsers persist across refresh
   }
 }
 

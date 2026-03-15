@@ -39,3 +39,4 @@ Then you can log in with that email and password on the live app. You do **not**
 - **“DATABASE_URL is not set”** — Add `DATABASE_URL` in Vercel and redeploy.
 - **“Invalid email or password”** — Either no user exists yet (sign up first) or the password is wrong.
 - **Login works but dashboard errors** — Ensure you ran both `001-create-schema.sql` and `002-add-password-hash.sql` so `users` has `password_hash` and `routing_config` exists.
+- **Logged out on every refresh** — Ensure the app is served over **HTTPS** in production (so the secure session cookie is stored). Keep **SESSION_SECRET** set in Vercel and avoid changing it (changing it invalidates existing sessions).

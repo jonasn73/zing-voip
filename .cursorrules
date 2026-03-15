@@ -103,6 +103,9 @@ OPENAI_API_KEY=                         # Or use Vercel AI Gateway
 7. Implement AI assistant fallback
 8. Add push notifications for missed calls
 
+## Git / Deployment
+- **Always push changes**: After making code changes, commit and push to the remote (e.g. `git add . && git commit -m "..." && git push origin main`) so the user does not have to do it manually. Use a clear, concise commit message describing the change.
+
 ## Coding Conventions
 - Use `async/await` for all DB and API calls
 - Validate all Twilio webhooks with `validateTwilioRequest()`

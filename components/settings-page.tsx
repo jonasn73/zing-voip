@@ -189,67 +189,7 @@ export function SettingsPage() {
         <ChevronRight className="h-5 w-5 text-muted-foreground" />
       </div>
 
-      {/* Routing settings */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Call Routing
-        </h3>
-        <div className="flex flex-col gap-2">
-          {settings.map((setting) => {
-            const Icon = setting.icon
-            return (
-              <div
-                key={setting.id}
-                className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
-                    <Icon className={cn("h-4 w-4", setting.iconColor)} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {setting.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {setting.description}
-                    </p>
-                  </div>
-                </div>
-                <Switch
-                  checked={setting.enabled}
-                  onCheckedChange={() => toggleSetting(setting.id)}
-                  aria-label={setting.label}
-                />
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
-      {/* Schedule */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Schedule
-        </h3>
-        <button className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
-              <Clock className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                Business Hours
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Mon-Fri, 9:00 AM - 5:00 PM
-              </p>
-            </div>
-          </div>
-          <ChevronRight className="h-5 w-5 text-muted-foreground" />
-        </button>
-      </section>
-
-      {/* Phone Numbers */}
+      {/* Phone Numbers - at top so it's easy to find */}
       <section>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Phone Numbers
@@ -317,6 +257,66 @@ export function SettingsPage() {
             <ChevronRight className="h-5 w-5 text-primary/60" />
           </button>
         </div>
+      </section>
+
+      {/* Routing settings */}
+      <section>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Call Routing
+        </h3>
+        <div className="flex flex-col gap-2">
+          {settings.map((setting) => {
+            const Icon = setting.icon
+            return (
+              <div
+                key={setting.id}
+                className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                    <Icon className={cn("h-4 w-4", setting.iconColor)} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {setting.label}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {setting.description}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={setting.enabled}
+                  onCheckedChange={() => toggleSetting(setting.id)}
+                  aria-label={setting.label}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* Schedule */}
+      <section>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Schedule
+        </h3>
+        <button className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+              <Clock className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Business Hours
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Mon-Fri, 9:00 AM - 5:00 PM
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </button>
       </section>
 
       {/* Number Modal */}

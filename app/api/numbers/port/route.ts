@@ -52,6 +52,22 @@ export async function POST(req: NextRequest) {
     })
   } catch (error: unknown) {
     console.error("[Zing] Error submitting port request:", error)
+    const err = error as { statusCode?: number; body?: { errors?: Array<{ code?: string }> }; message?: string }
+    const msg = String(error instanceof Error ? (error as Error).message : error)
+    const isFeatureNotPermitted =
+      err.statusCode === 403 ||
+      err.body?.errors?.some((e) => e.code === "10038") ||
+      /10038|feature not permitted|not permitted at this account/i.test(msg)
+    if (isFeatureNotPermitted) {
+      return NextResponse.json(
+        {
+          error:
+            "Porting isn't available on your current Telnyx plan. Upgrade your account at telnyx.com/upgrade to port numbers.",
+          code: "feature_not_permitted",
+        },
+        { status: 403 }
+      )
+    }
     const message = error instanceof Error ? error.message : "Failed to submit port request"
     const isPortability = /portab|not portable|invalid number/i.test(message)
     return NextResponse.json(

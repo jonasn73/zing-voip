@@ -358,7 +358,7 @@ export function SettingsPage() {
                     <div>
                       <p className="text-sm font-semibold text-foreground">Port Request Submitted</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        We{"'"}ll transfer {portNumber} to Switchr within 24 hours. You{"'"}ll receive updates via email.
+                        We{"'"}ll transfer {portNumber} to Zing within 24 hours. You{"'"}ll receive updates via email.
                       </p>
                     </div>
                     <button
@@ -373,7 +373,7 @@ export function SettingsPage() {
                     <div className="flex items-start gap-2.5 rounded-lg bg-secondary p-3">
                       <ArrowRightLeft className="mt-0.5 h-4 w-4 text-primary" />
                       <p className="text-xs leading-relaxed text-muted-foreground">
-                        Port your existing business number to Switchr. No downtime, no missed calls. Takes 24-48 hours.
+                        Port your existing business number to Zing. No downtime, no missed calls. Takes 24-48 hours.
                       </p>
                     </div>
                     <div className="flex flex-col gap-1.5">
@@ -454,7 +454,7 @@ export function SettingsPage() {
 
       {/* Version */}
       <p className="text-center text-xs text-muted-foreground">
-        Switchr v1.0.0
+        Zing v1.0.0
       </p>
     </div>
   )

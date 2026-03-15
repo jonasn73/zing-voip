@@ -42,7 +42,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Phone className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-base font-bold text-foreground">Switchr</span>
+          <span className="text-base font-bold text-foreground">Zing</span>
         </div>
       </header>
 

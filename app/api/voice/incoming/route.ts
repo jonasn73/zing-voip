@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       dial.number(user.phone)
     }
   } catch (error) {
-    console.error("[Switchr] Error in incoming webhook:", error)
+    console.error("[Zing] Error in incoming webhook:", error)
     twiml.say("We're sorry, there was an error connecting your call. Please try again later.")
     twiml.hangup()
   }

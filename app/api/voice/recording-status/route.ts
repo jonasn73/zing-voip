@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       })
     }
   } catch (error) {
-    console.error("[Switchr] Error in recording status callback:", error)
+    console.error("[Zing] Error in recording status callback:", error)
   }
 
   return new NextResponse("OK", { status: 200 })

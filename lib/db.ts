@@ -1,5 +1,5 @@
 // ============================================
-// Switchr - Database Client
+// Zing - Database Client
 // ============================================
 // This file provides database access. Swap the implementation
 // based on your provider (Supabase, Neon, etc.)

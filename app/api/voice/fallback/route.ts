@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       })
     }
   } catch (error) {
-    console.error("[Switchr] Error in fallback webhook:", error)
+    console.error("[Zing] Error in fallback webhook:", error)
     twiml.say("We're sorry, there was an error. Please try again later.")
     twiml.hangup()
   }

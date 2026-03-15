@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       call_type: callType,
     })
   } catch (error) {
-    console.error("[Switchr] Error in status callback:", error)
+    console.error("[Zing] Error in status callback:", error)
   }
 
   // Twilio expects 200 OK

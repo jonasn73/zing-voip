@@ -77,7 +77,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
               <Phone className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
-            <span className="text-sm font-bold text-foreground">Switchr</span>
+            <span className="text-sm font-bold text-foreground">Zing</span>
           </div>
           <div className="flex items-center gap-2">
             {Array.from({ length: totalSteps }, (_, i) => (
@@ -218,7 +218,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   <div className="flex items-start gap-2.5 rounded-xl bg-card p-4">
                     <ArrowRightLeft className="mt-0.5 h-4 w-4 text-primary" />
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      Port your existing business number to Switchr. Takes 24-48 hours with zero downtime.
+                      Port your existing business number to Zing. Takes 24-48 hours with zero downtime.
                     </p>
                   </div>
                   <div className="flex flex-col gap-1.5">

@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("[Switchr] Error submitting port request:", error)
+    console.error("[Zing] Error submitting port request:", error)
     return NextResponse.json(
       { error: "Failed to submit port request" },
       { status: 500 }

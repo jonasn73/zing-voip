@@ -24,7 +24,7 @@ export async function GET() {
       receptionists,
     })
   } catch (error) {
-    console.error("[Switchr] Error fetching routing config:", error)
+    console.error("[Zing] Error fetching routing config:", error)
     return NextResponse.json(
       { error: "Failed to fetch routing config" },
       { status: 500 }
@@ -46,7 +46,7 @@ export async function PUT(req: NextRequest) {
     const updated = await getRoutingConfig(DEMO_USER_ID)
     return NextResponse.json({ config: updated })
   } catch (error) {
-    console.error("[Switchr] Error updating routing config:", error)
+    console.error("[Zing] Error updating routing config:", error)
     return NextResponse.json(
       { error: "Failed to update routing config" },
       { status: 500 }

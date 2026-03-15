@@ -1,5 +1,5 @@
 -- ============================================
--- Switchr - Database Schema
+-- Zing - Database Schema
 -- Run this against your Supabase/Neon database
 -- ============================================
 

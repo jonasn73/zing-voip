@@ -66,7 +66,7 @@ Use the **real** URL from Part 1 (no trailing slash). Reuse this value when conf
 From the **mobile app folder** (where `app.json` and the Expo app live):
 
 ```bash
-cd /Users/JR/Desktop/switchr/mobile
+cd /Users/JR/Desktop/zing/mobile
 eas build:configure
 ```
 
@@ -99,7 +99,7 @@ Replace `https://your-app.vercel.app` with your real Next.js app URL from Part 1
 From the **mobile** folder:
 
 ```bash
-cd /Users/JR/Desktop/switchr/mobile
+cd /Users/JR/Desktop/zing/mobile
 eas build --platform ios --profile production
 ```
 
@@ -110,7 +110,7 @@ EAS will build in the cloud. When it finishes, you’ll get a link to the build 
 From the **mobile** folder:
 
 ```bash
-cd /Users/JR/Desktop/switchr/mobile
+cd /Users/JR/Desktop/zing/mobile
 eas submit --platform ios --profile production
 ```
 
@@ -138,7 +138,7 @@ Apple usually reviews within 24–48 hours. Once approved, you can release to th
 2. From the **mobile** folder, build the Android app:
 
    ```bash
-   cd /Users/JR/Desktop/switchr/mobile
+   cd /Users/JR/Desktop/zing/mobile
    eas build --platform android --profile production
    ```
 

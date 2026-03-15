@@ -1,4 +1,4 @@
-# Switchr - Cursor Setup Guide
+# Zing - Cursor Setup Guide
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ async function updateRouting(receptionistId: string | null) {
 ## File Map
 
 ```
-switchr/
+zing/
 ├── app/
 │   ├── api/
 │   │   ├── voice/

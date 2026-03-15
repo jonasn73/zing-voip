@@ -91,7 +91,7 @@ If they say no or goodbye, respond with a brief farewell.`
       // or maintain conversation state via a separate store (Redis, etc.)
     }
   } catch (error) {
-    console.error("[Switchr] Error in AI assistant:", error)
+    console.error("[Zing] Error in AI assistant:", error)
     twiml.say("I'm sorry, I'm having trouble right now. Please leave a message after the beep.")
     twiml.record({
       maxLength: 120,

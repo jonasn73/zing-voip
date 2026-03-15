@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Moon,
   Bell,
@@ -87,6 +87,24 @@ export function SettingsPage() {
   const [selectedAreaCode, setSelectedAreaCode] = useState("")
   const [buyStep, setBuyStep] = useState<"search" | "results">("search")
   const [buyLoading, setBuyLoading] = useState(false)
+  const [portingNumbers, setPortingNumbers] = useState<{ id: string; number: string; status: string }[]>([])
+  const [portingLoading, setPortingLoading] = useState(false)
+  const [portSubmitLoading, setPortSubmitLoading] = useState(false)
+  const [portError, setPortError] = useState<string | null>(null)
+
+  // Load porting orders so dashboard shows progress
+  useEffect(() => {
+    let cancelled = false
+    setPortingLoading(true)
+    fetch("/api/numbers/porting", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { porting: [] }))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.porting)) setPortingNumbers(data.porting)
+      })
+      .catch(() => { if (!cancelled) setPortingNumbers([]) })
+      .finally(() => { if (!cancelled) setPortingLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   const availableNumbers = [
     { number: `(${selectedAreaCode || "555"}) 100-4001`, type: "Local", price: "$2.99/mo" },
@@ -107,8 +125,43 @@ export function SettingsPage() {
     }, 800)
   }
 
-  function handlePortSubmit() {
-    setPortSubmitted(true)
+  async function handlePortSubmit() {
+    setPortError(null)
+    setPortSubmitLoading(true)
+    try {
+      const raw = portNumber.replace(/\D/g, "")
+      const number = raw.length === 10 ? `+1${raw}` : raw.length === 11 && raw.startsWith("1") ? `+${raw}` : portNumber
+      const res = await fetch("/api/numbers/port", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ number, current_carrier: portCarrier || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPortError(data.error || "Failed to start port")
+        return
+      }
+      setPortSubmitted(true)
+      const portingRes = await fetch("/api/numbers/porting", { credentials: "include" })
+      const portingData = await portingRes.json()
+      if (Array.isArray(portingData.porting)) setPortingNumbers(portingData.porting)
+    } catch {
+      setPortError("Failed to start port. Try again.")
+    } finally {
+      setPortSubmitLoading(false)
+    }
+  }
+
+  function formatPhoneDisplay(e164: string): string {
+    const digits = e164.replace(/\D/g, "")
+    if (digits.length === 11 && digits.startsWith("1")) {
+      return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
+    }
+    if (digits.length === 10) {
+      return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+    }
+    return e164
   }
 
   function toggleSetting(id: string) {
@@ -218,6 +271,32 @@ export function SettingsPage() {
               </div>
               <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
                 Active
+              </span>
+            </div>
+          ))}
+
+          {portingLoading && portingNumbers.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-6">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Loading port status…</span>
+            </div>
+          ) : null}
+          {portingNumbers.map((p) => (
+            <div
+              key={p.id || p.number}
+              className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10">
+                  <ArrowRightLeft className="h-4 w-4 text-warning" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(p.number)}</p>
+                  <p className="text-xs text-muted-foreground">Porting to Zing · Usually 24-48 hours</p>
+                </div>
+              </div>
+              <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning">
+                Porting
               </span>
             </div>
           ))}
@@ -358,7 +437,7 @@ export function SettingsPage() {
                     <div>
                       <p className="text-sm font-semibold text-foreground">Port Request Submitted</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        We{"'"}ll transfer {portNumber} to Zing within 24 hours. You{"'"}ll receive updates via email.
+                        Your port has been started with Telnyx—the number will transfer to Zing, usually within 24–48 hours. Check this page for progress; complete any LOA or verification steps Telnyx emails you.
                       </p>
                     </div>
                     <button
@@ -396,12 +475,22 @@ export function SettingsPage() {
                         className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                       />
                     </div>
+                    {portError && (
+                      <p className="text-xs text-destructive">{portError}</p>
+                    )}
                     <button
                       onClick={handlePortSubmit}
-                      disabled={!portNumber}
+                      disabled={!portNumber || portSubmitLoading}
                       className="mt-1 w-full rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
                     >
-                      Submit Port Request
+                      {portSubmitLoading ? (
+                        <>
+                          <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
+                          Starting port…
+                        </>
+                      ) : (
+                        "Submit Port Request"
+                      )}
                     </button>
                   </div>
                 )}

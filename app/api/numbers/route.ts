@@ -1,24 +1,22 @@
 // ============================================
 // GET /api/numbers
-// POST /api/numbers (search available numbers)
+// POST /api/numbers (buy a number)
 // ============================================
+// Lists user's phone numbers and allows purchasing new ones via Twilio.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getTwilioClient } from "@/lib/twilio"
 import { getPhoneNumbers } from "@/lib/db"
-import { getUserIdFromRequest } from "@/lib/auth"
 import type { BuyNumberRequest } from "@/lib/types"
 
-export async function GET(req: NextRequest) {
-  const userId = getUserIdFromRequest(req.headers.get("cookie"))
-  if (!userId) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
-  }
+const DEMO_USER_ID = "demo-user-id"
+
+export async function GET() {
   try {
-    const numbers = await getPhoneNumbers(userId)
+    const numbers = await getPhoneNumbers(DEMO_USER_ID)
     return NextResponse.json({ numbers })
   } catch (error) {
-    console.error("[Zing] Error fetching numbers:", error)
+    console.error("[Switchr] Error fetching numbers:", error)
     return NextResponse.json(
       { error: "Failed to fetch phone numbers" },
       { status: 500 }
@@ -27,14 +25,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = getUserIdFromRequest(req.headers.get("cookie"))
-  if (!userId) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
-  }
   try {
     const body: BuyNumberRequest = await req.json()
     const client = getTwilioClient()
 
+    // Search for available numbers
     const available = await client.availablePhoneNumbers("US")
       .local.list({
         areaCode: parseInt(body.area_code, 10),
@@ -53,11 +48,11 @@ export async function POST(req: NextRequest) {
         number: num.phoneNumber,
         friendly_name: num.friendlyName,
         type: "local" as const,
-        monthly_cost: 2.99,
+        monthly_cost: 2.99, // Twilio local number pricing
       })),
     })
   } catch (error) {
-    console.error("[Zing] Error searching numbers:", error)
+    console.error("[Switchr] Error searching numbers:", error)
     return NextResponse.json(
       { error: "Failed to search numbers" },
       { status: 500 }

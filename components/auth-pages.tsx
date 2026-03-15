@@ -27,44 +27,11 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
     setError("")
     setLoading(true)
 
-    if (isSignup) {
-      fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
-          name: ownerName.trim(),
-          phone: ownerPhone.trim(),
-          business_name: businessName.trim() || "My Business",
-        }),
-      })
-        .then((res) => res.json().then((data) => ({ res, data })))
-        .then(({ res, data }) => {
-          if (!res.ok) throw new Error((data as { error?: string }).error ?? "Signup failed")
-          onAuth()
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : "Signup failed"))
-        .finally(() => setLoading(false))
-    } else {
-      fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password,
-        }),
-      })
-        .then((res) => res.json().then((data) => ({ res, data })))
-        .then(({ res, data }) => {
-          if (!res.ok) throw new Error((data as { error?: string }).error ?? "Login failed")
-          onAuth()
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : "Login failed"))
-        .finally(() => setLoading(false))
-    }
+    // Simulate auth -- in production this calls your API
+    setTimeout(() => {
+      setLoading(false)
+      onAuth()
+    }, 1000)
   }
 
   return (
@@ -75,7 +42,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Phone className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-base font-bold text-foreground">Zing</span>
+          <span className="text-base font-bold text-foreground">Switchr</span>
         </div>
       </header>
 

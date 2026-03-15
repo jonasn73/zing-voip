@@ -1,7 +1,10 @@
 // ============================================
 // POST /api/voice/fallback
 // ============================================
-// Twilio hits this when the receptionist doesn't answer.
+// Twilio hits this when the receptionist doesn't answer
+// (the "action" URL from the <Dial> in /incoming).
+// 
+// DialCallStatus values: completed, no-answer, busy, failed, canceled
 
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/twilio"
@@ -17,6 +20,7 @@ export async function POST(req: NextRequest) {
   const appUrl = getAppUrl()
 
   try {
+    // If receptionist answered, call is done
     if (dialStatus === "completed") {
       twiml.hangup()
       return new NextResponse(twiml.toString(), {
@@ -24,12 +28,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Receptionist didn't answer -- check fallback setting
     const config = await getRoutingConfig(userId)
     const user = await getUser(userId)
     const fallbackType = config?.fallback_type || "owner"
 
     switch (fallbackType) {
       case "owner": {
+        // Ring the business owner's phone
         if (user) {
           twiml.say("Please hold while we connect you.")
           const dial = twiml.dial({
@@ -50,6 +56,9 @@ export async function POST(req: NextRequest) {
       }
 
       case "ai": {
+        // Connect to AI assistant
+        // This redirects to the AI handler which uses Twilio Media Streams
+        // or <Gather> + AI SDK to converse with the caller
         twiml.redirect({
           method: "POST",
         }, `${appUrl}/api/voice/ai-assistant?userId=${userId}&callSid=${callSid}`)
@@ -57,6 +66,7 @@ export async function POST(req: NextRequest) {
       }
 
       case "voicemail": {
+        // Send to voicemail
         const greeting = config?.ai_greeting || "Please leave a message after the beep."
         twiml.say(greeting)
         twiml.record({
@@ -74,6 +84,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Update call log with missed/no-answer status
     if (callSid && dialStatus !== "completed") {
       await updateCallLog(callSid, {
         call_type: fallbackType === "voicemail" ? "voicemail" : "incoming",
@@ -81,7 +92,7 @@ export async function POST(req: NextRequest) {
       })
     }
   } catch (error) {
-    console.error("[Zing] Error in fallback webhook:", error)
+    console.error("[Switchr] Error in fallback webhook:", error)
     twiml.say("We're sorry, there was an error. Please try again later.")
     twiml.hangup()
   }

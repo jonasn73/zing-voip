@@ -1,24 +1,23 @@
 // ============================================
 // GET /api/analytics
 // ============================================
-// Returns talk time and earnings. Protected: requires session.
+// Returns talk time, earnings, and call stats for the analytics page.
 
 import { NextRequest, NextResponse } from "next/server"
-import { getUserIdFromRequest } from "@/lib/auth"
-import { getAgentTalkTime } from "@/lib/db"
+import { getAgentTalkTime, getCallLogs } from "@/lib/db"
+
+const DEMO_USER_ID = "demo-user-id"
 
 export async function GET(req: NextRequest) {
-  const userId = getUserIdFromRequest(req.headers.get("cookie"))
-  if (!userId) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
-  }
   try {
     const { searchParams } = req.nextUrl
     const startDate = searchParams.get("start") || new Date(Date.now() - 7 * 86400000).toISOString()
     const endDate = searchParams.get("end") || new Date().toISOString()
 
-    const agentStats = await getAgentTalkTime(userId, startDate, endDate)
+    // Get agent talk time + earnings
+    const agentStats = await getAgentTalkTime(DEMO_USER_ID, startDate, endDate)
 
+    // Calculate totals
     const totalMinutes = agentStats.reduce((sum, a) => sum + a.total_seconds / 60, 0)
     const totalEarnings = agentStats.reduce(
       (sum, a) => sum + (a.total_seconds / 60) * a.rate_per_minute,
@@ -31,7 +30,7 @@ export async function GET(req: NextRequest) {
         total_minutes: Math.round(totalMinutes * 10) / 10,
         total_earnings: Math.round(totalEarnings * 100) / 100,
         total_calls: totalCalls,
-        avg_call_duration: totalCalls > 0 ? Math.round((totalMinutes / totalCalls) * 60) : 0,
+        avg_call_duration: totalCalls > 0 ? Math.round((totalMinutes / totalCalls) * 60) : 0, // in seconds
       },
       agents: agentStats.map((a) => ({
         id: a.receptionist_id,
@@ -48,7 +47,7 @@ export async function GET(req: NextRequest) {
       period: { start: startDate, end: endDate },
     })
   } catch (error) {
-    console.error("[Zing] Error fetching analytics:", error)
+    console.error("[Switchr] Error fetching analytics:", error)
     return NextResponse.json(
       { error: "Failed to fetch analytics" },
       { status: 500 }

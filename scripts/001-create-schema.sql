@@ -1,5 +1,5 @@
 -- ============================================
--- Zing - Database Schema
+-- Switchr - Database Schema
 -- Run this against your Supabase/Neon database
 -- ============================================
 
@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   phone TEXT NOT NULL,
   business_name TEXT NOT NULL DEFAULT '',
-  password_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

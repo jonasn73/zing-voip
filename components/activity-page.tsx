@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import useSWR from "swr"
 import {
   Play,
   Pause,
@@ -16,11 +15,9 @@ import {
   Phone,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { cn, formatPhone } from "@/lib/utils"
-import { fetcher } from "@/lib/fetcher"
-import type { CallLog, CallType } from "@/lib/types"
-import { format, isToday, isYesterday } from "date-fns"
+import { cn } from "@/lib/utils"
 
+type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
 type FilterType = "all" | CallType
 
 interface CallRecord {
@@ -35,8 +32,60 @@ interface CallRecord {
   time: string
   durationSeconds: number
   hasRecording: boolean
-  recordingUrl: string | null
 }
+
+const callRecords: CallRecord[] = [
+  {
+    id: "1", type: "incoming", callerName: "Acme Corp", callerNumber: "(555) 111-2222",
+    routedTo: "Sarah Miller", routedInitials: "SM", routedColor: "bg-primary",
+    date: "Today", time: "2:34 PM", durationSeconds: 423, hasRecording: true,
+  },
+  {
+    id: "2", type: "outgoing", callerName: "Follow Up - Johnson", callerNumber: "(555) 333-4444",
+    routedTo: "You", routedInitials: "YO", routedColor: "bg-chart-2",
+    date: "Today", time: "1:12 PM", durationSeconds: 187, hasRecording: true,
+  },
+  {
+    id: "3", type: "missed", callerName: "Unknown Caller", callerNumber: "(555) 555-6666",
+    routedTo: "Voicemail", routedInitials: "VM", routedColor: "bg-destructive",
+    date: "Today", time: "11:45 AM", durationSeconds: 0, hasRecording: false,
+  },
+  {
+    id: "4", type: "voicemail", callerName: "David Chen", callerNumber: "(555) 777-8888",
+    routedTo: "Voicemail", routedInitials: "DC", routedColor: "bg-chart-5",
+    date: "Today", time: "10:20 AM", durationSeconds: 45, hasRecording: true,
+  },
+  {
+    id: "5", type: "incoming", callerName: "Maria Santos", callerNumber: "(555) 999-0000",
+    routedTo: "Sarah Miller", routedInitials: "SM", routedColor: "bg-primary",
+    date: "Yesterday", time: "4:56 PM", durationSeconds: 612, hasRecording: true,
+  },
+  {
+    id: "6", type: "incoming", callerName: "TechStart Inc", callerNumber: "(555) 222-3333",
+    routedTo: "James Wilson", routedInitials: "JW", routedColor: "bg-chart-2",
+    date: "Yesterday", time: "3:18 PM", durationSeconds: 298, hasRecording: true,
+  },
+  {
+    id: "7", type: "outgoing", callerName: "Client Callback", callerNumber: "(555) 444-5555",
+    routedTo: "You", routedInitials: "YO", routedColor: "bg-chart-2",
+    date: "Yesterday", time: "1:05 PM", durationSeconds: 145, hasRecording: false,
+  },
+  {
+    id: "8", type: "missed", callerName: "Spam Likely", callerNumber: "(555) 666-7777",
+    routedTo: "Voicemail", routedInitials: "VM", routedColor: "bg-destructive",
+    date: "Yesterday", time: "9:30 AM", durationSeconds: 0, hasRecording: false,
+  },
+  {
+    id: "9", type: "incoming", callerName: "Big Deal Vendor", callerNumber: "(555) 888-9999",
+    routedTo: "Rachel Kim", routedInitials: "RK", routedColor: "bg-chart-5",
+    date: "Feb 23", time: "5:42 PM", durationSeconds: 934, hasRecording: true,
+  },
+  {
+    id: "10", type: "voicemail", callerName: "Insurance Co", callerNumber: "(555) 123-9876",
+    routedTo: "Voicemail", routedInitials: "VM", routedColor: "bg-chart-5",
+    date: "Feb 23", time: "2:15 PM", durationSeconds: 62, hasRecording: true,
+  },
+]
 
 function formatDuration(seconds: number): string {
   if (seconds === 0) return "--"
@@ -63,39 +112,12 @@ const callTypeConfig: Record<CallType, { icon: React.ElementType; label: string;
   voicemail: { icon: Voicemail, label: "Voicemail", color: "text-warning", bgColor: "bg-warning/10" },
 }
 
-function formatCallDate(createdAt: string): string {
-  const d = new Date(createdAt)
-  if (isToday(d)) return "Today"
-  if (isYesterday(d)) return "Yesterday"
-  return format(d, "MMM d")
-}
-
-function mapCallToRecord(c: CallLog): CallRecord {
-  const d = new Date(c.created_at)
-  const routedTo = c.routed_to_name ?? "Voicemail"
-  const initials = routedTo === "Voicemail" ? "VM" : routedTo.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "—"
-  return {
-    id: c.id,
-    type: c.call_type,
-    callerName: c.caller_name ?? "Unknown Caller",
-    callerNumber: formatPhone(c.from_number),
-    routedTo,
-    routedInitials: initials,
-    routedColor: "bg-primary",
-    date: formatCallDate(c.created_at),
-    time: format(d, "h:mm a"),
-    durationSeconds: c.duration_seconds,
-    hasRecording: c.has_recording,
-    recordingUrl: c.recording_url,
-  }
-}
-
-function AudioPlayer({ callId, recordingUrl, durationSeconds }: { callId: string; recordingUrl: string | null; durationSeconds: number }) {
+function AudioPlayer({ callId }: { callId: string }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const fakeDuration = durationSeconds > 0 ? durationSeconds : 30
+  const fakeDuration = 30 + (parseInt(callId) * 7) % 60 // deterministic fake duration
 
   const stopPlayback = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
@@ -157,17 +179,12 @@ function AudioPlayer({ callId, recordingUrl, durationSeconds }: { callId: string
           </span>
         </div>
       </div>
-      {recordingUrl && (
-        <a
-          href={recordingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Download recording"
-        >
-          <Download className="h-3.5 w-3.5" />
-        </a>
-      )}
+      <button
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
+        aria-label="Download recording"
+      >
+        <Download className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }
@@ -177,16 +194,16 @@ export function ActivityPage() {
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const typeParam = filter === "all" ? "" : `&type=${filter}`
-  const { data, isLoading } = useSWR<{ calls: CallLog[] }>(
-    `/api/calls?limit=100${typeParam}`,
-    fetcher
-  )
+  const filters: { id: FilterType; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "incoming", label: "Incoming" },
+    { id: "outgoing", label: "Outgoing" },
+    { id: "missed", label: "Missed" },
+    { id: "voicemail", label: "Voicemail" },
+  ]
 
-  const calls = data?.calls ?? []
-  const records: CallRecord[] = calls.map(mapCallToRecord)
-
-  const filtered = records.filter((c) => {
+  const filtered = callRecords.filter((c) => {
+    if (filter !== "all" && c.type !== filter) return false
     if (search) {
       const q = search.toLowerCase()
       return (
@@ -198,34 +215,20 @@ export function ActivityPage() {
     return true
   })
 
-  const totalCalls = records.length
-  const totalDuration = records.reduce((sum, c) => sum + c.durationSeconds, 0)
-  const recordingsCount = records.filter((c) => c.hasRecording).length
+  const totalCalls = callRecords.length
+  const totalDuration = callRecords.reduce((sum, c) => sum + c.durationSeconds, 0)
+  const recordingsCount = callRecords.filter((c) => c.hasRecording).length
 
+  // Group by date
   const grouped: Record<string, CallRecord[]> = {}
   for (const call of filtered) {
     if (!grouped[call.date]) grouped[call.date] = []
     grouped[call.date].push(call)
   }
 
-  const filters: { id: FilterType; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "incoming", label: "Incoming" },
-    { id: "outgoing", label: "Outgoing" },
-    { id: "missed", label: "Missed" },
-    { id: "voicemail", label: "Voicemail" },
-  ]
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center p-4">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
+      {/* Header Stats */}
       <div className="grid grid-cols-3 gap-2">
         <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
           <Phone className="mb-1 h-4 w-4 text-primary" />
@@ -246,6 +249,7 @@ export function ActivityPage() {
         </div>
       </div>
 
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -257,6 +261,7 @@ export function ActivityPage() {
         />
       </div>
 
+      {/* Filters */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1" role="tablist">
         {filters.map((f) => (
           <button
@@ -276,13 +281,14 @@ export function ActivityPage() {
         ))}
       </div>
 
-      {Object.entries(grouped).map(([date, callsInGroup]) => (
+      {/* Call Records by Date */}
+      {Object.entries(grouped).map(([date, calls]) => (
         <section key={date}>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {date}
           </h3>
           <div className="flex flex-col gap-2">
-            {callsInGroup.map((call) => {
+            {calls.map((call) => {
               const config = callTypeConfig[call.type]
               const Icon = config.icon
               const isExpanded = expandedId === call.id
@@ -320,8 +326,10 @@ export function ActivityPage() {
                     </div>
                   </button>
 
+                  {/* Expanded Detail */}
                   {isExpanded && (
                     <div className="border-t border-border px-3.5 pb-3.5 pt-3 flex flex-col gap-3">
+                      {/* Details Row */}
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col gap-0.5">
                           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Routed To</span>
@@ -342,12 +350,13 @@ export function ActivityPage() {
                         </div>
                       </div>
 
+                      {/* Recording Player */}
                       {call.hasRecording ? (
                         <div>
                           <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted-foreground">
                             Recording
                           </span>
-                          <AudioPlayer callId={call.id} recordingUrl={call.recordingUrl} durationSeconds={call.durationSeconds} />
+                          <AudioPlayer callId={call.id} />
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 rounded-lg bg-secondary/50 px-3 py-2.5">

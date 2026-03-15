@@ -9,6 +9,8 @@ import {
   BarChart3,
   ArrowRight,
   Phone,
+  Clock,
+  Shield,
   Zap,
   ChevronDown,
   Check,
@@ -111,7 +113,7 @@ const pricing = [
 const faqs = [
   {
     q: "Can I keep my existing business number?",
-    a: "Yes. You can port your current number to Zing in 24-48 hours with zero downtime. Your callers won't notice a thing.",
+    a: "Yes. You can port your current number to Switchr in 24-48 hours with zero downtime. Your callers won't notice a thing.",
   },
   {
     q: "How does the AI assistant work?",
@@ -119,13 +121,17 @@ const faqs = [
   },
   {
     q: "How does receptionist pay tracking work?",
-    a: "Set a per-minute rate for each receptionist. Zing logs every second of talk time and calculates what you owe automatically. Export pay reports anytime.",
+    a: "Set a per-minute rate for each receptionist. Switchr logs every second of talk time and calculates what you owe automatically. Export pay reports anytime.",
   },
   {
     q: "Do my receptionists need to install anything?",
-    a: "No. Calls forward to their personal cell phone. They answer like a normal call. You manage everything from the Zing app.",
+    a: "No. Calls forward to their personal cell phone. They answer like a normal call. You manage everything from the Switchr app.",
   },
 ]
+
+// Standalone landing page for the marketing website.
+// In the marketing site, link "Get Started" / "Log in" buttons to your app URL (e.g. app.switchr.com).
+// The appUrl prop defaults to "/app" but you can pass "https://app.switchr.com" in production.
 
 interface LandingPageProps {
   appUrl?: string
@@ -136,13 +142,14 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Nav */}
       <header className="fixed top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Phone className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-bold text-foreground">Zing</span>
+            <span className="text-lg font-bold text-foreground">Switchr</span>
           </div>
           <div className="hidden items-center gap-8 md:flex">
             <a href="#features" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
@@ -175,6 +182,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </nav>
       </header>
 
+      {/* Hero */}
       <section className="relative flex min-h-screen flex-col items-center justify-center px-6 pt-20 text-center">
         <div
           className="pointer-events-none absolute inset-0"
@@ -195,7 +203,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
             <span className="text-primary">with one tap</span>
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground md:text-xl">
-            Buy a number, add receptionists, set up AI fallback. Zing handles your calls so you can run your business.
+            Buy a number, add receptionists, set up AI fallback. Switchr handles your calls so you can run your business.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <a
@@ -214,6 +222,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
           </div>
         </div>
 
+        {/* App preview mockup */}
         <div className="relative mx-auto mt-16 w-full max-w-sm">
           <div className="rounded-3xl border border-border bg-card p-6 shadow-2xl shadow-primary/5">
             <div className="flex flex-col items-center gap-4">
@@ -236,6 +245,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </div>
       </section>
 
+      {/* Features */}
       <section id="features" className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-16 text-center">
@@ -266,6 +276,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </div>
       </section>
 
+      {/* How it Works */}
       <section id="how-it-works" className="px-6 py-24">
         <div className="mx-auto max-w-4xl">
           <div className="mb-16 text-center">
@@ -302,6 +313,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </div>
       </section>
 
+      {/* Stats bar */}
       <section className="border-y border-border bg-card px-6 py-12">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-12 text-center md:justify-between">
           {[
@@ -318,6 +330,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </div>
       </section>
 
+      {/* Pricing */}
       <section id="pricing" className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-16 text-center">
@@ -380,6 +393,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </div>
       </section>
 
+      {/* FAQ */}
       <section id="faq" className="px-6 py-24">
         <div className="mx-auto max-w-2xl">
           <div className="mb-12 text-center">
@@ -419,13 +433,14 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </div>
       </section>
 
+      {/* CTA */}
       <section className="px-6 py-24">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-bold text-foreground md:text-4xl">
             Ready to take control of your calls?
           </h2>
           <p className="mx-auto mt-4 max-w-md text-muted-foreground">
-            Join hundreds of small businesses using Zing to route calls, track pay, and never miss a customer.
+            Join hundreds of small businesses using Switchr to route calls, track pay, and never miss a customer.
           </p>
           <a
             href={appUrl}
@@ -437,13 +452,14 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
         </div>
       </section>
 
+      {/* Footer */}
       <footer className="border-t border-border px-6 py-10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
               <Phone className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
-            <span className="text-sm font-bold text-foreground">Zing</span>
+            <span className="text-sm font-bold text-foreground">Switchr</span>
           </div>
           <div className="flex gap-6">
             <a href="#" className="text-xs text-muted-foreground hover:text-foreground">Privacy</a>
@@ -451,7 +467,7 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
             <a href="#" className="text-xs text-muted-foreground hover:text-foreground">Support</a>
           </div>
           <p className="text-xs text-muted-foreground">
-            2026 Zing. All rights reserved.
+            2026 Switchr. All rights reserved.
           </p>
         </div>
       </footer>

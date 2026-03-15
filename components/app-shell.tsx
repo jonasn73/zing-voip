@@ -32,13 +32,14 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-dvh flex-col bg-background">
+      {/* Header */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Phone className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="text-lg font-semibold tracking-tight text-foreground">
-            Zing
+            Switchr
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -47,8 +48,10 @@ export function AppShell({
         </div>
       </header>
 
+      {/* Main content */}
       <main className="flex-1 overflow-y-auto">{children}</main>
 
+      {/* Bottom navigation */}
       <nav className="sticky bottom-0 z-40 border-t border-border bg-background/80 backdrop-blur-xl" role="navigation" aria-label="Main navigation">
         <div className="flex items-center justify-around px-2 py-2">
           {navItems.map((item) => {

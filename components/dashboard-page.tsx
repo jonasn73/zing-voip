@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import useSWR from "swr"
+import { useState } from "react"
 import {
   Phone,
   PhoneForwarded,
@@ -22,8 +21,25 @@ import {
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
-import { fetcher, fetchJson } from "@/lib/fetcher"
-import type { Receptionist, RoutingConfig } from "@/lib/types"
+
+interface Contact {
+  id: string
+  name: string
+  phone: string
+  initials: string
+  color: string
+}
+
+const receptionists: Contact[] = [
+  { id: "1", name: "Sarah Miller", phone: "(555) 234-5678", initials: "SM", color: "bg-primary" },
+  { id: "2", name: "James Wilson", phone: "(555) 345-6789", initials: "JW", color: "bg-chart-2" },
+  { id: "3", name: "Rachel Kim", phone: "(555) 456-7890", initials: "RK", color: "bg-chart-5" },
+]
+
+const ownerInfo = {
+  name: "You",
+  phone: "(555) 123-0000",
+}
 
 interface CallStat {
   label: string
@@ -31,13 +47,37 @@ interface CallStat {
   icon: React.ElementType
   color: string
   bgColor: string
+  suffix?: string
 }
 
-const callStatsConfig = [
-  { label: "Total Calls", key: "total" as const, icon: Phone, color: "text-primary", bgColor: "bg-primary/10" },
-  { label: "Incoming", key: "incoming" as const, icon: PhoneIncoming, color: "text-success", bgColor: "bg-success/10" },
-  { label: "Outgoing", key: "outgoing" as const, icon: PhoneOutgoing, color: "text-chart-2", bgColor: "bg-chart-2/10" },
-  { label: "Missed", key: "missed" as const, icon: PhoneMissed, color: "text-destructive", bgColor: "bg-destructive/10" },
+const callStats: CallStat[] = [
+  { label: "Total Calls", value: 147, icon: Phone, color: "text-primary", bgColor: "bg-primary/10" },
+  { label: "Incoming", value: 89, icon: PhoneIncoming, color: "text-success", bgColor: "bg-success/10" },
+  { label: "Outgoing", value: 42, icon: PhoneOutgoing, color: "text-chart-2", bgColor: "bg-chart-2/10" },
+  { label: "Missed", value: 16, icon: PhoneMissed, color: "text-destructive", bgColor: "bg-destructive/10" },
+]
+
+const totalTalkTime = { hours: 12, minutes: 34 }
+
+interface RecentCall {
+  id: string
+  number: string
+  callerName: string | null
+  type: "incoming" | "outgoing" | "missed" | "voicemail"
+  time: string
+  duration: string | null
+  routedTo: string | null
+}
+
+const recentCalls: RecentCall[] = [
+  { id: "r1", number: "(555) 901-2345", callerName: "David Chen", type: "incoming", time: "2 min ago", duration: "4:12", routedTo: "Sarah Miller" },
+  { id: "r2", number: "(555) 678-1234", callerName: null, type: "missed", time: "18 min ago", duration: null, routedTo: null },
+  { id: "r3", number: "(555) 432-8765", callerName: "Apex Industries", type: "incoming", time: "45 min ago", duration: "11:03", routedTo: "Sarah Miller" },
+  { id: "r4", number: "(555) 222-9988", callerName: null, type: "voicemail", time: "1 hr ago", duration: "0:42", routedTo: null },
+  { id: "r5", number: "(555) 111-4455", callerName: "Lisa Park", type: "outgoing", time: "1.5 hr ago", duration: "7:28", routedTo: null },
+  { id: "r6", number: "(555) 876-5432", callerName: "Metro Supplies", type: "incoming", time: "2 hr ago", duration: "3:55", routedTo: "James Wilson" },
+  { id: "r7", number: "(555) 333-7766", callerName: null, type: "missed", time: "3 hr ago", duration: null, routedTo: null },
+  { id: "r8", number: "(555) 999-1122", callerName: "Amy Torres", type: "incoming", time: "4 hr ago", duration: "8:16", routedTo: "Sarah Miller" },
 ]
 
 const callTypeConfig = {
@@ -55,86 +95,26 @@ const fallbackOptions: { id: FallbackOption; label: string; description: string;
   { id: "voicemail", label: "Voicemail", description: "Send caller to voicemail", icon: Voicemail, color: "text-warning", bgColor: "bg-warning/10" },
 ]
 
-function formatRelativeTime(createdAt: string): string {
-  const sec = (Date.now() - new Date(createdAt).getTime()) / 1000
-  if (sec < 60) return "Just now"
-  if (sec < 3600) return `${Math.floor(sec / 60)} min ago`
-  if (sec < 86400) return `${Math.floor(sec / 3600)} hr ago`
-  if (sec < 604800) return `${Math.floor(sec / 86400)} days ago`
-  return new Date(createdAt).toLocaleDateString()
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${s.toString().padStart(2, "0")}`
-}
-
 export function DashboardPage() {
+  const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(null)
   const [showSwitcher, setShowSwitcher] = useState(false)
+  const [fallback, setFallback] = useState<FallbackOption>("owner")
   const [showFallbackSettings, setShowFallbackSettings] = useState(false)
+  const [aiGreeting, setAiGreeting] = useState("Thank you for calling. Our team is currently unavailable. I can take a message, provide our business hours, or help direct your call. How can I help you?")
   const [editingGreeting, setEditingGreeting] = useState(false)
   const [greetingDraft, setGreetingDraft] = useState("")
 
-  const { data: sessionData } = useSWR<{ data: { user: { id: string; name: string; phone: string } } }>("/api/auth/session", fetcher)
-  const { data: routingData, mutate: mutateRouting } = useSWR<{ config: RoutingConfig | null; receptionists: Receptionist[] }>("/api/routing", fetcher)
-  const { data: callsData } = useSWR<{ calls: { id: string; from_number: string; caller_name: string | null; call_type: string; created_at: string; duration_seconds: number; routed_to_name: string | null }[] }>("/api/calls?limit=20", fetcher)
-
-  const user = sessionData?.data?.user
-  const config = routingData?.config
-  const receptionists = routingData?.receptionists ?? []
-  const calls = callsData?.calls ?? []
-
-  const selectedReceptionistId = config?.selected_receptionist_id ?? null
-  const fallback = (config?.fallback_type as FallbackOption) ?? "owner"
-  const aiGreeting = config?.ai_greeting ?? "Thank you for calling. Our team is currently unavailable. I can take a message, provide our business hours, or help direct your call. How can I help you?"
-  const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) ?? null
+  const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) || null
   const isRoutingToOwner = !selectedReceptionist
 
-  const ownerInfo = user ? { name: "You", phone: user.phone } : { name: "You", phone: "—" }
-
-  useEffect(() => {
-    if (config && !editingGreeting) setGreetingDraft(config.ai_greeting)
-  }, [config?.ai_greeting, editingGreeting])
-
-  const callStats: CallStat[] = callStatsConfig.map((c) => ({
-    ...c,
-    value: c.key === "total" ? calls.length : calls.filter((x) => x.call_type === c.key).length,
-  }))
-  const totalTalkSeconds = calls.reduce((s, c) => s + c.duration_seconds, 0)
-  const totalTalkTime = { hours: Math.floor(totalTalkSeconds / 3600), minutes: Math.floor((totalTalkSeconds % 3600) / 60) }
-
-  const recentCalls = calls.slice(0, 8).map((call) => ({
-    id: call.id,
-    number: call.from_number,
-    callerName: call.caller_name,
-    type: call.call_type as "incoming" | "outgoing" | "missed" | "voicemail",
-    time: formatRelativeTime(call.created_at),
-    duration: call.duration_seconds > 0 ? formatDuration(call.duration_seconds) : null,
-    routedTo: call.routed_to_name,
-  }))
-
-  async function selectReceptionist(id: string) {
-    await fetchJson("/api/routing", { method: "PUT", body: { selected_receptionist_id: id } })
-    mutateRouting()
+  function selectReceptionist(id: string) {
+    setSelectedReceptionistId(id)
     setShowSwitcher(false)
   }
 
-  async function clearReceptionist() {
-    await fetchJson("/api/routing", { method: "PUT", body: { selected_receptionist_id: null } })
-    mutateRouting()
+  function clearReceptionist() {
+    setSelectedReceptionistId(null)
     setShowSwitcher(false)
-  }
-
-  async function setFallbackAndSave(value: FallbackOption) {
-    await fetchJson("/api/routing", { method: "PUT", body: { fallback_type: value } })
-    mutateRouting()
-  }
-
-  async function saveAiGreeting(value: string) {
-    await fetchJson("/api/routing", { method: "PUT", body: { ai_greeting: value } })
-    setEditingGreeting(false)
-    mutateRouting()
   }
 
   return (
@@ -149,15 +129,16 @@ export function DashboardPage() {
           }}
         />
         <div className="relative flex flex-col items-center gap-5">
+          {/* Centered icon */}
           <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-primary bg-primary/10 shadow-[0_0_30px_-5px_var(--primary)]">
             <PhoneForwarded className="h-8 w-8 text-primary" />
           </div>
 
+          {/* Status text + routing target */}
           <div className="flex flex-col items-center gap-2 text-center">
             <h2 className="text-xl font-semibold text-foreground">
               Calls Are Being Routed
             </h2>
-            <p className="text-xs text-muted-foreground">Everything is configured in the app—no Twilio setup needed.</p>
             <div className="relative flex flex-col items-center gap-2">
               <p className="text-sm text-muted-foreground">
                 {isRoutingToOwner ? "Ringing directly to" : "Ringing first to"}
@@ -199,25 +180,26 @@ export function DashboardPage() {
                 {isRoutingToOwner ? ownerInfo.phone : selectedReceptionist!.phone}
               </p>
 
-              {/* Fallback: what happens when the person who receives calls doesn't answer */}
-              {(() => {
+              {/* Fallback setting */}
+              {selectedReceptionist && (() => {
                 const activeFallback = fallbackOptions.find((f) => f.id === fallback)!
                 const FallbackIcon = activeFallback.icon
                 return (
                   <button
                     onClick={() => setShowFallbackSettings(true)}
-                    className="mt-1 flex w-full items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 transition-all hover:bg-secondary active:scale-[0.99]"
+                    className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 transition-all hover:bg-secondary active:scale-[0.99]"
                   >
-                    <FallbackIcon className={cn("h-3.5 w-3.5 shrink-0", activeFallback.color)} />
-                    <p className="text-left text-[11px] text-muted-foreground">
-                      {isRoutingToOwner ? "If you don't answer: " : "If no answer: "}
+                    <FallbackIcon className={cn("h-3.5 w-3.5", activeFallback.color)} />
+                    <p className="text-[11px] text-muted-foreground">
+                      {"If no answer: "}
                       <span className="font-medium text-foreground">{activeFallback.label}</span>
                     </p>
-                    <ChevronRight className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
+                    <ChevronRight className="ml-auto h-3 w-3 text-muted-foreground" />
                   </button>
                 )
               })()}
 
+              {/* Switcher dropdown */}
               {showSwitcher && (
                 <>
                   <div
@@ -239,6 +221,7 @@ export function DashboardPage() {
                       </button>
                     </div>
                     <div className="flex flex-col py-1" role="listbox" aria-label="Select who receives calls">
+                      {/* Owner / default */}
                       <button
                         onClick={clearReceptionist}
                         role="option"
@@ -316,6 +299,7 @@ export function DashboardPage() {
               )}
             </div>
 
+            {/* Fallback Settings Modal */}
             {showFallbackSettings && (
               <>
                 <div
@@ -326,11 +310,9 @@ export function DashboardPage() {
                 <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-foreground">When no one answers</h3>
+                      <h3 className="text-sm font-semibold text-foreground">Fallback Settings</h3>
                       <p className="text-[11px] text-muted-foreground">
-                        {isRoutingToOwner
-                          ? "Choose what happens when you don't pick up"
-                          : `What happens if ${selectedReceptionist?.name.split(" ")[0]} doesn't answer`}
+                        What happens if {selectedReceptionist?.name.split(" ")[0]} doesn{"'"}t answer
                       </p>
                     </div>
                     <button
@@ -349,7 +331,7 @@ export function DashboardPage() {
                       return (
                         <button
                           key={option.id}
-                          onClick={() => setFallbackAndSave(option.id)}
+                          onClick={() => setFallback(option.id)}
                           className={cn(
                             "flex items-center gap-3 rounded-lg px-3 py-3 text-left transition-all",
                             isActive
@@ -376,6 +358,7 @@ export function DashboardPage() {
                     })}
                   </div>
 
+                  {/* AI Config -- only visible when AI is selected */}
                   {fallback === "ai" && (
                     <div className="border-t border-border px-4 py-3">
                       <div className="mb-2 flex items-center justify-between">
@@ -404,7 +387,7 @@ export function DashboardPage() {
                           />
                           <div className="flex gap-2">
                             <button
-                              onClick={() => saveAiGreeting(greetingDraft)}
+                              onClick={() => { setAiGreeting(greetingDraft); setEditingGreeting(false) }}
                               className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
                             >
                               Save
@@ -474,6 +457,7 @@ export function DashboardPage() {
           })}
         </div>
 
+        {/* Talk Time Summary */}
         <div className="mt-2 flex items-center justify-between rounded-xl border border-border bg-card p-3.5">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
@@ -492,9 +476,10 @@ export function DashboardPage() {
           </div>
         </div>
 
+        {/* Trend */}
         <div className="mt-2 flex items-center gap-2 rounded-lg bg-success/5 px-3 py-2">
           <TrendingUp className="h-3.5 w-3.5 text-success" />
-          <span className="text-xs text-success">Recent calls from your log</span>
+          <span className="text-xs text-success">+12% more calls vs last month</span>
         </div>
       </section>
 

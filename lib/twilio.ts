@@ -1,5 +1,5 @@
 // ============================================
-// Zing - Twilio Client & TwiML Helpers
+// Switchr - Twilio Client & TwiML Helpers
 // ============================================
 // Install: pnpm add twilio
 // Env vars needed:

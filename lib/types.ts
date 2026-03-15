@@ -1,5 +1,5 @@
 // ============================================
-// Zing - Core Types
+// Switchr - Core Types
 // ============================================
 
 // --- Users (Business Owners) ---
@@ -110,27 +110,6 @@ export interface BuyNumberRequest {
 export interface PortNumberRequest {
   number: string
   current_carrier: string
-  // Optional: when provided with current_carrier !== "twilio", we submit a real Port In to Twilio
-  losing_carrier_information?: {
-    customer_type: "Business" | "Individual"
-    customer_name: string
-    account_number: string
-    account_telephone_number: string
-    authorized_representative: string
-    authorized_representative_email: string
-    address: {
-      street: string
-      street_2?: string
-      city: string
-      state: string
-      zip: string
-      country: string
-    }
-  }
-  /** At least one document SID (utility bill) from Twilio Documents API. Required when losing_carrier_information is set. */
-  document_sids?: string[]
-  /** Optional PIN for mobile numbers. */
-  pin?: string | null
 }
 
 export interface SearchNumbersResponse {

@@ -3,6 +3,9 @@
 // ============================================
 // Twilio hits this webhook when someone calls your number.
 // It reads routing config and returns TwiML instructions.
+//
+// Twilio sends form-encoded POST data with:
+//   Called, Caller, CallSid, Direction, etc.
 
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/twilio"
@@ -15,8 +18,8 @@ import {
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
-  const calledNumber = formData.get("Called") as string
-  const callerNumber = formData.get("Caller") as string
+  const calledNumber = formData.get("Called") as string // your Twilio number
+  const callerNumber = formData.get("Caller") as string // who's calling
   const callSid = formData.get("CallSid") as string
   const callerName = (formData.get("CallerName") as string) || null
 
@@ -24,6 +27,7 @@ export async function POST(req: NextRequest) {
   const appUrl = getAppUrl()
 
   try {
+    // 1. Find which user owns this number
     const user = await getUserByPhoneNumber(calledNumber)
     if (!user) {
       twiml.say("Sorry, this number is not configured. Goodbye.")
@@ -33,8 +37,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // 2. Get their routing config
     const config = await getRoutingConfig(user.id)
 
+    // 3. Log the incoming call
     await insertCallLog({
       user_id: user.id,
       twilio_call_sid: callSid,
@@ -51,7 +57,9 @@ export async function POST(req: NextRequest) {
       recording_duration_seconds: null,
     })
 
+    // 4. Determine who to ring
     if (config?.selected_receptionist_id) {
+      // Receptionist is selected -- ring them first
       const receptionist = await getReceptionist(config.selected_receptionist_id)
       if (receptionist) {
         const dial = twiml.dial({
@@ -63,6 +71,7 @@ export async function POST(req: NextRequest) {
         })
         dial.number(receptionist.phone)
       } else {
+        // Receptionist not found, ring owner
         const dial = twiml.dial({
           timeout: 30,
           record: "record-from-answer-dual",
@@ -71,6 +80,7 @@ export async function POST(req: NextRequest) {
         dial.number(user.phone)
       }
     } else {
+      // No receptionist selected -- ring owner directly
       const dial = twiml.dial({
         timeout: 30,
         record: "record-from-answer-dual",
@@ -79,7 +89,7 @@ export async function POST(req: NextRequest) {
       dial.number(user.phone)
     }
   } catch (error) {
-    console.error("[Zing] Error in incoming webhook:", error)
+    console.error("[Switchr] Error in incoming webhook:", error)
     twiml.say("We're sorry, there was an error connecting your call. Please try again later.")
     twiml.hangup()
   }

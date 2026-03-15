@@ -1,14 +1,14 @@
-# Zing - Cursor Rules
+# Switchr - Cursor Rules
 # Receptionist & Dispatch Call Routing App for Small Business
 
 ## Project Overview
-Zing is a VoIP call routing app that lets small business owners manage who answers their business calls. Think Grasshopper/RingCentral but radically simpler. The UI is fully built in Next.js -- your job is to wire it to real backend services and optionally port the frontend to React Native/Expo for mobile.
+Switchr is a VoIP call routing app that lets small business owners manage who answers their business calls. Think Grasshopper/RingCentral but radically simpler. The UI is fully built in Next.js -- your job is to wire it to real backend services and optionally port the frontend to React Native/Expo for mobile.
 
 ## Tech Stack
 - **Frontend**: Next.js 16, React 19, TailwindCSS v4, shadcn/ui
 - **Backend**: Next.js API routes (already scaffolded)
 - **Database**: Postgres via Supabase or Neon (schema in scripts/001-create-schema.sql)
-- **Telephony**: Twilio (voice, numbers, recordings)
+- **Telephony**: Twilio or Telnyx (voice, numbers, recordings). Telnyx is the preferred provider; use /api/voice/telnyx/* and /api/numbers/telnyx for new setup.
 - **AI**: Vercel AI SDK v6 for AI receptionist fallback
 - **Auth**: Supabase Auth or custom (bcrypt + HTTP-only cookies)
 
@@ -63,6 +63,13 @@ REST client factory, webhook validator, TwiML builder, and app URL helper.
 | /api/calls | GET | Paginated call history |
 | /api/numbers | GET/POST | List owned numbers / search available |
 | /api/numbers/buy | POST | Purchase a Twilio number |
+| /api/numbers/telnyx | GET | Search available Telnyx numbers (query: area_code, type) |
+| /api/numbers/telnyx/buy | POST | Purchase a Telnyx number (body: { phone_number }) |
+| /api/voice/telnyx/incoming | GET/POST | Telnyx TeXML: route incoming calls |
+| /api/voice/telnyx/fallback | POST | Telnyx: no-answer fallback |
+| /api/voice/telnyx/status | POST | Telnyx: call status callback |
+| /api/voice/telnyx/recording-status | POST | Telnyx: recording callback |
+| /api/voice/telnyx/ai-assistant | POST | Telnyx: AI receptionist |
 | /api/numbers/port | POST | Submit a port request |
 | /api/analytics | GET | Agent talk time + pay calculations |
 
@@ -73,10 +80,14 @@ DATABASE_URL=                           # Neon
 NEXT_PUBLIC_SUPABASE_URL=               # Supabase
 SUPABASE_SERVICE_ROLE_KEY=              # Supabase
 
-# Twilio
+# Twilio (optional if using Telnyx)
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
-NEXT_PUBLIC_APP_URL=                    # Your deployed URL (for webhook URLs)
+
+# Telnyx (preferred for new setups)
+TELNYX_API_KEY=                        # REST API + TeXML
+TELNYX_PUBLIC_KEY=                     # Optional: webhook signature verification
+NEXT_PUBLIC_APP_URL=                   # Your deployed URL (for webhook URLs)
 
 # AI (for AI receptionist fallback)
 OPENAI_API_KEY=                         # Or use Vercel AI Gateway

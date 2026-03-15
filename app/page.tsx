@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { AppShell, type PageId } from "@/components/app-shell"
 import { DashboardPage } from "@/components/dashboard-page"
 import { ActivityPage } from "@/components/activity-page"
@@ -10,22 +10,13 @@ import { SettingsPage } from "@/components/settings-page"
 import { AuthPage } from "@/components/auth-pages"
 import { OnboardingPage } from "@/components/onboarding-page"
 
+// App flow: login → app (existing users) or signup → onboarding → app (new users)
+// The landing page (components/landing-page.tsx) is for the separate marketing website.
 type AppView = "login" | "signup" | "onboarding" | "app"
 
 export default function Home() {
   const [view, setView] = useState<AppView>("login")
   const [activePage, setActivePage] = useState<PageId>("dashboard")
-  const [authChecked, setAuthChecked] = useState(false)
-
-  // On load, check session and go to app if already logged in
-  useEffect(() => {
-    fetch("/api/auth/session", { credentials: "include" })
-      .then((res) => {
-        if (res.ok) setView("app")
-      })
-      .catch(() => {})
-      .finally(() => setAuthChecked(true))
-  }, [])
 
   function handleNavigate(page: string) {
     if (page === "login" || page === "signup" || page === "onboarding") {
@@ -36,10 +27,12 @@ export default function Home() {
   }
 
   function handleAuth() {
+    // Existing user logs in → go straight to the app
     setView("app")
   }
 
   function handleSignup() {
+    // New user signs up → go through onboarding first
     setView("onboarding")
   }
 
@@ -47,14 +40,7 @@ export default function Home() {
     setView("app")
   }
 
-  if (!authChecked) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    )
-  }
-
+  // Auth screens (app opens here)
   if (view === "login" || view === "signup") {
     return (
       <AuthPage
@@ -65,10 +51,12 @@ export default function Home() {
     )
   }
 
+  // Onboarding (new users only -- get number, add receptionist, configure AI)
   if (view === "onboarding") {
     return <OnboardingPage onComplete={handleOnboardingComplete} />
   }
 
+  // Main app
   return (
     <AppShell activePage={activePage} onNavigate={setActivePage}>
       {activePage === "dashboard" && <DashboardPage />}

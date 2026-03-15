@@ -1,4 +1,4 @@
-# Zing - Cursor Setup Guide
+# Switchr - Cursor Setup Guide
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ async function updateRouting(receptionistId: string | null) {
 ## File Map
 
 ```
-zing/
+switchr/
 ├── app/
 │   ├── api/
 │   │   ├── voice/
@@ -79,11 +79,11 @@ zing/
 │   └── globals.css                    ← Theme tokens, Tailwind config
 ├── components/
 │   ├── app-shell.tsx                  ← Bottom tab nav + header
-│   ├── dashboard-page.tsx            ← Main routing screen
-│   ├── activity-page.tsx             ← Call log
-│   ├── contacts-page.tsx             ← Manage receptionists
-│   ├── analytics-page.tsx            ← Talk time + pay tracking
-│   ├── settings-page.tsx             ← Settings + buy/port numbers
+│   ├── dashboard-page.tsx             ← Main routing screen
+│   ├── activity-page.tsx              ← Call log
+│   ├── contacts-page.tsx              ← Manage receptionists
+│   ├── analytics-page.tsx             ← Talk time + pay tracking
+│   ├── settings-page.tsx              ← Settings + buy/port numbers
 │   └── ui/                            ← shadcn component library
 ├── lib/
 │   ├── types.ts                       ← All TypeScript interfaces

@@ -1,18 +1,15 @@
 // ============================================
 // POST /api/numbers/buy
 // ============================================
-// Purchases a Twilio number and saves it to the DB for the current user.
+// Purchases a specific Twilio number and saves to DB.
+// Also configures the number's webhook URLs.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getTwilioClient, getAppUrl } from "@/lib/twilio"
-import { getUserIdFromRequest } from "@/lib/auth"
-import { insertPhoneNumber } from "@/lib/db"
+
+const DEMO_USER_ID = "demo-user-id"
 
 export async function POST(req: NextRequest) {
-  const userId = getUserIdFromRequest(req.headers.get("cookie"))
-  if (!userId) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
-  }
   try {
     const body = await req.json()
     const { phone_number } = body as { phone_number: string }
@@ -20,6 +17,7 @@ export async function POST(req: NextRequest) {
     const client = getTwilioClient()
     const appUrl = getAppUrl()
 
+    // Purchase the number
     const purchased = await client.incomingPhoneNumbers.create({
       phoneNumber: phone_number,
       voiceUrl: `${appUrl}/api/voice/incoming`,
@@ -28,15 +26,11 @@ export async function POST(req: NextRequest) {
       statusCallbackMethod: "POST",
     })
 
-    await insertPhoneNumber({
-      user_id: userId,
-      twilio_sid: purchased.sid,
-      number: purchased.phoneNumber,
-      friendly_name: purchased.friendlyName ?? purchased.phoneNumber,
-      label: "New Line",
-      type: "local",
-      status: "active",
-    })
+    // TODO: Save to database
+    // await sql`
+    //   INSERT INTO phone_numbers (user_id, twilio_sid, number, friendly_name, label, type, status)
+    //   VALUES (${DEMO_USER_ID}, ${purchased.sid}, ${purchased.phoneNumber}, ${purchased.friendlyName}, 'New Line', 'local', 'active')
+    // `
 
     return NextResponse.json({
       success: true,
@@ -47,7 +41,7 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("[Zing] Error buying number:", error)
+    console.error("[Switchr] Error buying number:", error)
     return NextResponse.json(
       { error: "Failed to purchase number" },
       { status: 500 }

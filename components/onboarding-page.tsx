@@ -10,10 +10,9 @@ import {
   Loader2,
   Check,
   Plus,
+  X,
   Sparkles,
 } from "lucide-react"
-import { fetchJson } from "@/lib/fetcher"
-import { formatPhone } from "@/lib/utils"
 
 interface OnboardingPageProps {
   onComplete: () => void
@@ -21,122 +20,64 @@ interface OnboardingPageProps {
 
 export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const [step, setStep] = useState(1)
-  const [step1Submitting, setStep1Submitting] = useState(false)
+  const totalSteps = 3
 
+  // Step 1 -- Get a number
   const [numberMethod, setNumberMethod] = useState<"buy" | "port" | null>(null)
   const [areaCode, setAreaCode] = useState("")
   const [searching, setSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [selectedNumber, setSelectedNumber] = useState("")
-  const [selectedRaw, setSelectedRaw] = useState("")
-  const [availableNumbers, setAvailableNumbers] = useState<{ raw: string; number: string; type: string; price: string }[]>([])
-  const [numberError, setNumberError] = useState("")
   const [portNumber, setPortNumber] = useState("")
   const [portCarrier, setPortCarrier] = useState("")
-  const [porting, setPorting] = useState(false)
 
+  // Step 2 -- Add first receptionist (optional)
   const [receptionistName, setReceptionistName] = useState("")
   const [receptionistPhone, setReceptionistPhone] = useState("")
   const [receptionistRate, setReceptionistRate] = useState("")
   const [addedReceptionist, setAddedReceptionist] = useState(false)
-  const [addingReceptionist, setAddingReceptionist] = useState(false)
 
+  // Step 3 -- Configure AI fallback
   const [aiEnabled, setAiEnabled] = useState(true)
   const [aiGreeting, setAiGreeting] = useState(
     "Thank you for calling. Our team is currently unavailable. I can take a message, provide our business hours, or help direct your call. How can I help you?"
   )
-  const [launching, setLaunching] = useState(false)
 
-  async function handleSearch() {
-    setNumberError("")
+  const availableNumbers = [
+    { number: `(${areaCode || "555"}) 100-4001`, type: "Local", price: "$2.99/mo" },
+    { number: `(${areaCode || "555"}) 100-4022`, type: "Local", price: "$2.99/mo" },
+    { number: `(${areaCode || "555"}) 888-7100`, type: "Toll-Free", price: "$4.99/mo" },
+    { number: `(${areaCode || "555"}) 200-3055`, type: "Local", price: "$2.99/mo" },
+  ]
+
+  function handleSearch() {
     setSearching(true)
-    try {
-      const res = await fetch("/api/numbers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ area_code: areaCode, type: "local" }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Search failed")
-      setAvailableNumbers((data as { numbers: { number: string; friendly_name: string; type: string }[] }).numbers.map((n) => ({
-        raw: n.number,
-        number: formatPhone(n.number),
-        type: n.type === "local" ? "Local" : "Toll-Free",
-        price: "$2.99/mo",
-      })))
-      setShowResults(true)
-    } catch (e) {
-      setNumberError(e instanceof Error ? e.message : "Search failed")
-    } finally {
+    setTimeout(() => {
       setSearching(false)
-    }
+      setShowResults(true)
+    }, 800)
   }
 
-  async function handleAddReceptionist() {
-    setNumberError("")
-    setAddingReceptionist(true)
-    try {
-      await fetchJson("/api/receptionists", { method: "POST", body: { name: receptionistName.trim(), phone: receptionistPhone.trim() } })
-      setAddedReceptionist(true)
-    } catch (e) {
-      setNumberError(e instanceof Error ? e.message : "Failed to add")
-    } finally {
-      setAddingReceptionist(false)
-    }
-  }
-
-  async function handleLaunch() {
-    setNumberError("")
-    setLaunching(true)
-    try {
-      await fetchJson("/api/routing", {
-        method: "PUT",
-        body: {
-          fallback_type: aiEnabled ? "ai" : "owner",
-          ai_greeting: aiEnabled ? aiGreeting : undefined,
-        },
-      })
-      onComplete()
-    } catch (e) {
-      setNumberError(e instanceof Error ? e.message : "Failed to save")
-      setLaunching(false)
-    }
+  function handleAddReceptionist() {
+    setAddedReceptionist(true)
   }
 
   const canProceedStep1 =
     (numberMethod === "buy" && selectedNumber) ||
     (numberMethod === "port" && portNumber && portCarrier)
 
-  async function handleStep1Continue() {
-    if (!canProceedStep1) return
-    setNumberError("")
-    setStep1Submitting(true)
-    try {
-      if (numberMethod === "buy") {
-        await fetchJson("/api/numbers/buy", { method: "POST", body: { phone_number: selectedRaw } })
-      } else {
-        await fetchJson("/api/numbers/port", { method: "POST", body: { number: portNumber, current_carrier: portCarrier } })
-      }
-      setStep(2)
-    } catch (e) {
-      setNumberError(e instanceof Error ? e.message : "Failed")
-    } finally {
-      setStep1Submitting(false)
-    }
-  }
-
-  const totalSteps = 3
+  const canProceedStep2 = true // optional step
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      {/* Header with progress */}
       <header className="border-b border-border px-6 py-5">
         <div className="mx-auto flex max-w-lg items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
               <Phone className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
-            <span className="text-sm font-bold text-foreground">Zing</span>
+            <span className="text-sm font-bold text-foreground">Switchr</span>
           </div>
           <div className="flex items-center gap-2">
             {Array.from({ length: totalSteps }, (_, i) => (
@@ -155,9 +96,11 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
         </div>
       </header>
 
+      {/* Content */}
       <main className="flex flex-1 flex-col items-center px-6 py-8">
         <div className="w-full max-w-lg">
 
+          {/* Step 1: Get a number */}
           {step === 1 && (
             <div className="flex flex-col gap-6">
               <div>
@@ -167,6 +110,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 </p>
               </div>
 
+              {/* Method selector */}
               <div className="flex gap-3">
                 <button
                   onClick={() => { setNumberMethod("buy"); setShowResults(false); setSelectedNumber("") }}
@@ -200,6 +144,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 </button>
               </div>
 
+              {/* Buy flow */}
               {numberMethod === "buy" && (
                 <div className="flex flex-col gap-4">
                   {!showResults ? (
@@ -239,8 +184,8 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                       </div>
                       {availableNumbers.map((num) => (
                         <button
-                          key={num.raw}
-                          onClick={() => { setSelectedNumber(num.number); setSelectedRaw(num.raw) }}
+                          key={num.number}
+                          onClick={() => setSelectedNumber(num.number)}
                           className={cn(
                             "flex items-center justify-between rounded-xl border p-3.5 text-left transition-all",
                             selectedNumber === num.number
@@ -267,12 +212,13 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 </div>
               )}
 
+              {/* Port flow */}
               {numberMethod === "port" && (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start gap-2.5 rounded-xl bg-card p-4">
                     <ArrowRightLeft className="mt-0.5 h-4 w-4 text-primary" />
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      Port your existing business number to Zing. Takes 24-48 hours with zero downtime.
+                      Port your existing business number to Switchr. Takes 24-48 hours with zero downtime.
                     </p>
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -298,20 +244,18 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 </div>
               )}
 
-              {numberError && (
-                <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{numberError}</p>
-              )}
               <button
-                onClick={handleStep1Continue}
-                disabled={!canProceedStep1 || step1Submitting}
+                onClick={() => setStep(2)}
+                disabled={!canProceedStep1}
                 className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
               >
-                {step1Submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue"}
-                {!step1Submitting && <ArrowRight className="h-4 w-4" />}
+                Continue
+                <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           )}
 
+          {/* Step 2: Add first receptionist */}
           {step === 2 && (
             <div className="flex flex-col gap-6">
               <div>
@@ -323,9 +267,6 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
 
               {!addedReceptionist ? (
                 <div className="flex flex-col gap-4">
-                  {numberError && (
-                    <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{numberError}</p>
-                  )}
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-muted-foreground">Name</label>
                     <input
@@ -358,10 +299,10 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   </div>
                   <button
                     onClick={handleAddReceptionist}
-                    disabled={!receptionistName.trim() || !receptionistPhone.trim() || addingReceptionist}
+                    disabled={!receptionistName || !receptionistPhone}
                     className="flex items-center justify-center gap-2 rounded-lg border border-primary bg-primary/10 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
                   >
-                    {addingReceptionist ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    <Plus className="h-4 w-4" />
                     Add Receptionist
                   </button>
                 </div>
@@ -400,6 +341,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
             </div>
           )}
 
+          {/* Step 3: AI fallback */}
           {step === 3 && (
             <div className="flex flex-col gap-6">
               <div>
@@ -409,6 +351,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 </p>
               </div>
 
+              {/* Toggle */}
               <button
                 onClick={() => setAiEnabled(!aiEnabled)}
                 className={cn(
@@ -443,6 +386,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 </div>
               </button>
 
+              {/* Greeting editor */}
               {aiEnabled && (
                 <div className="flex flex-col gap-3">
                   <label className="text-xs font-semibold text-muted-foreground">AI Greeting Script</label>
@@ -465,16 +409,12 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 </div>
               )}
 
-              {numberError && (
-                <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{numberError}</p>
-              )}
               <button
-                onClick={handleLaunch}
-                disabled={launching}
-                className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+                onClick={onComplete}
+                className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
               >
-                {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Launch My Business Line"}
-                {!launching && <ArrowRight className="h-4 w-4" />}
+                Launch My Business Line
+                <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           )}

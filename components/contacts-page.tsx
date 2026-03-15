@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import useSWR from "swr"
 import {
   Search,
   Plus,
@@ -30,62 +29,86 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { fetcher, fetchJson } from "@/lib/fetcher"
-import type { Receptionist } from "@/lib/types"
+
+interface Contact {
+  id: string
+  name: string
+  phone: string
+  initials: string
+  color: string
+  active: boolean
+  priority: boolean
+}
+
+const initialContacts: Contact[] = [
+  { id: "1", name: "Sarah Miller", phone: "(555) 234-5678", initials: "SM", color: "bg-primary", active: true, priority: true },
+  { id: "2", name: "James Wilson", phone: "(555) 345-6789", initials: "JW", color: "bg-chart-2", active: false, priority: false },
+  { id: "3", name: "Rachel Kim", phone: "(555) 456-7890", initials: "RK", color: "bg-chart-5", active: true, priority: true },
+  { id: "4", name: "David Chen", phone: "(555) 567-8901", initials: "DC", color: "bg-chart-3", active: false, priority: false },
+  { id: "5", name: "Emma Taylor", phone: "(555) 678-9012", initials: "ET", color: "bg-chart-4", active: true, priority: false },
+]
 
 export function ContactsPage() {
-  const { data, mutate } = useSWR<{ data: Receptionist[] }>("/api/receptionists", fetcher)
-  const contacts = (data?.data ?? []).map((r) => ({
-    id: r.id,
-    name: r.name,
-    phone: r.phone,
-    initials: r.initials,
-    color: r.color,
-    active: r.is_active,
-    priority: false,
-  }))
+  const [contacts, setContacts] = useState<Contact[]>(initialContacts)
   const [searchQuery, setSearchQuery] = useState("")
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [newName, setNewName] = useState("")
   const [newPhone, setNewPhone] = useState("")
-  const [priorityLocal, setPriorityLocal] = useState<Record<string, boolean>>({})
 
-  const filtered = contacts
-    .map((c) => ({ ...c, priority: priorityLocal[c.id] ?? c.priority }))
-    .filter(
-      (c) =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.phone.includes(searchQuery)
-    )
+  const filtered = contacts.filter(
+    (c) =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.phone.includes(searchQuery)
+  )
 
   const activeCount = contacts.filter((c) => c.active).length
 
-  async function toggleContact(id: string) {
-    const next = !contacts.find((c) => c.id === id)?.active
-    await fetchJson(`/api/receptionists/${id}`, { method: "PATCH", body: { is_active: next } })
-    mutate()
+  function toggleContact(id: string) {
+    setContacts((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, active: !c.active } : c))
+    )
   }
 
   function togglePriority(id: string) {
-    setPriorityLocal((p) => ({ ...p, [id]: !p[id] }))
+    setContacts((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, priority: !c.priority } : c))
+    )
   }
 
-  async function removeContact(id: string) {
-    await fetchJson(`/api/receptionists/${id}`, { method: "DELETE" })
-    mutate()
+  function removeContact(id: string) {
+    setContacts((prev) => prev.filter((c) => c.id !== id))
   }
 
-  async function addContact() {
+  function addContact() {
     if (!newName.trim() || !newPhone.trim()) return
-    await fetchJson("/api/receptionists", { method: "POST", body: { name: newName.trim(), phone: newPhone.trim() } })
+    const initials = newName
+      .split(" ")
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+    const colors = ["bg-primary", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"]
+    const color = colors[Math.floor(Math.random() * colors.length)]
+    setContacts((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        name: newName.trim(),
+        phone: newPhone.trim(),
+        initials,
+        color,
+        active: false,
+        priority: false,
+      },
+    ])
     setNewName("")
     setNewPhone("")
     setShowAddDialog(false)
-    mutate()
   }
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Contacts</h2>
@@ -103,6 +126,7 @@ export function ContactsPage() {
         </Button>
       </div>
 
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -122,6 +146,7 @@ export function ContactsPage() {
         )}
       </div>
 
+      {/* Bulk actions */}
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
@@ -145,6 +170,7 @@ export function ContactsPage() {
         </Button>
       </div>
 
+      {/* Contact list */}
       <div className="flex flex-col gap-2">
         {filtered.map((contact) => (
           <div
@@ -222,6 +248,7 @@ export function ContactsPage() {
         )}
       </div>
 
+      {/* Add contact dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="bg-card border-border text-foreground sm:max-w-md">
           <DialogHeader>

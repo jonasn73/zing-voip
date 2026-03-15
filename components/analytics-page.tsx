@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import useSWR from "swr"
+import { useState } from "react"
 import {
   Clock,
   DollarSign,
@@ -14,11 +13,9 @@ import {
   Check,
   X,
   Settings2,
-  Loader2,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
-import { fetcher } from "@/lib/fetcher"
 
 interface DailyBreakdown {
   day: string
@@ -39,21 +36,6 @@ interface AgentWeekData {
   previousWeekMinutes: number
 }
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-const SHORT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-const AGENT_COLORS = ["bg-primary", "bg-chart-2", "bg-chart-5", "bg-chart-3", "bg-chart-4"]
-
-function getWeekRange(offset: number): { start: string; end: string } {
-  const now = new Date()
-  const start = new Date(now)
-  start.setDate(now.getDate() - now.getDay() + 1 + offset * 7)
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(start)
-  end.setDate(start.getDate() + 6)
-  end.setHours(23, 59, 59, 999)
-  return { start: start.toISOString(), end: end.toISOString() }
-}
-
 function getWeekLabel(offset: number): string {
   const now = new Date()
   const start = new Date(now)
@@ -69,48 +51,125 @@ function getWeekLabel(offset: number): string {
   return `${fmt(start)} - ${fmt(end)}`
 }
 
-function buildDailyForWeek(periodStart: string, dailyFromApi: { date: string; minutes: number }[]): DailyBreakdown[] {
-  const start = new Date(periodStart)
-  const byDate: Record<string, number> = {}
-  for (const d of dailyFromApi) byDate[d.date] = d.minutes
-  return SHORT_DAYS.map((shortDay, i) => {
-    const d = new Date(start)
-    d.setDate(start.getDate() + i)
-    const dateStr = d.toISOString().slice(0, 10)
-    return {
-      day: DAY_NAMES[i],
-      shortDay,
-      minutes: byDate[dateStr] ?? 0,
-      calls: 0,
-    }
-  })
-}
-
-function mapApiToAgentWeekData(
-  apiAgents: {
-    id: string
-    name: string
-    total_minutes: number
-    total_calls: number
-    rate_per_minute: number
-    total_earnings: number
-    daily: { date: string; minutes: number }[]
-  }[],
-  periodStart: string,
-  previousWeekMinutesById: Record<string, number>,
-  rateOverrides: Record<string, number>
-): AgentWeekData[] {
-  return apiAgents.map((a, i) => ({
-    id: a.id,
-    name: a.name,
-    initials: a.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?",
-    color: AGENT_COLORS[i % AGENT_COLORS.length],
-    rate: rateOverrides[a.id] ?? a.rate_per_minute,
-    weeklyMinutes: a.total_minutes,
-    weeklyCalls: a.total_calls,
-    daily: buildDailyForWeek(periodStart, a.daily),
-    previousWeekMinutes: previousWeekMinutesById[a.id] ?? 0,
-  }))
+const agentDataByWeek: Record<number, AgentWeekData[]> = {
+  0: [
+    {
+      id: "1",
+      name: "Sarah Miller",
+      initials: "SM",
+      color: "bg-primary",
+      rate: 0.25,
+      weeklyMinutes: 487,
+      weeklyCalls: 62,
+      previousWeekMinutes: 412,
+      daily: [
+        { day: "Monday", shortDay: "Mon", minutes: 98, calls: 14 },
+        { day: "Tuesday", shortDay: "Tue", minutes: 112, calls: 16 },
+        { day: "Wednesday", shortDay: "Wed", minutes: 78, calls: 10 },
+        { day: "Thursday", shortDay: "Thu", minutes: 95, calls: 12 },
+        { day: "Friday", shortDay: "Fri", minutes: 104, calls: 10 },
+        { day: "Saturday", shortDay: "Sat", minutes: 0, calls: 0 },
+        { day: "Sunday", shortDay: "Sun", minutes: 0, calls: 0 },
+      ],
+    },
+    {
+      id: "2",
+      name: "James Wilson",
+      initials: "JW",
+      color: "bg-chart-2",
+      rate: 0.25,
+      weeklyMinutes: 213,
+      weeklyCalls: 28,
+      previousWeekMinutes: 245,
+      daily: [
+        { day: "Monday", shortDay: "Mon", minutes: 42, calls: 6 },
+        { day: "Tuesday", shortDay: "Tue", minutes: 55, calls: 7 },
+        { day: "Wednesday", shortDay: "Wed", minutes: 38, calls: 5 },
+        { day: "Thursday", shortDay: "Thu", minutes: 44, calls: 6 },
+        { day: "Friday", shortDay: "Fri", minutes: 34, calls: 4 },
+        { day: "Saturday", shortDay: "Sat", minutes: 0, calls: 0 },
+        { day: "Sunday", shortDay: "Sun", minutes: 0, calls: 0 },
+      ],
+    },
+    {
+      id: "3",
+      name: "Rachel Kim",
+      initials: "RK",
+      color: "bg-chart-5",
+      rate: 0.30,
+      weeklyMinutes: 156,
+      weeklyCalls: 19,
+      previousWeekMinutes: 178,
+      daily: [
+        { day: "Monday", shortDay: "Mon", minutes: 34, calls: 5 },
+        { day: "Tuesday", shortDay: "Tue", minutes: 28, calls: 4 },
+        { day: "Wednesday", shortDay: "Wed", minutes: 41, calls: 4 },
+        { day: "Thursday", shortDay: "Thu", minutes: 32, calls: 3 },
+        { day: "Friday", shortDay: "Fri", minutes: 21, calls: 3 },
+        { day: "Saturday", shortDay: "Sat", minutes: 0, calls: 0 },
+        { day: "Sunday", shortDay: "Sun", minutes: 0, calls: 0 },
+      ],
+    },
+  ],
+  "-1": [
+    {
+      id: "1",
+      name: "Sarah Miller",
+      initials: "SM",
+      color: "bg-primary",
+      rate: 0.25,
+      weeklyMinutes: 412,
+      weeklyCalls: 53,
+      previousWeekMinutes: 390,
+      daily: [
+        { day: "Monday", shortDay: "Mon", minutes: 88, calls: 12 },
+        { day: "Tuesday", shortDay: "Tue", minutes: 76, calls: 10 },
+        { day: "Wednesday", shortDay: "Wed", minutes: 92, calls: 11 },
+        { day: "Thursday", shortDay: "Thu", minutes: 84, calls: 10 },
+        { day: "Friday", shortDay: "Fri", minutes: 72, calls: 10 },
+        { day: "Saturday", shortDay: "Sat", minutes: 0, calls: 0 },
+        { day: "Sunday", shortDay: "Sun", minutes: 0, calls: 0 },
+      ],
+    },
+    {
+      id: "2",
+      name: "James Wilson",
+      initials: "JW",
+      color: "bg-chart-2",
+      rate: 0.25,
+      weeklyMinutes: 245,
+      weeklyCalls: 31,
+      previousWeekMinutes: 220,
+      daily: [
+        { day: "Monday", shortDay: "Mon", minutes: 52, calls: 7 },
+        { day: "Tuesday", shortDay: "Tue", minutes: 48, calls: 6 },
+        { day: "Wednesday", shortDay: "Wed", minutes: 56, calls: 7 },
+        { day: "Thursday", shortDay: "Thu", minutes: 45, calls: 6 },
+        { day: "Friday", shortDay: "Fri", minutes: 44, calls: 5 },
+        { day: "Saturday", shortDay: "Sat", minutes: 0, calls: 0 },
+        { day: "Sunday", shortDay: "Sun", minutes: 0, calls: 0 },
+      ],
+    },
+    {
+      id: "3",
+      name: "Rachel Kim",
+      initials: "RK",
+      color: "bg-chart-5",
+      rate: 0.30,
+      weeklyMinutes: 178,
+      weeklyCalls: 22,
+      previousWeekMinutes: 165,
+      daily: [
+        { day: "Monday", shortDay: "Mon", minutes: 38, calls: 5 },
+        { day: "Tuesday", shortDay: "Tue", minutes: 42, calls: 5 },
+        { day: "Wednesday", shortDay: "Wed", minutes: 35, calls: 4 },
+        { day: "Thursday", shortDay: "Thu", minutes: 33, calls: 4 },
+        { day: "Friday", shortDay: "Fri", minutes: 30, calls: 4 },
+        { day: "Saturday", shortDay: "Sat", minutes: 0, calls: 0 },
+        { day: "Sunday", shortDay: "Sun", minutes: 0, calls: 0 },
+      ],
+    },
+  ],
 }
 
 function formatMinutes(mins: number): string {
@@ -132,32 +191,10 @@ export function AnalyticsPage() {
   const [rateOverrides, setRateOverrides] = useState<Record<string, number>>({})
   const [showRateConfig, setShowRateConfig] = useState(false)
 
-  const range = useMemo(() => getWeekRange(weekOffset), [weekOffset])
-  const prevRange = useMemo(() => getWeekRange(weekOffset - 1), [weekOffset])
-  const { data: weekData, isLoading } = useSWR<{
-    agents: { id: string; name: string; total_minutes: number; total_calls: number; rate_per_minute: number; total_earnings: number; daily: { date: string; minutes: number }[] }[]
-    period: { start: string; end: string }
-  }>(`/api/analytics?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`, fetcher)
-  const { data: prevWeekData } = useSWR<{
-    agents: { id: string; total_minutes: number }[]
-  }>(`/api/analytics?start=${encodeURIComponent(prevRange.start)}&end=${encodeURIComponent(prevRange.end)}`, fetcher)
-
-  const previousWeekMinutesById = useMemo(() => {
-    if (!prevWeekData?.agents) return {}
-    const map: Record<string, number> = {}
-    for (const a of prevWeekData.agents) map[a.id] = a.total_minutes
-    return map
-  }, [prevWeekData])
-
-  const agents = useMemo(() => {
-    if (!weekData?.agents?.length) return []
-    return mapApiToAgentWeekData(
-      weekData.agents,
-      weekData.period?.start ?? range.start,
-      previousWeekMinutesById,
-      rateOverrides
-    )
-  }, [weekData, range.start, previousWeekMinutesById, rateOverrides])
+  const agents = (agentDataByWeek[weekOffset] || agentDataByWeek[0]).map((a) => ({
+    ...a,
+    rate: rateOverrides[a.id] ?? a.rate,
+  }))
 
   const totalMinutes = agents.reduce((sum, a) => sum + a.weeklyMinutes, 0)
   const totalCalls = agents.reduce((sum, a) => sum + a.weeklyCalls, 0)
@@ -195,17 +232,9 @@ export function AnalyticsPage() {
     1
   )
 
-  if (isLoading && agents.length === 0) {
-    return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Loading analytics…</p>
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-5 p-4 pb-8">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Pay</h2>
@@ -227,6 +256,7 @@ export function AnalyticsPage() {
         </button>
       </div>
 
+      {/* Pay Rate Configuration Panel */}
       {showRateConfig && (
         <section className="rounded-xl border border-primary/20 bg-card">
           <div className="border-b border-border px-4 py-3">
@@ -309,6 +339,7 @@ export function AnalyticsPage() {
         </section>
       )}
 
+      {/* Week Selector */}
       <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
         <button
           onClick={() => setWeekOffset((w) => Math.max(w - 1, -1))}
@@ -335,6 +366,7 @@ export function AnalyticsPage() {
         </button>
       </div>
 
+      {/* Weekly Summary Cards */}
       <div className="grid grid-cols-3 gap-2">
         <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-3.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
@@ -365,6 +397,7 @@ export function AnalyticsPage() {
         </div>
       </div>
 
+      {/* Trend */}
       <div
         className={cn(
           "flex items-center gap-2 rounded-lg px-3 py-2",
@@ -387,6 +420,7 @@ export function AnalyticsPage() {
         </span>
       </div>
 
+      {/* Agent Breakdown */}
       <section>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Agent Breakdown
@@ -405,6 +439,7 @@ export function AnalyticsPage() {
                 key={agent.id}
                 className="overflow-hidden rounded-xl border border-border bg-card"
               >
+                {/* Agent header - tappable */}
                 <button
                   onClick={() =>
                     setExpandedAgent(isExpanded ? null : agent.id)
@@ -443,8 +478,10 @@ export function AnalyticsPage() {
                   </div>
                 </button>
 
+                {/* Expanded detail */}
                 {isExpanded && (
                   <div className="border-t border-border">
+                    {/* Rate editor */}
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
                       <span className="text-xs font-medium text-muted-foreground">
                         Per-minute rate
@@ -493,6 +530,7 @@ export function AnalyticsPage() {
                       )}
                     </div>
 
+                    {/* Quick math */}
                     <div className="grid grid-cols-3 gap-px bg-border">
                       <div className="flex flex-col items-center bg-card px-3 py-3">
                         <span className="text-xs text-muted-foreground">
@@ -520,6 +558,7 @@ export function AnalyticsPage() {
                       </div>
                     </div>
 
+                    {/* Daily bar chart */}
                     <div className="px-4 py-4">
                       <p className="mb-3 text-xs font-medium text-muted-foreground">
                         Daily breakdown
@@ -555,6 +594,7 @@ export function AnalyticsPage() {
                       </div>
                     </div>
 
+                    {/* Week over week */}
                     <div className="border-t border-border px-4 py-3">
                       <div
                         className={cn(
@@ -582,6 +622,7 @@ export function AnalyticsPage() {
         </div>
       </section>
 
+      {/* Payout Summary */}
       <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
         <h3 className="mb-3 text-sm font-semibold text-primary">
           Weekly Payout Summary

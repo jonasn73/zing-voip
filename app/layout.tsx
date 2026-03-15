@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Zing - Receptionist & Dispatch Management',
+  title: 'Switchr - Receptionist & Dispatch Management',
   description: 'Route business calls, track agent talk time, and calculate pay. The simplest way for small businesses to manage receptionists and dispatchers on the go.',
 }
 

@@ -553,7 +553,7 @@ export function SettingsPage() {
                     <div>
                       <p className="text-sm font-semibold text-foreground">Port Request Submitted</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Your port has been started with Telnyx—the number will transfer to Zing, usually within 24–48 hours. Check this page for progress; complete any LOA or verification steps Telnyx emails you.
+                        Your number is now being transferred to Zing and usually completes within 24–48 hours. Check this page for progress. We’ll email you if we need any verification or paperwork—complete those steps to avoid delays.
                       </p>
                     </div>
                     <button

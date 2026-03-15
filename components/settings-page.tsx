@@ -35,9 +35,9 @@ interface SettingToggle {
   iconColor: string
 }
 
-// Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567
-function formatPhoneDisplay(phone: string | undefined): string {
-  if (!phone) return "your cell"
+// Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567. Safe for null/undefined or non-string (e.g. from API).
+function formatPhoneDisplay(phone: string | undefined | null): string {
+  if (phone == null || typeof phone !== "string") return "your cell"
   const digits = phone.replace(/\D/g, "")
   if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
   if (digits.length === 11 && digits.startsWith("1")) return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
@@ -179,17 +179,6 @@ export function SettingsPage() {
     } finally {
       setPortSubmitLoading(false)
     }
-  }
-
-  function formatPhoneDisplay(e164: string): string {
-    const digits = e164.replace(/\D/g, "")
-    if (digits.length === 11 && digits.startsWith("1")) {
-      return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
-    }
-    if (digits.length === 10) {
-      return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
-    }
-    return e164
   }
 
   function toggleSetting(id: string) {

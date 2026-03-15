@@ -9,6 +9,7 @@ import { AnalyticsPage } from "@/components/analytics-page"
 import { SettingsPage } from "@/components/settings-page"
 import { AuthPage } from "@/components/auth-pages"
 import { OnboardingPage } from "@/components/onboarding-page"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 // App flow: login → app (existing users) or signup → onboarding → app (new users)
 // The landing page (components/landing-page.tsx) is for the separate marketing website.
@@ -40,30 +41,26 @@ export default function Home() {
     setView("app")
   }
 
-  // Auth screens (app opens here)
-  if (view === "login" || view === "signup") {
-    return (
-      <AuthPage
-        mode={view}
-        onNavigate={handleNavigate}
-        onAuth={view === "signup" ? handleSignup : handleAuth}
-      />
-    )
-  }
-
-  // Onboarding (new users only -- get number, add receptionist, configure AI)
-  if (view === "onboarding") {
-    return <OnboardingPage onComplete={handleOnboardingComplete} />
-  }
-
-  // Main app
   return (
-    <AppShell activePage={activePage} onNavigate={setActivePage}>
-      {activePage === "dashboard" && <DashboardPage />}
-      {activePage === "activity" && <ActivityPage />}
-      {activePage === "contacts" && <ContactsPage />}
-      {activePage === "analytics" && <AnalyticsPage />}
-      {activePage === "settings" && <SettingsPage />}
-    </AppShell>
+    <ErrorBoundary>
+      {/* Auth screens (app opens here) */}
+      {view === "login" || view === "signup" ? (
+        <AuthPage
+          mode={view}
+          onNavigate={handleNavigate}
+          onAuth={view === "signup" ? handleSignup : handleAuth}
+        />
+      ) : view === "onboarding" ? (
+        <OnboardingPage onComplete={handleOnboardingComplete} />
+      ) : (
+        <AppShell activePage={activePage} onNavigate={setActivePage}>
+          {activePage === "dashboard" && <DashboardPage />}
+          {activePage === "activity" && <ActivityPage />}
+          {activePage === "contacts" && <ContactsPage />}
+          {activePage === "analytics" && <AnalyticsPage />}
+          {activePage === "settings" && <SettingsPage />}
+        </AppShell>
+      )}
+    </ErrorBoundary>
   )
 }

@@ -34,14 +34,19 @@ export function AppShell({
     <div className="flex min-h-dvh flex-col bg-background">
       {/* Header */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/80 px-4 py-3 backdrop-blur-xl">
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onNavigate("dashboard")}
+          className="flex items-center gap-2 rounded-lg transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
+          aria-label="Go to home"
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Phone className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="text-lg font-semibold tracking-tight text-foreground">
             Zing
           </span>
-        </div>
+        </button>
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-success" />
           <span className="text-xs text-muted-foreground">System Active</span>

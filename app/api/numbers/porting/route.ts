@@ -1,45 +1,70 @@
 // ============================================
 // GET /api/numbers/porting
 // ============================================
-// Returns your Telnyx port orders so the dashboard can show "Porting" numbers and progress.
+// Returns Telnyx port orders with detailed status so the Settings page can show real progress.
 
 import { NextResponse } from "next/server"
-import { getTelnyxClient } from "@/lib/telnyx"
+
+const TELNYX_BASE = "https://api.telnyx.com/v2"
+
+function getApiKey(): string {
+  const key = process.env.TELNYX_API_KEY
+  if (!key) throw new Error("Missing TELNYX_API_KEY")
+  return key
+}
+
+// Human-friendly status labels that avoid mentioning Telnyx
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Awaiting submission",
+  "in-process": "Transfer in progress",
+  submitted: "Transfer in progress",
+  "exception": "Action needed",
+  "ported": "Completed",
+  "cancelled": "Cancelled",
+  "cancel-pending": "Cancellation pending",
+  "port-activating": "Activating",
+}
 
 export async function GET() {
   try {
-    const client = getTelnyxClient()
-    const list: { id: string; number: string; status: string }[] = []
+    const res = await fetch(`${TELNYX_BASE}/porting_orders?page[size]=50&sort=-created_at`, {
+      headers: {
+        Authorization: `Bearer ${getApiKey()}`,
+        "Content-Type": "application/json",
+      },
+    })
 
-    for await (const order of client.portingOrders.list({ include_phone_numbers: true })) {
-      const o = order as { id?: string; porting_order_status?: string; phone_numbers?: { phone_number?: string }[] }
-      const id = o.id ?? ""
-      const status = o.porting_order_status ?? "draft"
-      const numbers = o.phone_numbers ?? []
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      const errMsg = body?.errors?.[0]?.detail || `HTTP ${res.status}`
+
+      if (res.status === 403 || /feature not permitted|10038/i.test(errMsg)) {
+        return NextResponse.json({ porting: [], message: "Porting not available on your current plan." }, { status: 200 })
+      }
+      throw new Error(errMsg)
+    }
+
+    const body = await res.json()
+    const orders = body?.data || []
+
+    const list: { id: string; number: string; status: string; statusLabel: string; createdAt: string }[] = []
+
+    for (const order of orders) {
+      const id = order.id ?? ""
+      const rawStatus = order.porting_order_status ?? "draft"
+      const statusLabel = STATUS_LABELS[rawStatus] || rawStatus
+      const createdAt = order.created_at ?? ""
+      const numbers: { phone_number?: string }[] = order.phone_numbers ?? []
+
       for (const p of numbers) {
         const num = p.phone_number ?? ""
-        if (num) list.push({ id, number: num, status })
+        if (num) list.push({ id, number: num, status: rawStatus, statusLabel, createdAt })
       }
     }
 
     return NextResponse.json({ porting: list })
   } catch (error: unknown) {
     console.error("[Zing] Error listing porting orders:", error)
-    const err = error as { statusCode?: number; body?: { errors?: Array<{ code?: string }> }; message?: string }
-    const msg = String(error instanceof Error ? (error as Error).message : error)
-    if (
-      err.statusCode === 403 ||
-      err.body?.errors?.some((e) => e.code === "10038") ||
-      /10038|feature not permitted|not permitted at this account/i.test(msg)
-    ) {
-      return NextResponse.json(
-        { porting: [], message: "Porting not available on your Telnyx plan. Upgrade at telnyx.com/upgrade." },
-        { status: 200 }
-      )
-    }
-    return NextResponse.json(
-      { error: "Failed to load porting orders" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to load porting orders" }, { status: 500 })
   }
 }

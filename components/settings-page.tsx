@@ -94,13 +94,24 @@ export function SettingsPage() {
   const [portNumber, setPortNumber] = useState("")
   const [portCarrier, setPortCarrier] = useState("")
   const [portSubmitted, setPortSubmitted] = useState(false)
+  const [portSubmitMessage, setPortSubmitMessage] = useState("")
   const [selectedAreaCode, setSelectedAreaCode] = useState("")
   const [buyStep, setBuyStep] = useState<"search" | "results">("search")
   const [buyLoading, setBuyLoading] = useState(false)
-  const [portingNumbers, setPortingNumbers] = useState<{ id: string; number: string; status: string }[]>([])
+  const [portingNumbers, setPortingNumbers] = useState<{ id: string; number: string; status: string; statusLabel?: string }[]>([])
   const [portingLoading, setPortingLoading] = useState(false)
   const [portSubmitLoading, setPortSubmitLoading] = useState(false)
   const [portError, setPortError] = useState<string | null>(null)
+  // Port multi-step: 1 = number, 2 = account info, 3 = address
+  const [portStep, setPortStep] = useState(1)
+  const [portAccountName, setPortAccountName] = useState("")
+  const [portAuthPerson, setPortAuthPerson] = useState("")
+  const [portAccountNumber, setPortAccountNumber] = useState("")
+  const [portPin, setPortPin] = useState("")
+  const [portStreet, setPortStreet] = useState("")
+  const [portCity, setPortCity] = useState("")
+  const [portState, setPortState] = useState("")
+  const [portZip, setPortZip] = useState("")
   const [editingMainLine, setEditingMainLine] = useState(false)
   const [mainLineEdit, setMainLineEdit] = useState("")
   const [mainLineSaveLoading, setMainLineSaveLoading] = useState(false)
@@ -160,19 +171,28 @@ export function SettingsPage() {
     setPortError(null)
     setPortSubmitLoading(true)
     try {
-      const raw = portNumber.replace(/\D/g, "")
-      const number = raw.length === 10 ? `+1${raw}` : raw.length === 11 && raw.startsWith("1") ? `+${raw}` : portNumber
       const res = await fetch("/api/numbers/port", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ number, current_carrier: portCarrier || undefined }),
+        body: JSON.stringify({
+          number: portNumber,
+          account_name: portAccountName,
+          authorized_person: portAuthPerson,
+          account_number: portAccountNumber || undefined,
+          pin: portPin || undefined,
+          street_address: portStreet,
+          city: portCity,
+          state: portState,
+          zip: portZip,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
         setPortError(data.error || "Failed to start port")
         return
       }
+      setPortSubmitMessage(data.message || "Your number is being transferred to Zing.")
       setPortSubmitted(true)
       const portingRes = await fetch("/api/numbers/porting", { credentials: "include" })
       const portingData = await portingRes.json()
@@ -182,6 +202,23 @@ export function SettingsPage() {
     } finally {
       setPortSubmitLoading(false)
     }
+  }
+
+  function resetPortForm() {
+    setPortStep(1)
+    setPortNumber("")
+    setPortCarrier("")
+    setPortAccountName("")
+    setPortAuthPerson("")
+    setPortAccountNumber("")
+    setPortPin("")
+    setPortStreet("")
+    setPortCity("")
+    setPortState("")
+    setPortZip("")
+    setPortSubmitted(false)
+    setPortSubmitMessage("")
+    setPortError(null)
   }
 
   function toggleSetting(id: string) {
@@ -337,28 +374,36 @@ export function SettingsPage() {
               <span className="text-xs text-muted-foreground">Loading port status…</span>
             </div>
           ) : null}
-          {portingNumbers.map((p) => (
-            <div
-              key={p.id || p.number}
-              className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10">
-                  <ArrowRightLeft className="h-4 w-4 text-warning" />
+          {portingNumbers.map((p) => {
+            const isComplete = p.status === "ported"
+            const isError = p.status === "exception"
+            const isCancelled = p.status === "cancelled" || p.status === "cancel-pending"
+            const badgeColor = isComplete ? "bg-success/10 text-success" : isError ? "bg-destructive/10 text-destructive" : isCancelled ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning"
+            const iconBg = isComplete ? "bg-success/10" : isError ? "bg-destructive/10" : "bg-warning/10"
+            const iconColor = isComplete ? "text-success" : isError ? "text-destructive" : "text-warning"
+            return (
+              <div
+                key={p.id || p.number}
+                className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", iconBg)}>
+                    {isComplete ? <Check className={cn("h-4 w-4", iconColor)} /> : <ArrowRightLeft className={cn("h-4 w-4", iconColor)} />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(p.number)}</p>
+                    <p className="text-xs text-muted-foreground">{p.statusLabel || "Transfer in progress"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(p.number)}</p>
-                  <p className="text-xs text-muted-foreground">Porting to Zing · Usually 24-48 hours</p>
-                </div>
+                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeColor)}>
+                  {isComplete ? "Active" : isError ? "Action needed" : isCancelled ? "Cancelled" : "Porting"}
+                </span>
               </div>
-              <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning">
-                Porting
-              </span>
-            </div>
-          ))}
+            )
+          })}
 
           <button
-            onClick={() => { setShowNumberModal(true); setNumberTab("buy"); setBuyStep("search"); setSelectedAreaCode(""); setPortSubmitted(false); setPortNumber(""); setPortCarrier("") }}
+            onClick={() => { setShowNumberModal(true); setNumberTab("buy"); setBuyStep("search"); setSelectedAreaCode(""); resetPortForm() }}
             className="flex w-full items-center justify-between rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4 text-left transition-all hover:bg-primary/10"
           >
             <div className="flex items-center gap-3">
@@ -542,7 +587,7 @@ export function SettingsPage() {
               </div>
             )}
 
-            {/* Port tab */}
+            {/* Port tab - multi-step */}
             {numberTab === "port" && (
               <div className="p-4">
                 {portSubmitted ? (
@@ -552,12 +597,10 @@ export function SettingsPage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-foreground">Port Request Submitted</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Your number is now being transferred to Zing and usually completes within 24–48 hours. Check this page for progress. We’ll email you if we need any verification or paperwork—complete those steps to avoid delays.
-                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">{portSubmitMessage}</p>
                     </div>
                     <button
-                      onClick={() => setShowNumberModal(false)}
+                      onClick={() => { setShowNumberModal(false); resetPortForm() }}
                       className="mt-2 rounded-lg bg-primary px-6 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
                     >
                       Done
@@ -565,49 +608,109 @@ export function SettingsPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3">
-                    <div className="flex items-start gap-2.5 rounded-lg bg-secondary p-3">
-                      <ArrowRightLeft className="mt-0.5 h-4 w-4 text-primary" />
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        Port your existing business number to Zing. No downtime, no missed calls. Takes 24-48 hours.
-                      </p>
+                    {/* Progress bar */}
+                    <div className="flex items-center gap-2 pb-1">
+                      {[1, 2, 3].map((s) => (
+                        <div key={s} className={cn("h-1 flex-1 rounded-full transition-colors", s <= portStep ? "bg-primary" : "bg-border")} />
+                      ))}
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-semibold text-muted-foreground">Phone Number</label>
-                      <input
-                        type="tel"
-                        placeholder="(555) 123-4567"
-                        value={portNumber}
-                        onChange={(e) => setPortNumber(e.target.value)}
-                        className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[11px] font-semibold text-muted-foreground">Current carrier (optional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. AT&T, Verizon, T-Mobile — we can look it up if you don't know"
-                        value={portCarrier}
-                        onChange={(e) => setPortCarrier(e.target.value)}
-                        className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                      />
-                    </div>
-                    {portError && (
-                      <p className="text-xs text-destructive">{portError}</p>
+
+                    {/* Step 1: Phone number */}
+                    {portStep === 1 && (
+                      <>
+                        <div className="flex items-start gap-2.5 rounded-lg bg-secondary p-3">
+                          <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            Port your existing business number to Zing. No downtime, no missed calls.
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground">Phone number to port</label>
+                          <input
+                            type="tel"
+                            placeholder="(555) 123-4567"
+                            value={portNumber}
+                            onChange={(e) => setPortNumber(e.target.value)}
+                            className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                            autoFocus
+                          />
+                        </div>
+                        {portError && <p className="text-xs text-destructive">{portError}</p>}
+                        <button
+                          onClick={() => { setPortError(null); setPortStep(2) }}
+                          disabled={!portNumber.replace(/\D/g, "").length}
+                          className="mt-1 w-full rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+                        >
+                          Next: Account info
+                        </button>
+                      </>
                     )}
-                    <button
-                      onClick={handlePortSubmit}
-                      disabled={!portNumber || portSubmitLoading}
-                      className="mt-1 w-full rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
-                    >
-                      {portSubmitLoading ? (
-                        <>
-                          <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
-                          Starting port…
-                        </>
-                      ) : (
-                        "Submit Port Request"
-                      )}
-                    </button>
+
+                    {/* Step 2: Account information */}
+                    {portStep === 2 && (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Enter the account details from your current phone provider. This authorizes the transfer.
+                        </p>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground">Name on account</label>
+                          <input type="text" placeholder="Your name or business name" value={portAccountName} onChange={(e) => setPortAccountName(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground">Authorized person (who can approve the transfer)</label>
+                          <input type="text" placeholder="Your full name" value={portAuthPerson} onChange={(e) => setPortAuthPerson(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground">Account number (optional)</label>
+                          <input type="text" placeholder="From your current provider's bill" value={portAccountNumber} onChange={(e) => setPortAccountNumber(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground">Account PIN (optional)</label>
+                          <input type="text" placeholder="If your carrier requires a PIN" value={portPin} onChange={(e) => setPortPin(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => setPortStep(1)} className="flex-1 rounded-lg border border-border py-2.5 text-xs font-semibold text-foreground hover:bg-muted">Back</button>
+                          <button onClick={() => setPortStep(3)} disabled={!portAccountName || !portAuthPerson} className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">Next: Address</button>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Step 3: Service address + submit */}
+                    {portStep === 3 && (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Enter the address on file with your current carrier. This must match their records for the transfer to go through.
+                        </p>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground">Street address</label>
+                          <input type="text" placeholder="123 Main St" value={portStreet} onChange={(e) => setPortStreet(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-1 flex flex-col gap-1.5">
+                            <label className="text-[11px] font-semibold text-muted-foreground">City</label>
+                            <input type="text" placeholder="City" value={portCity} onChange={(e) => setPortCity(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                          </div>
+                          <div className="col-span-1 flex flex-col gap-1.5">
+                            <label className="text-[11px] font-semibold text-muted-foreground">State</label>
+                            <input type="text" placeholder="KY" maxLength={2} value={portState} onChange={(e) => setPortState(e.target.value.toUpperCase())} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                          </div>
+                          <div className="col-span-1 flex flex-col gap-1.5">
+                            <label className="text-[11px] font-semibold text-muted-foreground">ZIP</label>
+                            <input type="text" placeholder="40000" maxLength={5} value={portZip} onChange={(e) => setPortZip(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                          </div>
+                        </div>
+                        {portError && <p className="text-xs text-destructive">{portError}</p>}
+                        <div className="flex gap-2">
+                          <button onClick={() => setPortStep(2)} disabled={portSubmitLoading} className="flex-1 rounded-lg border border-border py-2.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50">Back</button>
+                          <button onClick={handlePortSubmit} disabled={!portStreet || !portCity || !portState || !portZip || portSubmitLoading} className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">
+                            {portSubmitLoading ? (<><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />Submitting...</>) : "Submit port request"}
+                          </button>
+                        </div>
+                        <p className="text-center text-[10px] text-muted-foreground">
+                          By submitting, you authorize the transfer of this number to Zing.
+                        </p>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

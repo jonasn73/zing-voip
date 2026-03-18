@@ -23,7 +23,7 @@ export function getTelnyxClient(): Telnyx {
 
 // --- App URL (same as Twilio; used for webhook URLs in TeXML) ---
 export function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || "https://your-app.vercel.app"
+  return process.env.NEXT_PUBLIC_APP_URL || "https://www.getzingapp.com"
 }
 
 // --- TeXML: use TwiML builder; Telnyx accepts TwiML-compatible XML ---

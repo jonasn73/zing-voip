@@ -36,11 +36,11 @@ export async function POST(req: NextRequest) {
     switch (fallbackType) {
       case "owner": {
         if (user) {
+          const calledNum = (formData.get("To") as string) || ""
           texml.say("Please hold while we connect you.")
           const dial = texml.dial({
+            callerId: calledNum || undefined,
             timeout: 30,
-            record: "record-from-answer-dual",
-            recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
           })
           dial.number(user.phone)
         } else {

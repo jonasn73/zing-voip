@@ -62,14 +62,14 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
     }
 
     // 4. Route: receptionist (per-number or default) → owner's cell as fallback
+    // callerId is REQUIRED by Telnyx TeXML for the outbound leg — use the business number
     if (config?.selected_receptionist_id) {
       const receptionist = await getReceptionist(config.selected_receptionist_id)
       if (receptionist) {
         console.log(`[Zing] Routing to receptionist: ${receptionist.name} (${receptionist.phone})`)
         const dial = texml.dial({
+          callerId: calledNumber,
           timeout: config.ring_timeout_seconds || 20,
-          record: "record-from-answer-dual",
-          recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
           action: `${appUrl}/api/voice/telnyx/fallback?userId=${user.id}&callSid=${callSid}`,
           method: "POST",
         })
@@ -77,18 +77,16 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
       } else {
         console.log(`[Zing] Receptionist ${config.selected_receptionist_id} not found, routing to owner: ${user.phone}`)
         const dial = texml.dial({
+          callerId: calledNumber,
           timeout: 30,
-          record: "record-from-answer-dual",
-          recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
         })
         dial.number(user.phone)
       }
     } else {
       console.log(`[Zing] No receptionist assigned, routing to owner: ${user.phone}`)
       const dial = texml.dial({
+        callerId: calledNumber,
         timeout: 30,
-        record: "record-from-answer-dual",
-        recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
       })
       dial.number(user.phone)
     }
@@ -98,7 +96,7 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
     texml.hangup()
   }
 
-  console.log(`[Zing] TeXML response: ${texml.toString().slice(0, 300)}`)
+  console.log(`[Zing] TeXML response: ${texml.toString().slice(0, 500)}`)
   return texml
 }
 

@@ -215,26 +215,39 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 5: Confirm (submit) the port order ──
-    // The correct endpoint is /actions/confirm, not /actions/submit
+    // The correct endpoint is /actions/confirm
+    // Try twice — Telnyx sometimes needs a moment to process the LOA attachment
     let submitStatus = "submitted"
-    try {
-      const confirmRes = await telnyxFetch(`/porting_orders/${orderId}/actions/confirm`, {
-        method: "POST",
-      })
-      const confirmData = confirmRes?.data
-      submitStatus = (Array.isArray(confirmData) ? confirmData[0]?.porting_order_status : confirmData?.porting_order_status) || "in-process"
-      console.log(`[Zing] Port order ${orderId} confirmed, status: ${submitStatus}`)
-    } catch (confirmErr: unknown) {
-      const msg = confirmErr instanceof Error ? confirmErr.message : String(confirmErr)
-      console.error(`[Zing] Port order ${orderId} confirm failed: ${msg}`)
+    let confirmSuccess = false
+    let lastConfirmError = ""
 
-      // Return success with draft status — the order exists, just needs manual attention
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (attempt === 2) {
+          console.log(`[Zing] Retrying confirm for order ${orderId} after 3s...`)
+          await new Promise((r) => setTimeout(r, 3000))
+        }
+        const confirmRes = await telnyxFetch(`/porting_orders/${orderId}/actions/confirm`, {
+          method: "POST",
+        })
+        const confirmData = confirmRes?.data
+        submitStatus = (Array.isArray(confirmData) ? confirmData[0]?.porting_order_status : confirmData?.porting_order_status) || "in-process"
+        console.log(`[Zing] Port order ${orderId} confirmed on attempt ${attempt}, status: ${submitStatus}`)
+        confirmSuccess = true
+        break
+      } catch (confirmErr: unknown) {
+        lastConfirmError = confirmErr instanceof Error ? confirmErr.message : String(confirmErr)
+        console.error(`[Zing] Port order ${orderId} confirm attempt ${attempt} failed: ${lastConfirmError}`)
+      }
+    }
+
+    if (!confirmSuccess) {
       return NextResponse.json({
         success: true,
         status: "draft",
         message: loaFulfilled
-          ? "Port order created and documents submitted. Final confirmation is pending — we'll notify you when the transfer begins."
-          : `Port order created but needs additional steps before it can be confirmed. Reason: ${msg.replace(/^Telnyx \d+:\s*/, "")}`,
+          ? "Port order created and documents submitted. We're processing your transfer — check Settings for updates."
+          : `Port order created but needs additional steps: ${lastConfirmError.replace(/^Telnyx \d+:\s*/, "")}`,
         port: { number: e164, port_order_id: orderId, telnyx_status: "draft" },
       })
     }

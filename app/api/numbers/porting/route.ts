@@ -15,7 +15,7 @@ function getApiKey(): string {
 
 // Human-friendly status labels that avoid mentioning Telnyx
 const STATUS_LABELS: Record<string, string> = {
-  draft: "Awaiting submission",
+  draft: "Processing",
   "in-process": "Transfer in progress",
   submitted: "Transfer in progress",
   "exception": "Action needed",
@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export async function GET() {
   try {
-    const res = await fetch(`${TELNYX_BASE}/porting_orders?page[size]=50&sort=-created_at`, {
+    const res = await fetch(`${TELNYX_BASE}/porting_orders?page[size]=50&sort=-created_at&include_phone_numbers=true`, {
       headers: {
         Authorization: `Bearer ${getApiKey()}`,
         "Content-Type": "application/json",

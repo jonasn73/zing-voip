@@ -167,6 +167,7 @@ export async function POST(req: NextRequest) {
           admin: {
             entity_name: account_name,
             auth_person_name: authorized_person,
+            billing_phone_number: e164,
             account_number: account_number || undefined,
             pin: pin || undefined,
           },

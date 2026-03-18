@@ -120,6 +120,9 @@ export function DashboardPage() {
   const [hasVapiAssistant, setHasVapiAssistant] = useState(false)
   const [activatingAi, setActivatingAi] = useState(false)
 
+  // Business numbers for showing which number routing applies to
+  const [businessNumbers, setBusinessNumbers] = useState<{ number: string; status: string }[]>([])
+
   // Load user session
   useEffect(() => {
     fetch("/api/auth/session", { credentials: "include" })
@@ -157,6 +160,21 @@ export function DashboardPage() {
           setSelectedReceptionistId(data.config.selected_receptionist_id || null)
           setFallback(data.config.fallback_type || "owner")
           if (data.config.ai_greeting) setAiGreeting(data.config.ai_greeting)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Load business numbers so we can show which number routing applies to
+  useEffect(() => {
+    fetch("/api/numbers/mine", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { numbers: [] }))
+      .then((data) => {
+        if (Array.isArray(data.numbers)) {
+          setBusinessNumbers(data.numbers.filter((n: Record<string, string>) => n.status === "active").map((n: Record<string, string>) => ({
+            number: n.number,
+            status: n.status,
+          })))
         }
       })
       .catch(() => {})
@@ -283,6 +301,21 @@ export function DashboardPage() {
             <h2 className="text-xl font-semibold text-foreground">
               Calls Are Being Routed
             </h2>
+
+            {/* Show which business number(s) this routing applies to */}
+            {businessNumbers.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-1.5">
+                {businessNumbers.map((bn) => (
+                  <span
+                    key={bn.number}
+                    className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
+                  >
+                    {formatPhoneDisplay(bn.number)}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div className="relative flex flex-col items-center gap-2">
               <p className="text-sm text-muted-foreground">
                 {isRoutingToOwner ? "Ringing directly to" : "Ringing first to"}
@@ -321,7 +354,7 @@ export function DashboardPage() {
                 )} />
               </button>
               <p className="text-xs text-muted-foreground">
-                {isRoutingToOwner ? ownerPhoneDisplay : selectedReceptionist!.phone}
+                {isRoutingToOwner ? ownerPhoneDisplay : formatPhoneDisplay(selectedReceptionist!.phone)}
               </p>
 
               {/* Fallback setting */}

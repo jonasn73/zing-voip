@@ -151,30 +151,34 @@ export function DashboardPage() {
       .catch(() => {})
   }, [])
 
-  // Load current default routing config from API
-  useEffect(() => {
-    fetch("/api/routing", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.config) {
-          setSelectedReceptionistId(data.config.selected_receptionist_id || null)
-          setFallback(data.config.fallback_type || "owner")
-          if (data.config.ai_greeting) setAiGreeting(data.config.ai_greeting)
-        }
-      })
-      .catch(() => {})
-  }, [])
-
-  // Load business numbers so we can show which number routing applies to
+  // Load business numbers first, then load routing for the primary number
   useEffect(() => {
     fetch("/api/numbers/mine", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : { numbers: [] }))
       .then((data) => {
         if (Array.isArray(data.numbers)) {
-          setBusinessNumbers(data.numbers.filter((n: Record<string, string>) => n.status === "active").map((n: Record<string, string>) => ({
+          const active = data.numbers.filter((n: Record<string, string>) => n.status === "active").map((n: Record<string, string>) => ({
             number: n.number,
             status: n.status,
-          })))
+          }))
+          setBusinessNumbers(active)
+
+          // Load routing for the first active business number (per-number config)
+          // Falls back to default config on the server if no per-number config exists
+          const primaryNumber = active[0]?.number
+          const routingUrl = primaryNumber
+            ? `/api/routing?number=${encodeURIComponent(primaryNumber)}`
+            : "/api/routing"
+          fetch(routingUrl, { credentials: "include" })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((rData) => {
+              if (rData?.config) {
+                setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
+                setFallback(rData.config.fallback_type || "owner")
+                if (rData.config.ai_greeting) setAiGreeting(rData.config.ai_greeting)
+              }
+            })
+            .catch(() => {})
         }
       })
       .catch(() => {})
@@ -194,27 +198,27 @@ export function DashboardPage() {
   const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) || null
   const isRoutingToOwner = !selectedReceptionist
 
-  function selectReceptionist(id: string) {
-    setSelectedReceptionistId(id)
-    setShowSwitcher(false)
-    // Save to API so it persists
+  // Save routing for the primary business number (or default if none)
+  function saveRouting(updates: Record<string, unknown>) {
+    const primaryNumber = businessNumbers[0]?.number || null
     fetch("/api/routing", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ selected_receptionist_id: id }),
+      body: JSON.stringify({ ...updates, business_number: primaryNumber }),
     }).catch(() => {})
+  }
+
+  function selectReceptionist(id: string) {
+    setSelectedReceptionistId(id)
+    setShowSwitcher(false)
+    saveRouting({ selected_receptionist_id: id })
   }
 
   function clearReceptionist() {
     setSelectedReceptionistId(null)
     setShowSwitcher(false)
-    fetch("/api/routing", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ selected_receptionist_id: null }),
-    }).catch(() => {})
+    saveRouting({ selected_receptionist_id: null })
   }
 
   async function handleAddReceptionist() {
@@ -514,12 +518,7 @@ export function DashboardPage() {
                           key={option.id}
                           onClick={() => {
                             setFallback(option.id)
-                            fetch("/api/routing", {
-                              method: "PUT",
-                              headers: { "Content-Type": "application/json" },
-                              credentials: "include",
-                              body: JSON.stringify({ fallback_type: option.id }),
-                            }).catch(() => {})
+                            saveRouting({ fallback_type: option.id })
                           }}
                           className={cn(
                             "flex items-center gap-3 rounded-lg px-3 py-3 text-left transition-all",
@@ -579,12 +578,7 @@ export function DashboardPage() {
                               onClick={() => {
                                 setAiGreeting(greetingDraft)
                                 setEditingGreeting(false)
-                                fetch("/api/routing", {
-                                  method: "PUT",
-                                  headers: { "Content-Type": "application/json" },
-                                  credentials: "include",
-                                  body: JSON.stringify({ ai_greeting: greetingDraft }),
-                                }).catch(() => {})
+                                saveRouting({ ai_greeting: greetingDraft })
                               }}
                               className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
                             >

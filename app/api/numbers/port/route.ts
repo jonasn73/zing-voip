@@ -106,14 +106,17 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Step 2: Create draft port order ---
+    // Telnyx returns { data: [ ...orders ] } — an array, even for a single number
     const createRes = await telnyxFetch("/porting_orders", {
       method: "POST",
       body: JSON.stringify({ phone_numbers: [e164] }),
     })
 
-    const orderId = createRes?.data?.id
+    const orders = createRes?.data
+    const orderId = Array.isArray(orders) ? orders[0]?.id : orders?.id
     if (!orderId) {
-      return NextResponse.json({ error: "Failed to create port order" }, { status: 500 })
+      console.error("[Zing] Unexpected create response:", JSON.stringify(createRes).slice(0, 500))
+      return NextResponse.json({ error: "Failed to create port order — unexpected response from carrier" }, { status: 500 })
     }
 
     // --- Step 3: Fill in end-user info and service address ---

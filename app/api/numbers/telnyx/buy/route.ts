@@ -7,101 +7,23 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { insertPhoneNumber } from "@/lib/db"
+import {
+  getTelnyxApiKey,
+  telnyxHeaders,
+  getOrCreateTexmlApp,
+  configureNumberVoice,
+} from "@/lib/telnyx-config"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
-
-function getApiKey(): string {
-  const key = process.env.TELNYX_API_KEY
-  if (!key) throw new Error("Missing TELNYX_API_KEY")
-  return key
-}
-
-function authHeaders(): Record<string, string> {
-  return {
-    Authorization: `Bearer ${getApiKey()}`,
-    "Content-Type": "application/json",
-  }
-}
-
-function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || "https://www.getzingapp.com"
-}
-
-// Find or create a TeXML application that points to our incoming call webhook
-async function getOrCreateTexmlApp(): Promise<string> {
-  const appUrl = getAppUrl()
-
-  // Check if we already have a Zing TeXML app
-  const listRes = await fetch(`${TELNYX_BASE}/texml_applications?page[size]=50`, {
-    headers: authHeaders(),
-  })
-  const listBody = await listRes.json()
-  const apps = listBody?.data || []
-  const existing = apps.find((a: Record<string, string>) => a.friendly_name === "Zing Call Router")
-  if (existing?.id) {
-    return existing.id
-  }
-
-  // Create one
-  const createRes = await fetch(`${TELNYX_BASE}/texml_applications`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({
-      friendly_name: "Zing Call Router",
-      voice_url: `${appUrl}/api/voice/telnyx/incoming`,
-      voice_method: "POST",
-      voice_fallback_url: `${appUrl}/api/voice/telnyx/incoming`,
-      status_callback_url: `${appUrl}/api/voice/telnyx/status`,
-      status_callback_method: "POST",
-    }),
-  })
-  const createBody = await createRes.json()
-  if (!createRes.ok) {
-    const errMsg = createBody?.errors?.[0]?.detail || JSON.stringify(createBody)
-    throw new Error(`Failed to create TeXML app: ${errMsg}`)
-  }
-  const appId = createBody?.data?.id
-  if (!appId) throw new Error("TeXML app created but no ID returned")
-  console.log(`[Zing] Created TeXML application: ${appId}`)
-  return appId
-}
-
-// Assign a phone number to our TeXML application so calls route to our webhook
-async function configureNumberVoice(phoneNumber: string, texmlAppId: string): Promise<void> {
-  // First get the phone number's Telnyx ID
-  const searchRes = await fetch(
-    `${TELNYX_BASE}/phone_numbers?filter[phone_number]=${encodeURIComponent(phoneNumber)}&page[size]=1`,
-    { headers: authHeaders() }
-  )
-  const searchBody = await searchRes.json()
-  const numberRecord = searchBody?.data?.[0]
-  if (!numberRecord?.id) {
-    console.error(`[Zing] Could not find Telnyx record for ${phoneNumber}`)
-    return
-  }
-
-  // Update the number to use our TeXML application
-  const patchRes = await fetch(`${TELNYX_BASE}/phone_numbers/${numberRecord.id}/voice`, {
-    method: "PATCH",
-    headers: authHeaders(),
-    body: JSON.stringify({
-      connection_id: texmlAppId,
-      tech_prefix_enabled: false,
-    }),
-  })
-  if (!patchRes.ok) {
-    const patchBody = await patchRes.json().catch(() => ({}))
-    console.error(`[Zing] Failed to configure voice for ${phoneNumber}:`, patchBody)
-  } else {
-    console.log(`[Zing] Voice configured for ${phoneNumber} → TeXML app ${texmlAppId}`)
-  }
-}
 
 export async function POST(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
+
+  // Verify API key is available
+  getTelnyxApiKey()
 
   try {
     const body = await req.json()
@@ -114,7 +36,7 @@ export async function POST(req: NextRequest) {
     // Step 1: Purchase the number
     const res = await fetch(`${TELNYX_BASE}/number_orders`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: telnyxHeaders(),
       body: JSON.stringify({
         phone_numbers: [{ phone_number }],
       }),
@@ -132,13 +54,11 @@ export async function POST(req: NextRequest) {
     const boughtNumber = data?.data?.phone_numbers?.[0]?.phone_number || phone_number
 
     // Step 2: Configure the number with our TeXML webhook so calls route to the app
-    // Telnyx sometimes needs a moment after purchase before the number is configurable,
-    // so we try immediately, then retry after a short delay if it fails.
+    // Telnyx sometimes needs a moment after purchase before the number is configurable
     const texmlAppId = await getOrCreateTexmlApp()
     try {
       await configureNumberVoice(boughtNumber, texmlAppId)
     } catch {
-      // First attempt failed — wait 3 seconds and retry
       await new Promise((r) => setTimeout(r, 3000))
       try {
         await configureNumberVoice(boughtNumber, texmlAppId)

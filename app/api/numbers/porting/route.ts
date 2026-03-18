@@ -13,25 +13,13 @@ import {
   getPhoneNumberByNumberAndStatus,
   insertPhoneNumber,
 } from "@/lib/db"
+import {
+  telnyxHeaders,
+  getOrCreateTexmlApp,
+  configureNumberVoice,
+} from "@/lib/telnyx-config"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
-
-function getApiKey(): string {
-  const key = process.env.TELNYX_API_KEY
-  if (!key) throw new Error("Missing TELNYX_API_KEY")
-  return key
-}
-
-function authHeaders(): Record<string, string> {
-  return {
-    Authorization: `Bearer ${getApiKey()}`,
-    "Content-Type": "application/json",
-  }
-}
-
-function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || "https://www.getzingapp.com"
-}
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Processing",
@@ -55,61 +43,6 @@ const STATUS_PRIORITY: Record<string, number> = {
   "cancel-pending": 0,
 }
 
-// Find or create the Zing Call Router TeXML application
-async function getOrCreateTexmlApp(): Promise<string> {
-  const appUrl = getAppUrl()
-  const listRes = await fetch(`${TELNYX_BASE}/texml_applications?page[size]=50`, {
-    headers: authHeaders(),
-  })
-  const listBody = await listRes.json()
-  const apps = listBody?.data || []
-  const existing = apps.find((a: Record<string, string>) => a.friendly_name === "Zing Call Router")
-  if (existing?.id) return existing.id
-
-  const createRes = await fetch(`${TELNYX_BASE}/texml_applications`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({
-      friendly_name: "Zing Call Router",
-      voice_url: `${appUrl}/api/voice/telnyx/incoming`,
-      voice_method: "POST",
-      voice_fallback_url: `${appUrl}/api/voice/telnyx/incoming`,
-      status_callback_url: `${appUrl}/api/voice/telnyx/status`,
-      status_callback_method: "POST",
-    }),
-  })
-  const createBody = await createRes.json()
-  const appId = createBody?.data?.id
-  if (!appId) throw new Error("Failed to create TeXML app")
-  return appId
-}
-
-// Configure a Telnyx phone number to use our TeXML application
-async function configureNumberVoice(phoneNumber: string, texmlAppId: string): Promise<void> {
-  const searchRes = await fetch(
-    `${TELNYX_BASE}/phone_numbers?filter[phone_number]=${encodeURIComponent(phoneNumber)}&page[size]=1`,
-    { headers: authHeaders() }
-  )
-  const searchBody = await searchRes.json()
-  const record = searchBody?.data?.[0]
-  if (!record?.id) {
-    console.log(`[Zing] Ported number ${phoneNumber} not yet visible in Telnyx numbers list`)
-    return
-  }
-
-  const patchRes = await fetch(`${TELNYX_BASE}/phone_numbers/${record.id}/voice`, {
-    method: "PATCH",
-    headers: authHeaders(),
-    body: JSON.stringify({ connection_id: texmlAppId, tech_prefix_enabled: false }),
-  })
-  if (patchRes.ok) {
-    console.log(`[Zing] Ported number ${phoneNumber} configured with TeXML app ${texmlAppId}`)
-  } else {
-    const patchBody = await patchRes.json().catch(() => ({}))
-    console.error(`[Zing] Failed to configure ported number ${phoneNumber}:`, patchBody)
-  }
-}
-
 export async function GET(req: NextRequest) {
   // Get current user so we can save completed ported numbers to their account
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -117,7 +50,7 @@ export async function GET(req: NextRequest) {
   try {
     const res = await fetch(
       `${TELNYX_BASE}/porting_orders?page[size]=50&sort=-created_at&include_phone_numbers=true`,
-      { headers: authHeaders() }
+      { headers: telnyxHeaders() }
     )
 
     if (!res.ok) {
@@ -173,7 +106,7 @@ export async function GET(req: NextRequest) {
       for (const draftId of uniqueIds) {
         fetch(`${TELNYX_BASE}/porting_orders/${draftId}`, {
           method: "DELETE",
-          headers: authHeaders(),
+          headers: telnyxHeaders(),
         }).catch(() => {})
       }
     }

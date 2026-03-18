@@ -6,6 +6,7 @@
 //   1. Numbers purchased before auto-config was added still work
 //   2. Ported numbers that completed get wired up
 //   3. Any number that lost its webhook config gets fixed
+//   4. The TeXML app has an outbound voice profile (required for Dial)
 // Also syncs Telnyx numbers into the local DB if missing.
 
 import { NextRequest, NextResponse } from "next/server"
@@ -15,25 +16,12 @@ import {
   insertPhoneNumber,
   getPhoneNumberByNumberAndStatus,
 } from "@/lib/db"
+import {
+  telnyxHeaders,
+  getOrCreateTexmlApp,
+} from "@/lib/telnyx-config"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
-
-function getApiKey(): string {
-  const key = process.env.TELNYX_API_KEY
-  if (!key) throw new Error("Missing TELNYX_API_KEY")
-  return key
-}
-
-function authHeaders(): Record<string, string> {
-  return {
-    Authorization: `Bearer ${getApiKey()}`,
-    "Content-Type": "application/json",
-  }
-}
-
-function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || "https://www.getzingapp.com"
-}
 
 export async function POST(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -42,41 +30,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const appUrl = getAppUrl()
     const results: { number: string; action: string }[] = []
 
-    // Step 1: Find or create the Zing Call Router TeXML app
-    const listRes = await fetch(`${TELNYX_BASE}/texml_applications?page[size]=50`, {
-      headers: authHeaders(),
-    })
-    const listBody = await listRes.json()
-    const apps = listBody?.data || []
-    let texmlAppId = apps.find((a: Record<string, string>) => a.friendly_name === "Zing Call Router")?.id
-
-    if (!texmlAppId) {
-      const createRes = await fetch(`${TELNYX_BASE}/texml_applications`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          friendly_name: "Zing Call Router",
-          voice_url: `${appUrl}/api/voice/telnyx/incoming`,
-          voice_method: "POST",
-          voice_fallback_url: `${appUrl}/api/voice/telnyx/incoming`,
-          status_callback_url: `${appUrl}/api/voice/telnyx/status`,
-          status_callback_method: "POST",
-        }),
-      })
-      const createBody = await createRes.json()
-      texmlAppId = createBody?.data?.id
-      if (!texmlAppId) {
-        return NextResponse.json({ error: "Failed to create TeXML app" }, { status: 500 })
-      }
-    }
+    // Step 1: Find or create the Zing Call Router TeXML app (with outbound voice profile)
+    const texmlAppId = await getOrCreateTexmlApp()
 
     // Step 2: Get all Telnyx phone numbers on this account
     const telnyxNumbersRes = await fetch(
       `${TELNYX_BASE}/phone_numbers?page[size]=100`,
-      { headers: authHeaders() }
+      { headers: telnyxHeaders() }
     )
     const telnyxNumbersBody = await telnyxNumbersRes.json()
     const telnyxNumbers: { id: string; phone_number: string; connection_id: string | null }[] =
@@ -115,7 +77,7 @@ export async function POST(req: NextRequest) {
       if (tn.connection_id !== texmlAppId) {
         const patchRes = await fetch(`${TELNYX_BASE}/phone_numbers/${tn.id}/voice`, {
           method: "PATCH",
-          headers: authHeaders(),
+          headers: telnyxHeaders(),
           body: JSON.stringify({ connection_id: texmlAppId, tech_prefix_enabled: false }),
         })
         if (patchRes.ok) {

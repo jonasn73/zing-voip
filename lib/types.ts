@@ -9,6 +9,7 @@ export interface User {
   name: string
   phone: string // owner's personal cell
   business_name: string
+  vapi_assistant_id: string | null // Vapi AI voice agent for this business
   created_at: string
 }
 

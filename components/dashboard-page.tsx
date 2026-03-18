@@ -18,6 +18,10 @@ import {
   Bot,
   ChevronRight,
   Check,
+  Plus,
+  Loader2,
+  Trash2,
+  Sparkles,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -104,6 +108,18 @@ export function DashboardPage() {
   const [editingGreeting, setEditingGreeting] = useState(false)
   const [greetingDraft, setGreetingDraft] = useState("")
 
+  // Add receptionist state
+  const [showAddReceptionist, setShowAddReceptionist] = useState(false)
+  const [newRecName, setNewRecName] = useState("")
+  const [newRecPhone, setNewRecPhone] = useState("")
+  const [addRecLoading, setAddRecLoading] = useState(false)
+  const [addRecError, setAddRecError] = useState<string | null>(null)
+  const [deletingRecId, setDeletingRecId] = useState<string | null>(null)
+
+  // AI assistant state
+  const [hasVapiAssistant, setHasVapiAssistant] = useState(false)
+  const [activatingAi, setActivatingAi] = useState(false)
+
   // Load user session
   useEffect(() => {
     fetch("/api/auth/session", { credentials: "include" })
@@ -146,6 +162,16 @@ export function DashboardPage() {
       .catch(() => {})
   }, [])
 
+  // Check if user has a Vapi AI assistant
+  useEffect(() => {
+    fetch("/api/ai-assistant", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.hasAssistant) setHasVapiAssistant(true)
+      })
+      .catch(() => {})
+  }, [])
+
   const ownerPhoneDisplay = formatPhoneDisplay(mainLinePhone)
   const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) || null
   const isRoutingToOwner = !selectedReceptionist
@@ -165,13 +191,74 @@ export function DashboardPage() {
   function clearReceptionist() {
     setSelectedReceptionistId(null)
     setShowSwitcher(false)
-    // Save to API
     fetch("/api/routing", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ selected_receptionist_id: null }),
     }).catch(() => {})
+  }
+
+  async function handleAddReceptionist() {
+    if (!newRecName.trim() || !newRecPhone.trim()) return
+    setAddRecLoading(true)
+    setAddRecError(null)
+    try {
+      const res = await fetch("/api/receptionists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: newRecName.trim(), phone: newRecPhone.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAddRecError(data.error || "Failed to add receptionist")
+        return
+      }
+      const r = data.data
+      setReceptionists((prev) => [...prev, {
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        initials: r.initials || r.name.slice(0, 2).toUpperCase(),
+        color: r.color || "bg-primary",
+      }])
+      setNewRecName("")
+      setNewRecPhone("")
+      setShowAddReceptionist(false)
+    } catch {
+      setAddRecError("Something went wrong")
+    } finally {
+      setAddRecLoading(false)
+    }
+  }
+
+  async function handleDeleteReceptionist(id: string) {
+    if (!confirm("Remove this receptionist?")) return
+    setDeletingRecId(id)
+    try {
+      const res = await fetch(`/api/receptionists/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      if (res.ok) {
+        setReceptionists((prev) => prev.filter((r) => r.id !== id))
+        if (selectedReceptionistId === id) clearReceptionist()
+      }
+    } catch { /* silent */ }
+    setDeletingRecId(null)
+  }
+
+  async function handleActivateAi() {
+    setActivatingAi(true)
+    try {
+      const res = await fetch("/api/ai-assistant", {
+        method: "POST",
+        credentials: "include",
+      })
+      if (res.ok) setHasVapiAssistant(true)
+    } catch { /* silent */ }
+    setActivatingAi(false)
   }
 
   return (
@@ -505,6 +592,168 @@ export function DashboardPage() {
             )}
           </div>
         </div>
+      </section>
+
+      {/* Receptionists */}
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Receptionists
+          </h3>
+          <button
+            onClick={() => { setShowAddReceptionist(true); setAddRecError(null) }}
+            className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add
+          </button>
+        </div>
+
+        {receptionists.length === 0 && !showAddReceptionist ? (
+          <div className="rounded-xl border border-dashed border-border bg-card/50 p-6 text-center">
+            <User className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-foreground">No receptionists yet</p>
+            <p className="mt-1 text-xs text-muted-foreground">Add a receptionist to route calls to them instead of your phone.</p>
+            <button
+              onClick={() => setShowAddReceptionist(true)}
+              className="mt-3 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+            >
+              Add Receptionist
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {receptionists.map((rec) => (
+              <div
+                key={rec.id}
+                className="flex items-center justify-between rounded-xl border border-border bg-card p-3.5"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback className={cn(rec.color, "text-primary-foreground text-xs font-semibold")}>
+                      {rec.initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{rec.name}</p>
+                    <p className="text-[11px] text-muted-foreground">{formatPhoneDisplay(rec.phone)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedReceptionistId === rec.id && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      Active
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleDeleteReceptionist(rec.id)}
+                    disabled={deletingRecId === rec.id}
+                    className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                    aria-label={`Remove ${rec.name}`}
+                  >
+                    {deletingRecId === rec.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add Receptionist form */}
+        {showAddReceptionist && (
+          <div className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">Name</label>
+                <input
+                  type="text"
+                  placeholder="Sarah Miller"
+                  value={newRecName}
+                  onChange={(e) => setNewRecName(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  autoFocus
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">Phone number</label>
+                <input
+                  type="tel"
+                  placeholder="(555) 234-5678"
+                  value={newRecPhone}
+                  onChange={(e) => setNewRecPhone(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                />
+              </div>
+              {addRecError && <p className="text-xs text-destructive">{addRecError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddReceptionist}
+                  disabled={addRecLoading || !newRecName.trim() || !newRecPhone.trim()}
+                  className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                >
+                  {addRecLoading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Add"}
+                </button>
+                <button
+                  onClick={() => { setShowAddReceptionist(false); setNewRecName(""); setNewRecPhone(""); setAddRecError(null) }}
+                  disabled={addRecLoading}
+                  className="rounded-lg border border-border px-4 py-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* AI Assistant */}
+      <section>
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            AI Assistant
+          </h3>
+        </div>
+        {hasVapiAssistant ? (
+          <div className="rounded-xl border border-chart-4/20 bg-chart-4/5 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-chart-4/10">
+                <Sparkles className="h-5 w-5 text-chart-4" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground">AI Receptionist Active</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Handles calls when no one answers — takes messages, shares hours, books appointments
+                </p>
+              </div>
+              <span className="rounded-full bg-chart-4/10 px-2 py-0.5 text-[10px] font-semibold text-chart-4">
+                On
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-chart-4/30 bg-chart-4/5 p-6 text-center">
+            <Sparkles className="mx-auto mb-2 h-8 w-8 text-chart-4/60" />
+            <p className="text-sm font-medium text-foreground">AI Receptionist</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              When no one answers, an AI agent picks up — takes messages, shares business hours, and books appointments. Sounds like a real person.
+            </p>
+            <button
+              onClick={handleActivateAi}
+              disabled={activatingAi}
+              className="mt-3 rounded-lg bg-chart-4 px-5 py-2 text-xs font-semibold text-white hover:bg-chart-4/90 disabled:opacity-50"
+            >
+              {activatingAi ? (
+                <span className="flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />Setting up…</span>
+              ) : (
+                "Activate AI Assistant"
+              )}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Call Stats */}

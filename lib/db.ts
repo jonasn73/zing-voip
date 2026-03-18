@@ -217,18 +217,13 @@ export async function deleteReceptionist(receptionistId: string, userId: string)
 export async function getAuthUserByEmail(email: string): Promise<(User & { password_hash: string }) | null> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, email, name, phone, business_name, password_hash, created_at
+    SELECT id, email, name, phone, business_name, vapi_assistant_id, password_hash, created_at
     FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
   `
   const row = rows[0]
   if (!row) return null
   return {
-    id: String(row.id),
-    email: String(row.email),
-    name: String(row.name),
-    phone: String(row.phone),
-    business_name: String(row.business_name ?? "My Business"),
-    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    ...parseUserRow(row),
     password_hash: String(row.password_hash),
   }
 }
@@ -261,51 +256,45 @@ export async function createUser(params: {
   }
 }
 
-// Get user by phone number they own (joins phone_numbers → users)
-export async function getUserByPhoneNumber(toNumber: string): Promise<User | null> {
-  const sql = getSql()
-  const rows = await sql`
-    SELECT u.id, u.email, u.name, u.phone, u.business_name, u.created_at
-    FROM users u
-    JOIN phone_numbers pn ON pn.user_id = u.id
-    WHERE pn.number = ${toNumber} AND pn.status = 'active'
-    LIMIT 1
-  `
-  const row = rows[0]
-  if (!row) return null
+function parseUserRow(row: Record<string, unknown>): User {
   return {
     id: String(row.id),
     email: String(row.email),
     name: String(row.name),
     phone: String(row.phone),
     business_name: String(row.business_name ?? "My Business"),
+    vapi_assistant_id: row.vapi_assistant_id ? String(row.vapi_assistant_id) : null,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
+}
+
+// Get user by phone number they own (joins phone_numbers → users)
+export async function getUserByPhoneNumber(toNumber: string): Promise<User | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT u.id, u.email, u.name, u.phone, u.business_name, u.vapi_assistant_id, u.created_at
+    FROM users u
+    JOIN phone_numbers pn ON pn.user_id = u.id
+    WHERE pn.number = ${toNumber} AND pn.status = 'active'
+    LIMIT 1
+  `
+  return rows[0] ? parseUserRow(rows[0]) : null
 }
 
 // Get user by ID
 export async function getUser(userId: string): Promise<User | null> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, email, name, phone, business_name, created_at
+    SELECT id, email, name, phone, business_name, vapi_assistant_id, created_at
     FROM users WHERE id = ${userId} LIMIT 1
   `
-  const row = rows[0]
-  if (!row) return null
-  return {
-    id: String(row.id),
-    email: String(row.email),
-    name: String(row.name),
-    phone: String(row.phone),
-    business_name: String(row.business_name ?? "My Business"),
-    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
-  }
+  return rows[0] ? parseUserRow(rows[0]) : null
 }
 
-// Update current user profile (e.g. main line / cell number, name)
+// Update current user profile
 export async function updateUser(
   userId: string,
-  updates: { phone?: string; name?: string; business_name?: string }
+  updates: { phone?: string; name?: string; business_name?: string; vapi_assistant_id?: string | null }
 ): Promise<void> {
   const sql = getSql()
   if (updates.phone !== undefined) {
@@ -316,6 +305,9 @@ export async function updateUser(
   }
   if (updates.business_name !== undefined) {
     await sql`UPDATE users SET business_name = ${updates.business_name} WHERE id = ${userId}`
+  }
+  if (updates.vapi_assistant_id !== undefined) {
+    await sql`UPDATE users SET vapi_assistant_id = ${updates.vapi_assistant_id} WHERE id = ${userId}`
   }
 }
 

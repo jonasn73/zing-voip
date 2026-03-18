@@ -55,10 +55,41 @@ export async function POST(req: NextRequest) {
       }
 
       case "ai": {
-        texml.redirect(
-          { method: "POST" },
-          `${appUrl}/api/voice/telnyx/ai-assistant?userId=${userId}&callSid=${callSid}`
-        )
+        // If user has a Vapi assistant, transfer the caller to Vapi for natural AI conversation.
+        // Otherwise fall back to the basic TeXML Gather-based AI.
+        if (user?.vapi_assistant_id) {
+          try {
+            const { createVapiCall } = await import("@/lib/vapi")
+            const callerNumber = (formData.get("From") as string) || ""
+            if (callerNumber) {
+              await createVapiCall({
+                assistantId: user.vapi_assistant_id,
+                customerNumber: callerNumber,
+              })
+              // Vapi will call the customer back — hang up the current leg
+              texml.say("Please hold while I connect you with our assistant.")
+              texml.pause({ length: 2 })
+              texml.hangup()
+            } else {
+              // No caller number — fall back to basic AI
+              texml.redirect(
+                { method: "POST" },
+                `${appUrl}/api/voice/telnyx/ai-assistant?userId=${userId}&callSid=${callSid}`
+              )
+            }
+          } catch (vapiErr) {
+            console.error("[Telnyx] Vapi call failed, falling back to basic AI:", vapiErr)
+            texml.redirect(
+              { method: "POST" },
+              `${appUrl}/api/voice/telnyx/ai-assistant?userId=${userId}&callSid=${callSid}`
+            )
+          }
+        } else {
+          texml.redirect(
+            { method: "POST" },
+            `${appUrl}/api/voice/telnyx/ai-assistant?userId=${userId}&callSid=${callSid}`
+          )
+        }
         break
       }
 

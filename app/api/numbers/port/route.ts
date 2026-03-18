@@ -242,13 +242,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (!confirmSuccess) {
+      const cleanError = lastConfirmError.replace(/^Telnyx \d+:\s*/, "")
       return NextResponse.json({
         success: true,
         status: "draft",
-        message: loaFulfilled
-          ? "Port order created and documents submitted. We're processing your transfer — check Settings for updates."
-          : `Port order created but needs additional steps: ${lastConfirmError.replace(/^Telnyx \d+:\s*/, "")}`,
-        port: { number: e164, port_order_id: orderId, telnyx_status: "draft" },
+        message: `Port order created${loaFulfilled ? " and documents submitted" : ""}. Confirmation pending — ${cleanError}`,
+        port: { number: e164, port_order_id: orderId, telnyx_status: "draft", confirm_error: cleanError },
       })
     }
 

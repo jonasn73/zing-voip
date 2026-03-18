@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
           id: zingApp.id,
           friendly_name: zingApp.friendly_name,
           voice_url: zingApp.voice_url,
-          outbound_voice_profile_id: zingApp.outbound_voice_profile_id,
+          outbound: zingApp.outbound,
           active: zingApp.active,
         }
       : "NOT FOUND"

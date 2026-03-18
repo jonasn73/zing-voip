@@ -77,15 +77,24 @@ export async function getOrCreateTexmlApp(): Promise<string> {
 
   if (existing?.id) {
     // Make sure it has an outbound voice profile assigned
-    if (!existing.outbound_voice_profile_id) {
+    // The field is nested under outbound.outbound_voice_profile_id in the API
+    const currentProfileId = existing.outbound?.outbound_voice_profile_id
+    if (!currentProfileId) {
       try {
         const profileId = await getOrCreateOutboundVoiceProfile()
-        await fetch(`${TELNYX_BASE}/texml_applications/${existing.id}`, {
+        const patchRes = await fetch(`${TELNYX_BASE}/texml_applications/${existing.id}`, {
           method: "PATCH",
           headers: telnyxHeaders(),
-          body: JSON.stringify({ outbound_voice_profile_id: profileId }),
+          body: JSON.stringify({
+            outbound: { outbound_voice_profile_id: profileId },
+          }),
         })
-        console.log(`[Zing] Assigned outbound voice profile ${profileId} to TeXML app ${existing.id}`)
+        const patchBody = await patchRes.json().catch(() => ({}))
+        if (patchRes.ok) {
+          console.log(`[Zing] Assigned outbound voice profile ${profileId} to TeXML app ${existing.id}`)
+        } else {
+          console.error(`[Zing] Failed to PATCH outbound profile:`, patchBody)
+        }
       } catch (err) {
         console.error("[Zing] Failed to assign outbound voice profile:", err)
       }
@@ -107,7 +116,7 @@ export async function getOrCreateTexmlApp(): Promise<string> {
       voice_fallback_url: `${appUrl}/api/voice/telnyx/incoming`,
       status_callback_url: `${appUrl}/api/voice/telnyx/status`,
       status_callback_method: "POST",
-      outbound_voice_profile_id: profileId,
+      outbound: { outbound_voice_profile_id: profileId },
     }),
   })
   const createBody = await createRes.json()

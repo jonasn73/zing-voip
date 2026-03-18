@@ -132,11 +132,19 @@ export async function POST(req: NextRequest) {
     const boughtNumber = data?.data?.phone_numbers?.[0]?.phone_number || phone_number
 
     // Step 2: Configure the number with our TeXML webhook so calls route to the app
+    // Telnyx sometimes needs a moment after purchase before the number is configurable,
+    // so we try immediately, then retry after a short delay if it fails.
+    const texmlAppId = await getOrCreateTexmlApp()
     try {
-      const texmlAppId = await getOrCreateTexmlApp()
       await configureNumberVoice(boughtNumber, texmlAppId)
-    } catch (configErr) {
-      console.error("[Zing] Voice config failed (number still purchased):", configErr)
+    } catch {
+      // First attempt failed — wait 3 seconds and retry
+      await new Promise((r) => setTimeout(r, 3000))
+      try {
+        await configureNumberVoice(boughtNumber, texmlAppId)
+      } catch (retryErr) {
+        console.error("[Zing] Voice config failed after retry (number still purchased):", retryErr)
+      }
     }
 
     // Step 3: Save to database

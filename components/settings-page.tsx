@@ -238,6 +238,11 @@ export function SettingsPage() {
     return () => { cancelled = true }
   }, [])
 
+  // Auto-configure any unconfigured numbers with Telnyx TeXML webhook (runs silently)
+  useEffect(() => {
+    fetch("/api/numbers/configure", { method: "POST", credentials: "include" }).catch(() => {})
+  }, [])
+
   async function handleSearchNumbers() {
     setBuyLoading(true)
     setBuyError(null)

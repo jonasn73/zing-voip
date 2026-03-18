@@ -128,6 +128,8 @@ export function SettingsPage() {
   const [portCity, setPortCity] = useState("")
   const [portState, setPortState] = useState("")
   const [portZip, setPortZip] = useState("")
+  const [portInvoiceFile, setPortInvoiceFile] = useState<File | null>(null) // recent carrier bill (image or PDF)
+  const [portInvoiceBase64, setPortInvoiceBase64] = useState<string | null>(null) // base64 data to send to API
   const [editingMainLine, setEditingMainLine] = useState(false)
   const [mainLineEdit, setMainLineEdit] = useState("")
   const [mainLineSaveLoading, setMainLineSaveLoading] = useState(false)
@@ -244,6 +246,8 @@ export function SettingsPage() {
           city: portCity,
           state: portState,
           zip: portZip,
+          invoice_base64: portInvoiceBase64 || undefined,
+          invoice_filename: portInvoiceFile?.name || undefined,
         }),
       })
       const data = await res.json()
@@ -263,6 +267,23 @@ export function SettingsPage() {
     }
   }
 
+  // Convert a file to base64 string (for sending to our API)
+  function handleInvoiceFile(file: File | null) {
+    setPortInvoiceFile(file)
+    if (!file) {
+      setPortInvoiceBase64(null)
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // Strip the data:... prefix so we have pure base64
+      const base64 = result.includes(",") ? result.split(",")[1] : result
+      setPortInvoiceBase64(base64)
+    }
+    reader.readAsDataURL(file)
+  }
+
   function resetPortForm() {
     setPortStep(1)
     setPortNumber("")
@@ -275,6 +296,8 @@ export function SettingsPage() {
     setPortCity("")
     setPortState("")
     setPortZip("")
+    setPortInvoiceFile(null)
+    setPortInvoiceBase64(null)
     setPortSubmitted(false)
     setPortSubmitMessage("")
     setPortError(null)
@@ -831,9 +854,44 @@ export function SettingsPage() {
                           <label className="text-[11px] font-semibold text-muted-foreground">Account PIN (optional)</label>
                           <input type="text" placeholder="If your carrier requires a PIN" value={portPin} onChange={(e) => setPortPin(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                         </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[11px] font-semibold text-muted-foreground">Recent carrier bill / invoice</label>
+                          <p className="text-[10px] text-muted-foreground -mt-1">Upload a photo or PDF of your most recent phone bill. Required by carriers to verify the transfer.</p>
+                          <label className={cn(
+                            "flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-3 text-sm transition-colors",
+                            portInvoiceFile
+                              ? "border-primary/40 bg-primary/5 text-primary"
+                              : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:bg-primary/5"
+                          )}>
+                            {portInvoiceFile ? (
+                              <>
+                                <Check className="h-4 w-4 shrink-0 text-primary" />
+                                <span className="truncate text-xs font-medium">{portInvoiceFile.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); handleInvoiceFile(null) }}
+                                  className="ml-auto shrink-0 rounded-full p-0.5 hover:bg-primary/10"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="h-4 w-4 shrink-0" />
+                                <span className="text-xs">Tap to upload bill</span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*,.pdf"
+                              className="hidden"
+                              onChange={(e) => handleInvoiceFile(e.target.files?.[0] || null)}
+                            />
+                          </label>
+                        </div>
                         <div className="flex gap-2">
                           <button onClick={() => setPortStep(1)} className="flex-1 rounded-lg border border-border py-2.5 text-xs font-semibold text-foreground hover:bg-muted">Back</button>
-                          <button onClick={() => setPortStep(3)} disabled={!portAccountName || !portAuthPerson} className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">Next: Address</button>
+                          <button onClick={() => setPortStep(3)} disabled={!portAccountName || !portAuthPerson || !portInvoiceFile} className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">Next: Address</button>
                         </div>
                       </>
                     )}

@@ -106,6 +106,8 @@ export async function POST(req: NextRequest) {
       city,
       state,
       zip,
+      invoice_base64,
+      invoice_filename,
     } = body as {
       number: string
       account_name: string
@@ -116,6 +118,8 @@ export async function POST(req: NextRequest) {
       city: string
       state: string
       zip: string
+      invoice_base64?: string
+      invoice_filename?: string
     }
 
     if (!number) {
@@ -191,7 +195,7 @@ export async function POST(req: NextRequest) {
     })
     console.log(`[Zing] End-user info filled for order ${orderId}`)
 
-    // ── Step 4: Generate and attach LOA (Letter of Authorization) ──
+    // ── Step 4a: Generate and attach LOA (Letter of Authorization) ──
     // Telnyx auto-generates an LOA PDF pre-filled with the end-user info we just set.
     // Download it, upload it as a document, and attach it to the order.
     let loaFulfilled = false
@@ -212,6 +216,32 @@ export async function POST(req: NextRequest) {
     } catch (loaErr) {
       const loaMsg = loaErr instanceof Error ? loaErr.message : String(loaErr)
       console.error(`[Zing] LOA auto-fulfill failed for order ${orderId}: ${loaMsg}`)
+    }
+
+    // ── Step 4b: Upload and attach invoice (recent carrier bill) ──
+    // Telnyx requires a copy of the user's most recent phone bill from their current carrier.
+    let invoiceFulfilled = false
+    if (invoice_base64) {
+      try {
+        const invoiceBuffer = Buffer.from(invoice_base64, "base64")
+        const fname = invoice_filename || `invoice-${orderId}.pdf`
+        console.log(`[Zing] Uploading invoice for order ${orderId} (${invoiceBuffer.length} bytes, ${fname})...`)
+
+        const invoiceDocId = await uploadDocument(invoiceBuffer, fname)
+        console.log(`[Zing] Invoice uploaded as document ${invoiceDocId}`)
+
+        await telnyxFetch(`/porting_orders/${orderId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ documents: { invoice: invoiceDocId } }),
+        })
+        invoiceFulfilled = true
+        console.log(`[Zing] Invoice attached to order ${orderId}`)
+      } catch (invErr) {
+        const invMsg = invErr instanceof Error ? invErr.message : String(invErr)
+        console.error(`[Zing] Invoice upload failed for order ${orderId}: ${invMsg}`)
+      }
+    } else {
+      console.warn(`[Zing] No invoice provided for order ${orderId} — carrier may reject`)
     }
 
     // ── Step 5: Confirm (submit) the port order ──
@@ -243,10 +273,11 @@ export async function POST(req: NextRequest) {
 
     if (!confirmSuccess) {
       const cleanError = lastConfirmError.replace(/^Telnyx \d+:\s*/, "")
+      const docsNote = loaFulfilled && invoiceFulfilled ? " and documents submitted" : loaFulfilled ? " (LOA submitted, invoice missing)" : invoiceFulfilled ? " (invoice submitted, LOA missing)" : ""
       return NextResponse.json({
         success: true,
         status: "draft",
-        message: `Port order created${loaFulfilled ? " and documents submitted" : ""}. Confirmation pending — ${cleanError}`,
+        message: `Port order created${docsNote}. Confirmation pending — ${cleanError}`,
         port: { number: e164, port_order_id: orderId, telnyx_status: "draft", confirm_error: cleanError },
       })
     }

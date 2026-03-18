@@ -378,6 +378,7 @@ export function SettingsPage() {
             const isComplete = p.status === "ported"
             const isError = p.status === "exception"
             const isCancelled = p.status === "cancelled" || p.status === "cancel-pending"
+            const canCancel = p.status === "draft" || p.status === "exception"
             const badgeColor = isComplete ? "bg-success/10 text-success" : isError ? "bg-destructive/10 text-destructive" : isCancelled ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning"
             const iconBg = isComplete ? "bg-success/10" : isError ? "bg-destructive/10" : "bg-warning/10"
             const iconColor = isComplete ? "text-success" : isError ? "text-destructive" : "text-warning"
@@ -395,9 +396,28 @@ export function SettingsPage() {
                     <p className="text-xs text-muted-foreground">{p.statusLabel || "Transfer in progress"}</p>
                   </div>
                 </div>
-                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeColor)}>
-                  {isComplete ? "Active" : isError ? "Action needed" : isCancelled ? "Cancelled" : "Porting"}
-                </span>
+                <div className="flex items-center gap-2">
+                  {canCancel && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Cancel porting for ${formatPhoneDisplay(p.number)}?`)) return
+                        await fetch("/api/numbers/porting/cancel", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          credentials: "include",
+                          body: JSON.stringify({ order_id: p.id }),
+                        })
+                        setPortingNumbers((prev) => prev.filter((x) => x.id !== p.id))
+                      }}
+                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-destructive hover:bg-destructive/10"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeColor)}>
+                    {isComplete ? "Active" : isError ? "Action needed" : isCancelled ? "Cancelled" : "Porting"}
+                  </span>
+                </div>
               </div>
             )
           })}

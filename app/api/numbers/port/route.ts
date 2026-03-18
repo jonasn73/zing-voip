@@ -169,10 +169,10 @@ export async function POST(req: NextRequest) {
 
     // ── Step 3: Fill end-user info, service address, port type, and FOC date ──
     // FOC = Firm Order Commitment — the requested date for the port to go live.
-    // Set to 4 business days from now (skip weekends).
+    // Set to the next business day (earliest Telnyx typically allows).
     const focDate = new Date()
     let bdays = 0
-    while (bdays < 4) {
+    while (bdays < 1) {
       focDate.setDate(focDate.getDate() + 1)
       const dow = focDate.getDay()
       if (dow !== 0 && dow !== 6) bdays++

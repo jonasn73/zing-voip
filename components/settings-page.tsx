@@ -230,11 +230,11 @@ export function SettingsPage() {
         setBuyError(data.error || "Search failed")
         return
       }
-      const nums = (data.numbers || []).map((n: { number: string; friendly_name: string; type: string; monthly_cost: number }) => ({
+      const nums = (data.numbers || []).map((n: { number: string; friendly_name: string; type: string; monthly_cost: string | number }) => ({
         number: n.number,
         friendly: formatPhoneDisplay(n.number),
         type: n.type === "toll_free" ? "Toll-Free" : "Local",
-        price: `$${(n.monthly_cost || 1).toFixed(2)}/mo`,
+        price: `$${parseFloat(String(n.monthly_cost || "1")).toFixed(2)}/mo`,
       }))
       setAvailableNumbers(nums)
       if (nums.length === 0) setBuyError("No numbers found for this area code. Try another.")

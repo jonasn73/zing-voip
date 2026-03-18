@@ -62,23 +62,30 @@ async function telnyxFetchRaw(path: string): Promise<Buffer> {
   return Buffer.from(arrayBuf)
 }
 
-// Upload a document (PDF) to Telnyx and return the document ID
+// Upload a document (PDF) to Telnyx using base64 JSON and return the document ID
 async function uploadDocument(pdfBuffer: Buffer, filename: string): Promise<string> {
-  const formData = new FormData()
-  const blob = new Blob([pdfBuffer], { type: "application/pdf" })
-  formData.append("file", blob, filename)
+  const base64Content = pdfBuffer.toString("base64")
 
   const res = await fetch(`${TELNYX_BASE}/documents`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${getApiKey()}` },
-    body: formData,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getApiKey()}`,
+    },
+    body: JSON.stringify({
+      file: base64Content,
+      filename,
+      customer_reference: "zing-loa",
+    }),
   })
   const body = await res.json()
   if (!res.ok) {
-    const errMsg = body?.errors?.[0]?.detail || JSON.stringify(body)
-    throw new Error(`Document upload failed: ${errMsg}`)
+    const errMsg = body?.errors?.[0]?.detail || body?.errors?.[0]?.title || JSON.stringify(body)
+    throw new Error(`Document upload failed (${res.status}): ${errMsg}`)
   }
-  return body?.data?.id
+  const docId = body?.data?.id
+  if (!docId) throw new Error("Document upload returned no ID")
+  return docId
 }
 
 export async function POST(req: NextRequest) {
@@ -184,51 +191,27 @@ export async function POST(req: NextRequest) {
     })
     console.log(`[Zing] End-user info filled for order ${orderId}`)
 
-    // ── Step 4: Check & fulfill requirements (LOA, invoice, etc.) ──
+    // ── Step 4: Generate and attach LOA (Letter of Authorization) ──
+    // Telnyx auto-generates an LOA PDF pre-filled with the end-user info we just set.
+    // Download it, upload it as a document, and attach it to the order.
     let loaFulfilled = false
     try {
-      const reqRes = await telnyxFetch(`/porting_orders/${orderId}/requirements`)
-      const requirements = reqRes?.data || []
+      console.log(`[Zing] Downloading LOA template for order ${orderId}...`)
+      const loaPdf = await telnyxFetchRaw(`/porting_orders/${orderId}/loa_template`)
+      console.log(`[Zing] LOA template downloaded (${loaPdf.length} bytes)`)
 
-      for (const req of requirements) {
-        const status = req.requirement_status || ""
-        const fieldType = req.field_type || req.requirement_type?.type || ""
-        const reqTypeId = req.requirement_type?.id
-        const reqName = (req.requirement_type?.name || "").toLowerCase()
+      const docId = await uploadDocument(loaPdf, `loa-${orderId}.pdf`)
+      console.log(`[Zing] LOA uploaded as document ${docId}`)
 
-        // Skip already-approved requirements
-        if (status === "approved") continue
-
-        // Handle LOA document requirement — auto-generate from Telnyx template
-        if (fieldType === "document" && reqName.includes("loa")) {
-          try {
-            const loaPdf = await telnyxFetchRaw(`/porting_orders/${orderId}/loa_template`)
-            const docId = await uploadDocument(loaPdf, `loa-${orderId}.pdf`)
-            console.log(`[Zing] LOA uploaded as document ${docId}`)
-
-            // Fulfill the LOA requirement on the order
-            if (reqTypeId && docId) {
-              await telnyxFetch(`/porting_orders/${orderId}`, {
-                method: "PATCH",
-                body: JSON.stringify({
-                  documents: { loa: docId },
-                }),
-              })
-              loaFulfilled = true
-              console.log(`[Zing] LOA requirement fulfilled for order ${orderId}`)
-            }
-          } catch (loaErr) {
-            console.error("[Zing] LOA auto-fulfill failed:", loaErr instanceof Error ? loaErr.message : loaErr)
-          }
-        }
-
-        // Handle invoice requirement — skip for now (many carriers don't require it)
-        if (fieldType === "document" && reqName.includes("invoice")) {
-          console.log(`[Zing] Invoice requirement exists for order ${orderId} — skipping (optional for most carriers)`)
-        }
-      }
-    } catch (reqErr) {
-      console.error("[Zing] Requirements check failed:", reqErr instanceof Error ? reqErr.message : reqErr)
+      await telnyxFetch(`/porting_orders/${orderId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ documents: { loa: docId } }),
+      })
+      loaFulfilled = true
+      console.log(`[Zing] LOA attached to order ${orderId}`)
+    } catch (loaErr) {
+      const loaMsg = loaErr instanceof Error ? loaErr.message : String(loaErr)
+      console.error(`[Zing] LOA auto-fulfill failed for order ${orderId}: ${loaMsg}`)
     }
 
     // ── Step 5: Confirm (submit) the port order ──

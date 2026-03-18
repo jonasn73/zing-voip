@@ -167,24 +167,12 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[Zing] Port order created: ${orderId} for ${e164}`)
 
-    // ── Step 3: Fill end-user info, service address, port type, and FOC date ──
-    // FOC = Firm Order Commitment — the requested date for the port to go live.
-    // Set to the next business day (earliest Telnyx typically allows).
-    const focDate = new Date()
-    let bdays = 0
-    while (bdays < 1) {
-      focDate.setDate(focDate.getDate() + 1)
-      const dow = focDate.getDay()
-      if (dow !== 0 && dow !== 6) bdays++
-    }
-    const focDatetime = focDate.toISOString()
-
+    // ── Step 3: Fill end-user info, service address, and port type ──
     await telnyxFetch(`/porting_orders/${orderId}`, {
       method: "PATCH",
       body: JSON.stringify({
         misc: {
           type: "full",
-          foc_datetime_requested: focDatetime,
         },
         end_user: {
           admin: {
@@ -206,6 +194,44 @@ export async function POST(req: NextRequest) {
       }),
     })
     console.log(`[Zing] End-user info filled for order ${orderId}`)
+
+    // ── Step 3b: Set FOC date (activation_settings, separate PATCH) ──
+    // FOC = Firm Order Commitment — the requested date for the port to go live.
+    // Try to fetch allowed FOC windows first; fall back to next business day.
+    let focDatetime: string
+    try {
+      const focWindows = await telnyxFetch(`/porting_orders/${orderId}/allowed_foc_windows`)
+      const windows = focWindows?.data || []
+      if (windows.length > 0) {
+        // Use the earliest allowed window
+        focDatetime = windows[0].started_at || windows[0].foc_datetime
+        console.log(`[Zing] Using earliest allowed FOC window: ${focDatetime}`)
+      } else {
+        throw new Error("No allowed FOC windows returned")
+      }
+    } catch (focErr) {
+      // Fallback: next business day at noon UTC
+      const focDate = new Date()
+      let bdays = 0
+      while (bdays < 1) {
+        focDate.setDate(focDate.getDate() + 1)
+        const dow = focDate.getDay()
+        if (dow !== 0 && dow !== 6) bdays++
+      }
+      focDate.setUTCHours(12, 0, 0, 0)
+      focDatetime = focDate.toISOString()
+      console.log(`[Zing] FOC windows unavailable (${focErr instanceof Error ? focErr.message : focErr}), using fallback: ${focDatetime}`)
+    }
+
+    await telnyxFetch(`/porting_orders/${orderId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        activation_settings: {
+          foc_datetime_requested: focDatetime,
+        },
+      }),
+    })
+    console.log(`[Zing] FOC date set for order ${orderId}: ${focDatetime}`)
 
     // ── Step 4a: Generate and attach LOA (Letter of Authorization) ──
     // Telnyx auto-generates an LOA PDF pre-filled with the end-user info we just set.

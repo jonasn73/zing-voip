@@ -210,22 +210,64 @@ export function SettingsPage() {
     return () => { cancelled = true }
   }, [])
 
-  const availableNumbers = [
-    { number: `(${selectedAreaCode || "555"}) 100-4001`, type: "Local", price: "$2.99/mo" },
-    { number: `(${selectedAreaCode || "555"}) 100-4022`, type: "Local", price: "$2.99/mo" },
-    { number: `(${selectedAreaCode || "555"}) 888-7100`, type: "Toll-Free", price: "$4.99/mo" },
-    { number: `(${selectedAreaCode || "555"}) 100-4055`, type: "Local", price: "$2.99/mo" },
-  ]
+  const [availableNumbers, setAvailableNumbers] = useState<{ number: string; friendly: string; type: string; price: string }[]>([])
+  const [buyError, setBuyError] = useState<string | null>(null)
+  const [buyingNumber, setBuyingNumber] = useState<string | null>(null) // number currently being purchased
+  const [buySuccess, setBuySuccess] = useState<string | null>(null) // number just purchased
 
   // Business numbers = numbers customers call (bought or ported). Your main line (cell) is in the profile above.
   const myNumbers: { number: string; label: string; type: string; status: "active" }[] = []
 
-  function handleSearchNumbers() {
+  async function handleSearchNumbers() {
     setBuyLoading(true)
-    setTimeout(() => {
-      setBuyLoading(false)
+    setBuyError(null)
+    setAvailableNumbers([])
+    setBuySuccess(null)
+    try {
+      const res = await fetch(`/api/numbers/telnyx?area_code=${selectedAreaCode}&type=local`, { credentials: "include" })
+      const data = await res.json()
+      if (!res.ok) {
+        setBuyError(data.error || "Search failed")
+        return
+      }
+      const nums = (data.numbers || []).map((n: { number: string; friendly_name: string; type: string; monthly_cost: number }) => ({
+        number: n.number,
+        friendly: formatPhoneDisplay(n.number),
+        type: n.type === "toll_free" ? "Toll-Free" : "Local",
+        price: `$${(n.monthly_cost || 1).toFixed(2)}/mo`,
+      }))
+      setAvailableNumbers(nums)
+      if (nums.length === 0) setBuyError("No numbers found for this area code. Try another.")
       setBuyStep("results")
-    }, 800)
+    } catch {
+      setBuyError("Search failed. Try again.")
+    } finally {
+      setBuyLoading(false)
+    }
+  }
+
+  async function handleBuyNumber(phoneNumber: string) {
+    setBuyingNumber(phoneNumber)
+    setBuyError(null)
+    try {
+      const res = await fetch("/api/numbers/telnyx/buy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ phone_number: phoneNumber }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setBuyError(data.error || "Failed to buy number")
+        return
+      }
+      setBuySuccess(phoneNumber)
+      setAvailableNumbers((prev) => prev.filter((n) => n.number !== phoneNumber))
+    } catch {
+      setBuyError("Failed to buy number. Try again.")
+    } finally {
+      setBuyingNumber(null)
+    }
   }
 
   async function handlePortSubmit() {
@@ -743,31 +785,59 @@ export function SettingsPage() {
                 ) : (
                   <div className="flex flex-col gap-2">
                     <div className="mb-1 flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">Available numbers in ({selectedAreaCode})</p>
+                      <p className="text-xs text-muted-foreground">
+                        {availableNumbers.length} number{availableNumbers.length !== 1 ? "s" : ""} in ({selectedAreaCode})
+                      </p>
                       <button
-                        onClick={() => setBuyStep("search")}
+                        onClick={() => { setBuyStep("search"); setAvailableNumbers([]); setBuyError(null); setBuySuccess(null) }}
                         className="text-[11px] font-medium text-primary hover:underline"
                       >
                         Change
                       </button>
                     </div>
-                    {availableNumbers.map((num) => (
-                      <button
-                        key={num.number}
-                        className="flex items-center justify-between rounded-lg border border-border bg-secondary p-3 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{num.number}</p>
-                          <p className="text-[11px] text-muted-foreground">{num.type}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-foreground">{num.price}</span>
-                          <span className="rounded-md bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
-                            Select
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+
+                    {buySuccess && (
+                      <div className="flex items-center gap-2 rounded-lg bg-success/10 p-3">
+                        <Check className="h-4 w-4 text-success" />
+                        <p className="text-xs font-medium text-success">
+                          {formatPhoneDisplay(buySuccess)} purchased! It will appear in your business numbers shortly.
+                        </p>
+                      </div>
+                    )}
+
+                    {buyError && <p className="text-xs text-destructive">{buyError}</p>}
+
+                    <div className="max-h-[300px] overflow-y-auto flex flex-col gap-2">
+                      {availableNumbers.map((num) => (
+                        <button
+                          key={num.number}
+                          onClick={() => handleBuyNumber(num.number)}
+                          disabled={buyingNumber !== null}
+                          className="flex items-center justify-between rounded-lg border border-border bg-secondary p-3 text-left transition-all hover:border-primary/30 hover:bg-primary/5 disabled:opacity-50"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{num.friendly}</p>
+                            <p className="text-[11px] text-muted-foreground">{num.type}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-foreground">{num.price}</span>
+                            <span className="rounded-md bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                              {buyingNumber === num.number ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                "Buy"
+                              )}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {availableNumbers.length === 0 && !buyError && (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

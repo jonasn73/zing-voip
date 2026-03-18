@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
         national_destination_code: areaCode,
         phone_number_type: type,
         features: ["voice"],
-        limit: 10,
+        limit: 25,
       },
     })
 

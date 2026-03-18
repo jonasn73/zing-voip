@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Volume2,
   Phone,
+  PhoneForwarded,
   ArrowRightLeft,
   Plus,
   Hash,
@@ -33,6 +34,21 @@ interface SettingToggle {
   icon: typeof Moon
   enabled: boolean
   iconColor: string
+}
+
+// Receptionist fetched from /api/receptionists
+interface ReceptionistInfo {
+  id: string
+  name: string
+  phone: string
+  initials: string
+  color: string
+}
+
+// Per-number routing config fetched from /api/routing?all=true
+interface NumberRouting {
+  business_number: string | null
+  selected_receptionist_id: string | null
 }
 
 // Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567. Safe for null/undefined or non-string (e.g. from API).
@@ -117,6 +133,12 @@ export function SettingsPage() {
   const [mainLineSaveLoading, setMainLineSaveLoading] = useState(false)
   const [mainLineError, setMainLineError] = useState<string | null>(null)
 
+  // Per-number routing state
+  const [receptionistsList, setReceptionistsList] = useState<ReceptionistInfo[]>([])
+  const [numberRoutings, setNumberRoutings] = useState<NumberRouting[]>([])
+  const [routingModalNumber, setRoutingModalNumber] = useState<string | null>(null) // E.164 number being configured, or null if closed
+  const [routingSaving, setRoutingSaving] = useState(false)
+
   // Load current user so we can show main line (cell) in profile
   useEffect(() => {
     let cancelled = false
@@ -129,6 +151,43 @@ export function SettingsPage() {
             email: data.data.user.email ?? "",
             phone: data.data.user.phone ?? "",
           })
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Load receptionists for per-number routing picker
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/receptionists", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.data)) {
+          setReceptionistsList(data.data.map((r: Record<string, string>) => ({
+            id: r.id,
+            name: r.name,
+            phone: r.phone,
+            initials: r.initials || r.name?.slice(0, 2)?.toUpperCase() || "??",
+            color: r.color || "bg-primary",
+          })))
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Load all routing configs (default + per-number) so we can show which receptionist is assigned
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/routing?all=true", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { configs: [] }))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.configs)) {
+          setNumberRoutings(data.configs.map((c: Record<string, string | null>) => ({
+            business_number: c.business_number,
+            selected_receptionist_id: c.selected_receptionist_id,
+          })))
         }
       })
       .catch(() => {})
@@ -219,6 +278,55 @@ export function SettingsPage() {
     setPortSubmitted(false)
     setPortSubmitMessage("")
     setPortError(null)
+  }
+
+  // Look up which receptionist is assigned to a specific business number
+  function getRoutingForNumber(e164: string): { receptionist: ReceptionistInfo | null; isDefault: boolean } {
+    const specific = numberRoutings.find((r) => r.business_number === e164)
+    if (specific) {
+      const rec = receptionistsList.find((r) => r.id === specific.selected_receptionist_id) || null
+      return { receptionist: rec, isDefault: false }
+    }
+    // No specific config → uses default
+    const defaultConfig = numberRoutings.find((r) => r.business_number === null)
+    if (defaultConfig?.selected_receptionist_id) {
+      const rec = receptionistsList.find((r) => r.id === defaultConfig.selected_receptionist_id) || null
+      return { receptionist: rec, isDefault: true }
+    }
+    return { receptionist: null, isDefault: true }
+  }
+
+  // Save a receptionist assignment for a specific number
+  async function saveNumberRouting(e164: string, receptionistId: string | null) {
+    setRoutingSaving(true)
+    try {
+      const res = await fetch("/api/routing", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          business_number: e164,
+          selected_receptionist_id: receptionistId,
+        }),
+      })
+      if (res.ok) {
+        // Update local state to reflect the change
+        setNumberRoutings((prev) => {
+          const existing = prev.find((r) => r.business_number === e164)
+          if (existing) {
+            return prev.map((r) =>
+              r.business_number === e164 ? { ...r, selected_receptionist_id: receptionistId } : r
+            )
+          }
+          return [...prev, { business_number: e164, selected_receptionist_id: receptionistId }]
+        })
+        setRoutingModalNumber(null)
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setRoutingSaving(false)
+    }
   }
 
   function toggleSetting(id: string) {
@@ -348,25 +456,36 @@ export function SettingsPage() {
           Numbers your customers call (buy or port). Calls to these numbers ring your main line above or a receptionist.
         </p>
         <div className="flex flex-col gap-2">
-          {myNumbers.map((num) => (
-            <div
-              key={num.number}
-              className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                  <Phone className="h-4 w-4 text-primary" />
+          {myNumbers.map((num) => {
+            const routing = getRoutingForNumber(num.number)
+            return (
+              <button
+                key={num.number}
+                onClick={() => setRoutingModalNumber(num.number)}
+                className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                    <Phone className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{num.number}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {routing.receptionist
+                        ? `→ ${routing.receptionist.name}${routing.isDefault ? " (default)" : ""}`
+                        : `→ Your Phone${routing.isDefault ? " (default)" : ""}`}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">{num.number}</p>
-                  <p className="text-xs text-muted-foreground">{num.label} &middot; {num.type}</p>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
+                    Active
+                  </span>
+                  <PhoneForwarded className="h-4 w-4 text-muted-foreground" />
                 </div>
-              </div>
-              <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
-                Active
-              </span>
-            </div>
-          ))}
+              </button>
+            )
+          })}
 
           {portingLoading && portingNumbers.length === 0 ? (
             <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-6">
@@ -382,10 +501,17 @@ export function SettingsPage() {
             const badgeColor = isComplete ? "bg-success/10 text-success" : isError ? "bg-destructive/10 text-destructive" : isCancelled ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning"
             const iconBg = isComplete ? "bg-success/10" : isError ? "bg-destructive/10" : "bg-warning/10"
             const iconColor = isComplete ? "text-success" : isError ? "text-destructive" : "text-warning"
+            // For completed ports, show routing info and make tappable
+            const routing = isComplete ? getRoutingForNumber(p.number) : null
+            const Wrapper = isComplete ? "button" as const : "div" as const
             return (
-              <div
+              <Wrapper
                 key={p.id || p.number}
-                className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
+                {...(isComplete ? { onClick: () => setRoutingModalNumber(p.number) } : {})}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left",
+                  isComplete && "transition-all hover:border-primary/30 hover:bg-primary/5"
+                )}
               >
                 <div className="flex items-center gap-3">
                   <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", iconBg)}>
@@ -393,13 +519,20 @@ export function SettingsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(p.number)}</p>
-                    <p className="text-xs text-muted-foreground">{p.statusLabel || "Transfer in progress"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isComplete && routing
+                        ? routing.receptionist
+                          ? `→ ${routing.receptionist.name}${routing.isDefault ? " (default)" : ""}`
+                          : `→ Your Phone${routing.isDefault ? " (default)" : ""}`
+                        : p.statusLabel || "Transfer in progress"}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {canCancel && (
                     <button
-                      onClick={async () => {
+                      onClick={async (e) => {
+                        e.stopPropagation()
                         if (!confirm(`Cancel porting for ${formatPhoneDisplay(p.number)}?`)) return
                         try {
                           const res = await fetch("/api/numbers/porting/cancel", {
@@ -426,8 +559,9 @@ export function SettingsPage() {
                   <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", badgeColor)}>
                     {isComplete ? "Active" : isError ? "Action needed" : isCancelled ? "Cancelled" : "Porting"}
                   </span>
+                  {isComplete && <PhoneForwarded className="h-4 w-4 text-muted-foreground" />}
                 </div>
-              </div>
+              </Wrapper>
             )
           })}
 
@@ -742,6 +876,127 @@ export function SettingsPage() {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Per-number routing picker modal */}
+      {routingModalNumber && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
+            onClick={() => setRoutingModalNumber(null)}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Route Calls</h3>
+                <p className="text-xs text-muted-foreground">{formatPhoneDisplay(routingModalNumber)}</p>
+              </div>
+              <button
+                onClick={() => setRoutingModalNumber(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col py-1" role="listbox" aria-label="Select who receives calls for this number">
+              {/* Option: Your Phone (owner) */}
+              {(() => {
+                const currentRouting = getRoutingForNumber(routingModalNumber)
+                const isOwnerSelected = !currentRouting.receptionist && !currentRouting.isDefault
+                const isOwnerDefault = !currentRouting.receptionist && currentRouting.isDefault
+                return (
+                  <button
+                    onClick={() => saveNumberRouting(routingModalNumber, null)}
+                    disabled={routingSaving}
+                    role="option"
+                    aria-selected={isOwnerSelected}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 text-left transition-colors disabled:opacity-50",
+                      isOwnerSelected || isOwnerDefault ? "bg-secondary/50" : "hover:bg-secondary"
+                    )}
+                  >
+                    <div className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-full",
+                      isOwnerSelected || isOwnerDefault ? "bg-foreground/15" : "bg-muted-foreground/15"
+                    )}>
+                      <User className="h-4 w-4 text-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium leading-tight text-foreground">Your Phone</p>
+                      <p className="text-[11px] text-muted-foreground">{formatPhoneDisplay(user?.phone)} (owner)</p>
+                    </div>
+                    {(isOwnerSelected || isOwnerDefault) && (
+                      <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold text-foreground">
+                        {isOwnerDefault ? "Default" : "Selected"}
+                      </span>
+                    )}
+                  </button>
+                )
+              })()}
+
+              {receptionistsList.length > 0 && (
+                <>
+                  <div className="mx-4 border-b border-border" />
+                  <p className="px-4 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Receptionists
+                  </p>
+                </>
+              )}
+
+              {receptionistsList.map((rec) => {
+                const currentRouting = getRoutingForNumber(routingModalNumber)
+                const isSelected = currentRouting.receptionist?.id === rec.id
+                return (
+                  <button
+                    key={rec.id}
+                    onClick={() => saveNumberRouting(routingModalNumber, rec.id)}
+                    disabled={routingSaving}
+                    role="option"
+                    aria-selected={isSelected}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 text-left transition-colors disabled:opacity-50",
+                      isSelected ? "bg-primary/5" : "hover:bg-secondary"
+                    )}
+                  >
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback className={cn(rec.color, "text-primary-foreground text-[10px] font-semibold")}>
+                        {rec.initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium leading-tight text-foreground">{rec.name}</p>
+                      <p className="text-[11px] text-muted-foreground">{formatPhoneDisplay(rec.phone)}</p>
+                    </div>
+                    {isSelected && (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                        Selected
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+
+              {receptionistsList.length === 0 && (
+                <div className="px-4 py-4 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    No receptionists added yet. Add one from the dashboard to route calls to them.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {routingSaving && (
+              <div className="flex items-center justify-center gap-2 border-t border-border py-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                <span className="text-xs text-muted-foreground">Saving…</span>
               </div>
             )}
           </div>

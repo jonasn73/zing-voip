@@ -31,6 +31,7 @@ export type FallbackType = "owner" | "ai" | "voicemail"
 export interface RoutingConfig {
   id: string
   user_id: string
+  business_number: string | null // null = default/global config; E.164 = config for that specific number
   selected_receptionist_id: string | null // null = route to owner
   fallback_type: FallbackType
   ai_greeting: string
@@ -100,6 +101,7 @@ export interface UpdateRoutingRequest {
   fallback_type?: FallbackType
   ai_greeting?: string
   ring_timeout_seconds?: number
+  business_number?: string | null // E.164 number for per-number routing; omit or null for the default config
 }
 
 export interface BuyNumberRequest {

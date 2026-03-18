@@ -23,18 +23,12 @@ function getSql(): ReturnType<typeof neon> {
 
 // --- Query functions ---
 
-// Get routing config for a user
-export async function getRoutingConfig(userId: string): Promise<RoutingConfig | null> {
-  const sql = getSql()
-  const rows = await sql`
-    SELECT id, user_id, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
-    FROM routing_config WHERE user_id = ${userId} LIMIT 1
-  `
-  const row = rows[0]
-  if (!row) return null
+// Parse a routing_config row into a RoutingConfig object
+function parseRoutingRow(row: Record<string, unknown>): RoutingConfig {
   return {
     id: String(row.id),
     user_id: String(row.user_id),
+    business_number: row.business_number != null ? String(row.business_number) : null,
     selected_receptionist_id: row.selected_receptionist_id != null ? String(row.selected_receptionist_id) : null,
     fallback_type: row.fallback_type as RoutingConfig["fallback_type"],
     ai_greeting: String(row.ai_greeting ?? ""),
@@ -43,34 +37,121 @@ export async function getRoutingConfig(userId: string): Promise<RoutingConfig | 
   }
 }
 
-// Update routing config (only updates fields that are present in updates; null clears e.g. selected_receptionist_id)
+// Get the default (global) routing config for a user (business_number IS NULL)
+export async function getRoutingConfig(userId: string): Promise<RoutingConfig | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    FROM routing_config WHERE user_id = ${userId} AND business_number IS NULL LIMIT 1
+  `
+  return rows[0] ? parseRoutingRow(rows[0]) : null
+}
+
+// Get routing config for a specific business number, falling back to the default config
+export async function getRoutingConfigForNumber(userId: string, businessNumber: string): Promise<RoutingConfig | null> {
+  const sql = getSql()
+  // Try number-specific config first
+  const specific = await sql`
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    FROM routing_config WHERE user_id = ${userId} AND business_number = ${businessNumber} LIMIT 1
+  `
+  if (specific[0]) return parseRoutingRow(specific[0])
+  // Fall back to default config
+  return getRoutingConfig(userId)
+}
+
+// Get all routing configs for a user (default + per-number)
+export async function getAllRoutingConfigs(userId: string): Promise<RoutingConfig[]> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    FROM routing_config WHERE user_id = ${userId} ORDER BY business_number NULLS FIRST
+  `
+  return rows.map(parseRoutingRow)
+}
+
+// Update routing config (only updates fields that are present)
+// If businessNumber is provided, updates (or creates) the config for that number
 export async function updateRoutingConfig(
   userId: string,
-  updates: Partial<Pick<RoutingConfig, "selected_receptionist_id" | "fallback_type" | "ai_greeting" | "ring_timeout_seconds">>
+  updates: Partial<Pick<RoutingConfig, "selected_receptionist_id" | "fallback_type" | "ai_greeting" | "ring_timeout_seconds">>,
+  businessNumber?: string | null
 ): Promise<void> {
   const sql = getSql()
+  const bn = businessNumber ?? null
+
+  // Upsert: create per-number config if it doesn't exist yet
+  if (bn) {
+    const existing = await sql`
+      SELECT id FROM routing_config WHERE user_id = ${userId} AND business_number = ${bn} LIMIT 1
+    `
+    if (!existing[0]) {
+      await sql`
+        INSERT INTO routing_config (id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
+        VALUES (${crypto.randomUUID()}, ${userId}, ${bn}, ${updates.selected_receptionist_id ?? null}, ${updates.fallback_type ?? "owner"}, ${updates.ai_greeting ?? ""}, ${updates.ring_timeout_seconds ?? 30}, now())
+      `
+      return
+    }
+  }
+
+  // Update existing row
+  const whereClause = bn
+    ? sql`user_id = ${userId} AND business_number = ${bn}`
+    : sql`user_id = ${userId} AND business_number IS NULL`
+
   if (updates.selected_receptionist_id !== undefined) {
-    await sql`UPDATE routing_config SET selected_receptionist_id = ${updates.selected_receptionist_id}, updated_at = now() WHERE user_id = ${userId}`
+    await sql`UPDATE routing_config SET selected_receptionist_id = ${updates.selected_receptionist_id}, updated_at = now() WHERE ${whereClause}`
   }
   if (updates.fallback_type !== undefined) {
-    await sql`UPDATE routing_config SET fallback_type = ${updates.fallback_type}, updated_at = now() WHERE user_id = ${userId}`
+    await sql`UPDATE routing_config SET fallback_type = ${updates.fallback_type}, updated_at = now() WHERE ${whereClause}`
   }
   if (updates.ai_greeting !== undefined) {
-    await sql`UPDATE routing_config SET ai_greeting = ${updates.ai_greeting}, updated_at = now() WHERE user_id = ${userId}`
+    await sql`UPDATE routing_config SET ai_greeting = ${updates.ai_greeting}, updated_at = now() WHERE ${whereClause}`
   }
   if (updates.ring_timeout_seconds !== undefined) {
-    await sql`UPDATE routing_config SET ring_timeout_seconds = ${updates.ring_timeout_seconds}, updated_at = now() WHERE user_id = ${userId}`
+    await sql`UPDATE routing_config SET ring_timeout_seconds = ${updates.ring_timeout_seconds}, updated_at = now() WHERE ${whereClause}`
+  }
+}
+
+// Delete a per-number routing config (reverts to default)
+export async function deleteRoutingConfigForNumber(userId: string, businessNumber: string): Promise<void> {
+  const sql = getSql()
+  await sql`DELETE FROM routing_config WHERE user_id = ${userId} AND business_number = ${businessNumber}`
+}
+
+// Parse a receptionists row from the database
+function parseReceptionistRow(row: Record<string, unknown>): Receptionist {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    name: String(row.name),
+    phone: String(row.phone),
+    initials: String(row.initials ?? ""),
+    color: String(row.color ?? "bg-primary"),
+    rate_per_minute: Number(row.rate_per_minute ?? 0.25),
+    is_active: row.is_active !== false,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
 }
 
 // Get a receptionist by ID
 export async function getReceptionist(receptionistId: string): Promise<Receptionist | null> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at
+    FROM receptionists WHERE id = ${receptionistId} LIMIT 1
+  `
+  return rows[0] ? parseReceptionistRow(rows[0]) : null
 }
 
 // Get all receptionists for a user
 export async function getReceptionists(userId: string): Promise<Receptionist[]> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at
+    FROM receptionists WHERE user_id = ${userId} ORDER BY created_at ASC
+  `
+  return rows.map(parseReceptionistRow)
 }
 
 // Create a receptionist
@@ -79,7 +160,30 @@ export async function insertReceptionist(params: {
   name: string
   phone: string
 }): Promise<Receptionist> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  const nameParts = params.name.trim().split(/\s+/)
+  const initials = nameParts.length >= 2
+    ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+    : params.name.slice(0, 2).toUpperCase()
+  const colors = ["bg-primary", "bg-chart-2", "bg-chart-5", "bg-chart-3", "bg-chart-4"]
+  const color = colors[Math.floor(Math.random() * colors.length)]
+
+  await sql`
+    INSERT INTO receptionists (id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at)
+    VALUES (${id}, ${params.user_id}, ${params.name}, ${params.phone}, ${initials}, ${color}, 0.25, true, now())
+  `
+  return {
+    id,
+    user_id: params.user_id,
+    name: params.name,
+    phone: params.phone,
+    initials,
+    color,
+    rate_per_minute: 0.25,
+    is_active: true,
+    created_at: new Date().toISOString(),
+  }
 }
 
 // Update a receptionist
@@ -88,12 +192,25 @@ export async function updateReceptionist(
   userId: string,
   updates: Partial<Pick<Receptionist, "name" | "phone" | "is_active" | "rate_per_minute">>
 ): Promise<void> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  if (updates.name !== undefined) {
+    await sql`UPDATE receptionists SET name = ${updates.name} WHERE id = ${receptionistId} AND user_id = ${userId}`
+  }
+  if (updates.phone !== undefined) {
+    await sql`UPDATE receptionists SET phone = ${updates.phone} WHERE id = ${receptionistId} AND user_id = ${userId}`
+  }
+  if (updates.is_active !== undefined) {
+    await sql`UPDATE receptionists SET is_active = ${updates.is_active} WHERE id = ${receptionistId} AND user_id = ${userId}`
+  }
+  if (updates.rate_per_minute !== undefined) {
+    await sql`UPDATE receptionists SET rate_per_minute = ${updates.rate_per_minute} WHERE id = ${receptionistId} AND user_id = ${userId}`
+  }
 }
 
 // Delete a receptionist
 export async function deleteReceptionist(receptionistId: string, userId: string): Promise<void> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  await sql`DELETE FROM receptionists WHERE id = ${receptionistId} AND user_id = ${userId}`
 }
 
 // Get user by email (for auth login; includes password_hash)

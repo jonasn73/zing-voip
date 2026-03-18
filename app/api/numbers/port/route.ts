@@ -167,12 +167,24 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[Zing] Port order created: ${orderId} for ${e164}`)
 
-    // ── Step 3: Fill end-user info, service address, and port type ──
+    // ── Step 3: Fill end-user info, service address, port type, and FOC date ──
+    // FOC = Firm Order Commitment — the requested date for the port to go live.
+    // Set to 4 business days from now (skip weekends).
+    const focDate = new Date()
+    let bdays = 0
+    while (bdays < 4) {
+      focDate.setDate(focDate.getDate() + 1)
+      const dow = focDate.getDay()
+      if (dow !== 0 && dow !== 6) bdays++
+    }
+    const focDatetime = focDate.toISOString()
+
     await telnyxFetch(`/porting_orders/${orderId}`, {
       method: "PATCH",
       body: JSON.stringify({
         misc: {
           type: "full",
+          foc_datetime_requested: focDatetime,
         },
         end_user: {
           admin: {

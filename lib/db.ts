@@ -261,11 +261,26 @@ export async function createUser(params: {
   }
 }
 
-// Get user by phone number they own
+// Get user by phone number they own (joins phone_numbers → users)
 export async function getUserByPhoneNumber(toNumber: string): Promise<User | null> {
-  // Look up which user owns the Twilio number being called
-  // JOIN phone_numbers ON users
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT u.id, u.email, u.name, u.phone, u.business_name, u.created_at
+    FROM users u
+    JOIN phone_numbers pn ON pn.user_id = u.id
+    WHERE pn.number = ${toNumber} AND pn.status = 'active'
+    LIMIT 1
+  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: String(row.id),
+    email: String(row.email),
+    name: String(row.name),
+    phone: String(row.phone),
+    business_name: String(row.business_name ?? "My Business"),
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }
 }
 
 // Get user by ID
@@ -325,9 +340,67 @@ export async function getCallLogs(
   throw new Error("Not implemented - connect your database")
 }
 
+function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    twilio_sid: String(row.twilio_sid ?? ""),
+    number: String(row.number),
+    friendly_name: String(row.friendly_name ?? ""),
+    label: String(row.label ?? "Business Line"),
+    type: (row.type as "local" | "toll-free") || "local",
+    status: (row.status as "active" | "pending" | "porting") || "active",
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }
+}
+
 // Get phone numbers for a user
 export async function getPhoneNumbers(userId: string): Promise<PhoneNumber[]> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, twilio_sid, number, friendly_name, label, type, status, created_at
+    FROM phone_numbers WHERE user_id = ${userId} ORDER BY created_at ASC
+  `
+  return rows.map(parsePhoneNumberRow)
+}
+
+// Insert a phone number (after purchase or port)
+export async function insertPhoneNumber(params: {
+  user_id: string
+  number: string
+  friendly_name: string
+  label?: string
+  type?: "local" | "toll-free"
+  status?: "active" | "pending" | "porting"
+  twilio_sid?: string
+}): Promise<PhoneNumber> {
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  await sql`
+    INSERT INTO phone_numbers (id, user_id, twilio_sid, number, friendly_name, label, type, status, created_at)
+    VALUES (
+      ${id},
+      ${params.user_id},
+      ${params.twilio_sid || ""},
+      ${params.number},
+      ${params.friendly_name},
+      ${params.label || "Business Line"},
+      ${params.type || "local"},
+      ${params.status || "active"},
+      now()
+    )
+  `
+  return {
+    id,
+    user_id: params.user_id,
+    twilio_sid: params.twilio_sid || "",
+    number: params.number,
+    friendly_name: params.friendly_name,
+    label: params.label || "Business Line",
+    type: params.type || "local",
+    status: params.status || "active",
+    created_at: new Date().toISOString(),
+  }
 }
 
 // Get a phone number by number and status (e.g. for porting webhook)
@@ -335,7 +408,12 @@ export async function getPhoneNumberByNumberAndStatus(
   number: string,
   status: string
 ): Promise<PhoneNumber | null> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, twilio_sid, number, friendly_name, label, type, status, created_at
+    FROM phone_numbers WHERE number = ${number} AND status = ${status} LIMIT 1
+  `
+  return rows[0] ? parsePhoneNumberRow(rows[0]) : null
 }
 
 // Update a phone number (e.g. after port complete)
@@ -344,7 +422,13 @@ export async function updatePhoneNumber(
   userId: string,
   updates: Partial<Pick<PhoneNumber, "twilio_sid" | "status">>
 ): Promise<void> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  if (updates.twilio_sid !== undefined) {
+    await sql`UPDATE phone_numbers SET twilio_sid = ${updates.twilio_sid} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
+  }
+  if (updates.status !== undefined) {
+    await sql`UPDATE phone_numbers SET status = ${updates.status} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
+  }
 }
 
 // Get talk time analytics for a date range

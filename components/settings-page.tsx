@@ -216,7 +216,27 @@ export function SettingsPage() {
   const [buySuccess, setBuySuccess] = useState<string | null>(null) // number just purchased
 
   // Business numbers = numbers customers call (bought or ported). Your main line (cell) is in the profile above.
-  const myNumbers: { number: string; label: string; type: string; status: "active" }[] = []
+  const [myNumbers, setMyNumbers] = useState<{ id: string; number: string; label: string; type: string; status: string }[]>([])
+
+  // Load user's purchased/active business numbers from the database
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/numbers/mine", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { numbers: [] }))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.numbers)) {
+          setMyNumbers(data.numbers.map((n: Record<string, string>) => ({
+            id: n.id,
+            number: n.number,
+            label: n.label || "Business Line",
+            type: n.type || "local",
+            status: n.status || "active",
+          })))
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   async function handleSearchNumbers() {
     setBuyLoading(true)
@@ -263,6 +283,14 @@ export function SettingsPage() {
       }
       setBuySuccess(phoneNumber)
       setAvailableNumbers((prev) => prev.filter((n) => n.number !== phoneNumber))
+      // Add the newly purchased number to the displayed list right away
+      setMyNumbers((prev) => [...prev, {
+        id: data.number?.id || phoneNumber,
+        number: phoneNumber,
+        label: "Business Line",
+        type: "local",
+        status: "active",
+      }])
     } catch {
       setBuyError("Failed to buy number. Try again.")
     } finally {

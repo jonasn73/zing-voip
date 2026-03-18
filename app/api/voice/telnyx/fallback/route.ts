@@ -8,6 +8,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { getRoutingConfig, getUser, updateCallLog } from "@/lib/db"
 
+function toE164(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (phone.startsWith("+")) return phone
+  return `+${digits}`
+}
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
   // Telnyx may use DialCallStatus (TwiML-compat) or CallStatus; try both
@@ -42,7 +50,7 @@ export async function POST(req: NextRequest) {
             callerId: calledNum || undefined,
             timeout: 30,
           })
-          dial.number(user.phone)
+          dial.number(toE164(user.phone))
         } else {
           texml.say("We're sorry, no one is available. Please leave a message after the beep.")
           texml.record({

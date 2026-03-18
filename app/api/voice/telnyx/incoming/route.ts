@@ -17,6 +17,15 @@ import {
   insertCallLog,
 } from "@/lib/db"
 
+// Normalize a US phone number to E.164 (+1XXXXXXXXXX)
+function toE164(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (phone.startsWith("+")) return phone
+  return `+${digits}`
+}
+
 // Shared logic for routing a call (used by both POST and GET handlers)
 async function handleIncomingCall(calledNumber: string, callerNumber: string, callSid: string, callerName: string | null) {
   const texml = new VoiceResponse()
@@ -66,29 +75,32 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
     if (config?.selected_receptionist_id) {
       const receptionist = await getReceptionist(config.selected_receptionist_id)
       if (receptionist) {
-        console.log(`[Zing] Routing to receptionist: ${receptionist.name} (${receptionist.phone})`)
+        const recPhone = toE164(receptionist.phone)
+        console.log(`[Zing] Routing to receptionist: ${receptionist.name} (${recPhone})`)
         const dial = texml.dial({
           callerId: calledNumber,
           timeout: config.ring_timeout_seconds || 20,
           action: `${appUrl}/api/voice/telnyx/fallback?userId=${user.id}&callSid=${callSid}`,
           method: "POST",
         })
-        dial.number(receptionist.phone)
+        dial.number(recPhone)
       } else {
-        console.log(`[Zing] Receptionist ${config.selected_receptionist_id} not found, routing to owner: ${user.phone}`)
+        const ownerPhone = toE164(user.phone)
+        console.log(`[Zing] Receptionist ${config.selected_receptionist_id} not found, routing to owner: ${ownerPhone}`)
         const dial = texml.dial({
           callerId: calledNumber,
           timeout: 30,
         })
-        dial.number(user.phone)
+        dial.number(ownerPhone)
       }
     } else {
-      console.log(`[Zing] No receptionist assigned, routing to owner: ${user.phone}`)
+      const ownerPhone = toE164(user.phone)
+      console.log(`[Zing] No receptionist assigned, routing to owner: ${ownerPhone}`)
       const dial = texml.dial({
         callerId: calledNumber,
         timeout: 30,
       })
-      dial.number(user.phone)
+      dial.number(ownerPhone)
     }
   } catch (error) {
     console.error("[Telnyx] Error in incoming webhook:", error)

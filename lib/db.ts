@@ -154,6 +154,15 @@ export async function getReceptionists(userId: string): Promise<Receptionist[]> 
   return rows.map(parseReceptionistRow)
 }
 
+// Normalize a US phone number to E.164 format (+1XXXXXXXXXX)
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (phone.startsWith("+")) return phone
+  return `+${digits}`
+}
+
 // Create a receptionist
 export async function insertReceptionist(params: {
   user_id: string
@@ -162,6 +171,7 @@ export async function insertReceptionist(params: {
 }): Promise<Receptionist> {
   const sql = getSql()
   const id = crypto.randomUUID()
+  const phone = normalizePhone(params.phone)
   const nameParts = params.name.trim().split(/\s+/)
   const initials = nameParts.length >= 2
     ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
@@ -171,7 +181,7 @@ export async function insertReceptionist(params: {
 
   await sql`
     INSERT INTO receptionists (id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at)
-    VALUES (${id}, ${params.user_id}, ${params.name}, ${params.phone}, ${initials}, ${color}, 0.25, true, now())
+    VALUES (${id}, ${params.user_id}, ${params.name}, ${phone}, ${initials}, ${color}, 0.25, true, now())
   `
   return {
     id,

@@ -34,15 +34,45 @@ export async function GET(req: NextRequest) {
     const listBody = await listRes.json()
     const apps = listBody?.data || []
     const zingApp = apps.find((a: Record<string, string>) => a.friendly_name === "Zing Call Router")
-    debug.texml_app = zingApp
-      ? {
-          id: zingApp.id,
-          friendly_name: zingApp.friendly_name,
-          voice_url: zingApp.voice_url,
-          outbound: zingApp.outbound,
-          active: zingApp.active,
+    if (zingApp) {
+      debug.texml_app = {
+        id: zingApp.id,
+        friendly_name: zingApp.friendly_name,
+        voice_url: zingApp.voice_url,
+        outbound: zingApp.outbound,
+        active: zingApp.active,
+      }
+
+      // Auto-fix: if outbound voice profile is missing, assign the Default one
+      if (!zingApp.outbound?.outbound_voice_profile_id) {
+        // Find an existing profile
+        const profilesRes = await fetch(`${TELNYX_BASE}/outbound_voice_profiles?page[size]=10`, {
+          headers: telnyxHeaders(),
+        })
+        const profilesBody = await profilesRes.json()
+        const profileId = profilesBody?.data?.[0]?.id
+        if (profileId) {
+          const patchRes = await fetch(`${TELNYX_BASE}/texml_applications/${zingApp.id}`, {
+            method: "PATCH",
+            headers: telnyxHeaders(),
+            body: JSON.stringify({
+              outbound: { outbound_voice_profile_id: String(profileId) },
+            }),
+          })
+          const patchBody = await patchRes.json()
+          debug.outbound_fix = {
+            attempted: true,
+            profile_id: String(profileId),
+            patch_status: patchRes.status,
+            patch_ok: patchRes.ok,
+            response_outbound: patchBody?.data?.outbound,
+            errors: patchBody?.errors,
+          }
         }
-      : "NOT FOUND"
+      }
+    } else {
+      debug.texml_app = "NOT FOUND"
+    }
   } catch (e) {
     debug.texml_app_error = String(e)
   }

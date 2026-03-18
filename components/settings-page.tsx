@@ -401,13 +401,22 @@ export function SettingsPage() {
                     <button
                       onClick={async () => {
                         if (!confirm(`Cancel porting for ${formatPhoneDisplay(p.number)}?`)) return
-                        await fetch("/api/numbers/porting/cancel", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          credentials: "include",
-                          body: JSON.stringify({ order_id: p.id }),
-                        })
-                        setPortingNumbers((prev) => prev.filter((x) => x.id !== p.id))
+                        try {
+                          const res = await fetch("/api/numbers/porting/cancel", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ order_id: p.id }),
+                          })
+                          if (res.ok) {
+                            setPortingNumbers((prev) => prev.filter((x) => x.id !== p.id))
+                          } else {
+                            const data = await res.json().catch(() => ({}))
+                            alert(data.error || "Failed to cancel")
+                          }
+                        } catch {
+                          alert("Failed to cancel. Try again.")
+                        }
                       }}
                       className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-destructive hover:bg-destructive/10"
                     >

@@ -98,13 +98,13 @@ export async function GET() {
       }
     }
 
-    // Cancel stale drafts in background (don't block the response)
+    // Delete stale drafts in background (draft orders use DELETE, not cancel)
     if (staleDraftIds.length > 0) {
       const uniqueIds = [...new Set(staleDraftIds)]
-      console.log(`[Zing] Cancelling ${uniqueIds.length} stale draft port orders`)
+      console.log(`[Zing] Deleting ${uniqueIds.length} stale draft port orders`)
       for (const draftId of uniqueIds) {
-        fetch(`${TELNYX_BASE}/porting_orders/${draftId}/actions/cancel`, {
-          method: "POST",
+        fetch(`${TELNYX_BASE}/porting_orders/${draftId}`, {
+          method: "DELETE",
           headers: { Authorization: `Bearer ${getApiKey()}`, "Content-Type": "application/json" },
         }).catch(() => {})
       }

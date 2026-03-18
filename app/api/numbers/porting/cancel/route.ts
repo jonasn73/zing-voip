@@ -1,7 +1,8 @@
 // ============================================
 // POST /api/numbers/porting/cancel
 // ============================================
-// Cancels a porting order by ID.
+// Cancels or deletes a porting order by ID.
+// Draft orders must be DELETEd. Submitted orders use /actions/cancel.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
@@ -13,6 +14,11 @@ function getApiKey(): string {
   if (!key) throw new Error("Missing TELNYX_API_KEY")
   return key
 }
+
+const authHeaders = () => ({
+  Authorization: `Bearer ${getApiKey()}`,
+  "Content-Type": "application/json",
+})
 
 export async function POST(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -28,21 +34,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "order_id is required" }, { status: 400 })
     }
 
-    const res = await fetch(`${TELNYX_BASE}/porting_orders/${orderId}/actions/cancel`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${getApiKey()}`,
-        "Content-Type": "application/json",
-      },
+    // Try DELETE first (works for draft orders)
+    const deleteRes = await fetch(`${TELNYX_BASE}/porting_orders/${orderId}`, {
+      method: "DELETE",
+      headers: authHeaders(),
     })
 
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}))
-      const errMsg = errBody?.errors?.[0]?.detail || `HTTP ${res.status}`
-      return NextResponse.json({ error: errMsg }, { status: res.status })
+    if (deleteRes.ok || deleteRes.status === 204) {
+      console.log(`[Zing] Deleted draft port order ${orderId}`)
+      return NextResponse.json({ success: true })
     }
 
-    return NextResponse.json({ success: true })
+    // If DELETE fails (order not in draft), try cancel action
+    const cancelRes = await fetch(`${TELNYX_BASE}/porting_orders/${orderId}/actions/cancel`, {
+      method: "POST",
+      headers: authHeaders(),
+    })
+
+    if (cancelRes.ok) {
+      console.log(`[Zing] Cancelled port order ${orderId}`)
+      return NextResponse.json({ success: true })
+    }
+
+    const errBody = await cancelRes.json().catch(() => ({}))
+    const errMsg = errBody?.errors?.[0]?.detail || `Failed to cancel (HTTP ${cancelRes.status})`
+    console.error(`[Zing] Cancel failed for order ${orderId}: ${errMsg}`)
+    return NextResponse.json({ error: errMsg }, { status: cancelRes.status })
   } catch (error: unknown) {
     console.error("[Zing] Cancel port error:", error)
     return NextResponse.json({ error: "Failed to cancel port order" }, { status: 500 })

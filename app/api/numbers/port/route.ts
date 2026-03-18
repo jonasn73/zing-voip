@@ -156,10 +156,13 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[Zing] Port order created: ${orderId} for ${e164}`)
 
-    // ── Step 3: Fill end-user info + service address ──
+    // ── Step 3: Fill end-user info, service address, and port type ──
     await telnyxFetch(`/porting_orders/${orderId}`, {
       method: "PATCH",
       body: JSON.stringify({
+        misc: {
+          type: "full",
+        },
         end_user: {
           admin: {
             entity_name: account_name,

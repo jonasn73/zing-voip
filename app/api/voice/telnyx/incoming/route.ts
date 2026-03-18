@@ -22,39 +22,50 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
   const texml = new VoiceResponse()
   const appUrl = getAppUrl()
 
+  console.log(`[Zing] Incoming call: To=${calledNumber} From=${callerNumber} CallSid=${callSid}`)
+
   try {
     // 1. Find which user owns this business number
     const user = await getUserByPhoneNumber(calledNumber)
     if (!user) {
+      console.log(`[Zing] No user found for number ${calledNumber}`)
       texml.say("Sorry, this number is not configured. Goodbye.")
       texml.hangup()
       return texml
     }
 
+    console.log(`[Zing] Found user ${user.id} (${user.name}) for number ${calledNumber}`)
+
     // 2. Get routing config for this specific business number (falls back to default)
     const config = await getRoutingConfigForNumber(user.id, calledNumber)
+    console.log(`[Zing] Routing config: receptionist=${config?.selected_receptionist_id || "none"}, fallback=${config?.fallback_type || "owner"}`)
 
-    // 3. Log the incoming call
-    await insertCallLog({
-      user_id: user.id,
-      twilio_call_sid: callSid,
-      from_number: callerNumber,
-      to_number: calledNumber,
-      caller_name: callerName,
-      call_type: "incoming",
-      status: "ringing",
-      duration_seconds: 0,
-      routed_to_receptionist_id: config?.selected_receptionist_id || null,
-      routed_to_name: null,
-      has_recording: false,
-      recording_url: null,
-      recording_duration_seconds: null,
-    })
+    // 3. Log the incoming call (don't let logging failures break call routing)
+    try {
+      await insertCallLog({
+        user_id: user.id,
+        twilio_call_sid: callSid,
+        from_number: callerNumber,
+        to_number: calledNumber,
+        caller_name: callerName,
+        call_type: "incoming",
+        status: "ringing",
+        duration_seconds: 0,
+        routed_to_receptionist_id: config?.selected_receptionist_id || null,
+        routed_to_name: null,
+        has_recording: false,
+        recording_url: null,
+        recording_duration_seconds: null,
+      })
+    } catch (logErr) {
+      console.error("[Zing] Call log insert failed (continuing with routing):", logErr)
+    }
 
     // 4. Route: receptionist (per-number or default) → owner's cell as fallback
     if (config?.selected_receptionist_id) {
       const receptionist = await getReceptionist(config.selected_receptionist_id)
       if (receptionist) {
+        console.log(`[Zing] Routing to receptionist: ${receptionist.name} (${receptionist.phone})`)
         const dial = texml.dial({
           timeout: config.ring_timeout_seconds || 20,
           record: "record-from-answer-dual",
@@ -64,7 +75,7 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
         })
         dial.number(receptionist.phone)
       } else {
-        // Receptionist not found — ring owner's cell
+        console.log(`[Zing] Receptionist ${config.selected_receptionist_id} not found, routing to owner: ${user.phone}`)
         const dial = texml.dial({
           timeout: 30,
           record: "record-from-answer-dual",
@@ -73,7 +84,7 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
         dial.number(user.phone)
       }
     } else {
-      // No receptionist assigned — ring owner's cell directly
+      console.log(`[Zing] No receptionist assigned, routing to owner: ${user.phone}`)
       const dial = texml.dial({
         timeout: 30,
         record: "record-from-answer-dual",
@@ -87,11 +98,17 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
     texml.hangup()
   }
 
+  console.log(`[Zing] TeXML response: ${texml.toString().slice(0, 300)}`)
   return texml
 }
 
 export async function POST(req: NextRequest) {
+  // Log all form fields to diagnose what Telnyx sends
   const formData = await req.formData()
+  const allFields: Record<string, string> = {}
+  formData.forEach((value, key) => { allFields[key] = String(value) })
+  console.log("[Zing] Telnyx webhook fields:", JSON.stringify(allFields))
+
   const calledNumber = (formData.get("To") as string) || ""
   const callerNumber = (formData.get("From") as string) || ""
   const callSid = (formData.get("CallSid") as string) || ""

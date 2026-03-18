@@ -313,7 +313,18 @@ export async function updateUser(
 
 // Insert a call log
 export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Promise<void> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  await sql`
+    INSERT INTO call_logs (
+      user_id, twilio_call_sid, from_number, to_number, caller_name,
+      call_type, status, duration_seconds, routed_to_receptionist_id,
+      routed_to_name, has_recording, recording_url, recording_duration_seconds
+    ) VALUES (
+      ${log.user_id}, ${log.twilio_call_sid}, ${log.from_number}, ${log.to_number}, ${log.caller_name},
+      ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
+      ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}
+    )
+  `
 }
 
 // Update a call log (e.g., when status callback arrives)
@@ -321,7 +332,19 @@ export async function updateCallLog(
   twilioCallSid: string,
   updates: Partial<Pick<CallLog, "status" | "duration_seconds" | "call_type" | "has_recording" | "recording_url" | "recording_duration_seconds">>
 ): Promise<void> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  if (updates.status !== undefined) {
+    await sql`UPDATE call_logs SET status = ${updates.status} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+  if (updates.duration_seconds !== undefined) {
+    await sql`UPDATE call_logs SET duration_seconds = ${updates.duration_seconds} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+  if (updates.call_type !== undefined) {
+    await sql`UPDATE call_logs SET call_type = ${updates.call_type} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+  if (updates.has_recording !== undefined) {
+    await sql`UPDATE call_logs SET has_recording = ${updates.has_recording}, recording_url = ${updates.recording_url ?? null}, recording_duration_seconds = ${updates.recording_duration_seconds ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
 }
 
 // Get call logs for a user (paginated)
@@ -329,7 +352,42 @@ export async function getCallLogs(
   userId: string,
   options?: { limit?: number; offset?: number; type?: string }
 ): Promise<CallLog[]> {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+  const limit = options?.limit ?? 50
+  const offset = options?.offset ?? 0
+
+  let rows
+  if (options?.type) {
+    rows = await sql`
+      SELECT * FROM call_logs
+      WHERE user_id = ${userId} AND call_type = ${options.type}
+      ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
+    `
+  } else {
+    rows = await sql`
+      SELECT * FROM call_logs
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+
+  return rows.map((row) => ({
+    id: String(row.id),
+    user_id: String(row.user_id),
+    twilio_call_sid: String(row.twilio_call_sid),
+    from_number: String(row.from_number),
+    to_number: String(row.to_number),
+    caller_name: row.caller_name ? String(row.caller_name) : null,
+    call_type: String(row.call_type) as CallLog["call_type"],
+    status: String(row.status),
+    duration_seconds: Number(row.duration_seconds),
+    routed_to_receptionist_id: row.routed_to_receptionist_id ? String(row.routed_to_receptionist_id) : null,
+    routed_to_name: row.routed_to_name ? String(row.routed_to_name) : null,
+    has_recording: Boolean(row.has_recording),
+    recording_url: row.recording_url ? String(row.recording_url) : null,
+    recording_duration_seconds: row.recording_duration_seconds ? Number(row.recording_duration_seconds) : null,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }))
 }
 
 function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {

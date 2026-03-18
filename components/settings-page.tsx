@@ -549,7 +549,9 @@ export function SettingsPage() {
           Numbers your customers call (buy or port). Calls to these numbers ring your main line above or a receptionist.
         </p>
         <div className="flex flex-col gap-2">
-          {myNumbers.map((num) => {
+          {myNumbers
+            .filter((num) => num.status === "active")
+            .map((num) => {
             const routing = getRoutingForNumber(num.number)
             return (
               <button
@@ -562,7 +564,7 @@ export function SettingsPage() {
                     <Phone className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-foreground">{num.number}</p>
+                    <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(num.number)}</p>
                     <p className="text-xs text-muted-foreground">
                       {routing.receptionist
                         ? `→ ${routing.receptionist.name}${routing.isDefault ? " (default)" : ""}`

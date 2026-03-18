@@ -39,12 +39,6 @@ interface Contact {
   color: string
 }
 
-const receptionists: Contact[] = [
-  { id: "1", name: "Sarah Miller", phone: "(555) 234-5678", initials: "SM", color: "bg-primary" },
-  { id: "2", name: "James Wilson", phone: "(555) 345-6789", initials: "JW", color: "bg-chart-2" },
-  { id: "3", name: "Rachel Kim", phone: "(555) 456-7890", initials: "RK", color: "bg-chart-5" },
-]
-
 interface CallStat {
   label: string
   value: number
@@ -101,6 +95,7 @@ const fallbackOptions: { id: FallbackOption; label: string; description: string;
 
 export function DashboardPage() {
   const [mainLinePhone, setMainLinePhone] = useState<string | null>(null)
+  const [receptionists, setReceptionists] = useState<Contact[]>([])
   const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(null)
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [fallback, setFallback] = useState<FallbackOption>("owner")
@@ -109,11 +104,44 @@ export function DashboardPage() {
   const [editingGreeting, setEditingGreeting] = useState(false)
   const [greetingDraft, setGreetingDraft] = useState("")
 
+  // Load user session
   useEffect(() => {
     fetch("/api/auth/session", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.data?.user?.phone) setMainLinePhone(data.data.user.phone)
+      })
+      .catch(() => {})
+  }, [])
+
+  // Load real receptionists from API
+  useEffect(() => {
+    fetch("/api/receptionists", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((data) => {
+        if (Array.isArray(data.data)) {
+          setReceptionists(data.data.map((r: Record<string, string>) => ({
+            id: r.id,
+            name: r.name,
+            phone: r.phone,
+            initials: r.initials || r.name?.slice(0, 2)?.toUpperCase() || "??",
+            color: r.color || "bg-primary",
+          })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Load current default routing config from API
+  useEffect(() => {
+    fetch("/api/routing", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.config) {
+          setSelectedReceptionistId(data.config.selected_receptionist_id || null)
+          setFallback(data.config.fallback_type || "owner")
+          if (data.config.ai_greeting) setAiGreeting(data.config.ai_greeting)
+        }
       })
       .catch(() => {})
   }, [])
@@ -125,11 +153,25 @@ export function DashboardPage() {
   function selectReceptionist(id: string) {
     setSelectedReceptionistId(id)
     setShowSwitcher(false)
+    // Save to API so it persists
+    fetch("/api/routing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ selected_receptionist_id: id }),
+    }).catch(() => {})
   }
 
   function clearReceptionist() {
     setSelectedReceptionistId(null)
     setShowSwitcher(false)
+    // Save to API
+    fetch("/api/routing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ selected_receptionist_id: null }),
+    }).catch(() => {})
   }
 
   return (
@@ -268,7 +310,11 @@ export function DashboardPage() {
                         Receptionists
                       </p>
 
-                      {receptionists.map((contact) => {
+                      {receptionists.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-muted-foreground">
+                          No receptionists added yet. Add one in Settings to route calls to them.
+                        </p>
+                      ) : receptionists.map((contact) => {
                         const isSelected = contact.id === selectedReceptionistId
                         return (
                           <button
@@ -298,7 +344,7 @@ export function DashboardPage() {
                               )}>
                                 {contact.name}
                               </p>
-                              <p className="text-[11px] text-muted-foreground">{contact.phone}</p>
+                              <p className="text-[11px] text-muted-foreground">{formatPhoneDisplay(contact.phone)}</p>
                             </div>
                             {isSelected && (
                               <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
@@ -346,7 +392,15 @@ export function DashboardPage() {
                       return (
                         <button
                           key={option.id}
-                          onClick={() => setFallback(option.id)}
+                          onClick={() => {
+                            setFallback(option.id)
+                            fetch("/api/routing", {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              credentials: "include",
+                              body: JSON.stringify({ fallback_type: option.id }),
+                            }).catch(() => {})
+                          }}
                           className={cn(
                             "flex items-center gap-3 rounded-lg px-3 py-3 text-left transition-all",
                             isActive
@@ -402,7 +456,16 @@ export function DashboardPage() {
                           />
                           <div className="flex gap-2">
                             <button
-                              onClick={() => { setAiGreeting(greetingDraft); setEditingGreeting(false) }}
+                              onClick={() => {
+                                setAiGreeting(greetingDraft)
+                                setEditingGreeting(false)
+                                fetch("/api/routing", {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  credentials: "include",
+                                  body: JSON.stringify({ ai_greeting: greetingDraft }),
+                                }).catch(() => {})
+                              }}
                               className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
                             >
                               Save

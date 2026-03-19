@@ -1,5 +1,5 @@
 // ============================================
-// Zing - Twilio Client & TwiML Helpers
+// Zing - Legacy Compatibility Voice Helpers
 // ============================================
 // Install: pnpm add twilio
 // Env vars needed:
@@ -10,7 +10,7 @@
 
 import twilio from "twilio"
 
-// Twilio REST client (for buying numbers, fetching recordings, etc.)
+// Legacy REST client used by compatibility endpoints.
 export function getTwilioClient() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken = process.env.TWILIO_AUTH_TOKEN
@@ -20,7 +20,7 @@ export function getTwilioClient() {
   return twilio(accountSid, authToken)
 }
 
-// Validate that incoming webhook is really from Twilio
+// Validate that an incoming legacy webhook is signed correctly.
 export function validateTwilioRequest(
   signature: string,
   url: string,

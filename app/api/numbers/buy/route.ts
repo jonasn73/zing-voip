@@ -1,8 +1,8 @@
 // ============================================
 // POST /api/numbers/buy
 // ============================================
-// Purchases a specific Twilio number and saves to DB.
-// Also configures the number's webhook URLs.
+// Legacy number purchase endpoint (kept for compatibility/testing).
+// Primary purchase flow uses /api/numbers/telnyx/buy.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getTwilioClient, getAppUrl } from "@/lib/twilio"
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     // TODO: Save to database
     // await sql`
-    //   INSERT INTO phone_numbers (user_id, twilio_sid, number, friendly_name, label, type, status)
+    //   INSERT INTO phone_numbers (user_id, provider_number_sid, number, friendly_name, label, type, status)
     //   VALUES (${DEMO_USER_ID}, ${purchased.sid}, ${purchased.phoneNumber}, ${purchased.friendlyName}, 'New Line', 'local', 'active')
     // `
 

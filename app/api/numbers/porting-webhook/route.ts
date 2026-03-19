@@ -1,7 +1,7 @@
 // ============================================
 // POST /api/numbers/porting-webhook
 // ============================================
-// Twilio calls this when a port-in request or phone number status changes.
+// Provider porting webhook (legacy adapter endpoint).
 // When a number is completed we set its voice URL and mark it active in our DB.
 
 import { NextRequest, NextResponse } from "next/server"
@@ -11,7 +11,7 @@ import {
   updatePhoneNumber,
 } from "@/lib/db"
 
-/** Twilio sends this shape for port-in webhooks. */
+/** Legacy porting webhook payload shape. */
 interface PortingWebhookBody {
   port_in_request_sid?: string
   port_in_phone_number_sid?: string
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     const phoneNumber = body.phone_number
     const status = (body.status || "").toLowerCase()
 
-    // Only act when the number has been successfully ported to Twilio
+    // Only act when the number has been successfully ported and activated.
     const isCompleted =
       status === "completed" ||
       status.includes("completed") ||
@@ -62,10 +62,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true })
     }
 
-    const twilioNumber = list[0]
+    const providerNumber = list[0]
     const appUrl = getAppUrl()
 
-    await client.incomingPhoneNumbers(twilioNumber.sid).update({
+    await client.incomingPhoneNumbers(providerNumber.sid).update({
       voiceUrl: `${appUrl}/api/voice/incoming`,
       voiceMethod: "POST",
       statusCallback: `${appUrl}/api/voice/status`,
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     })
 
     await updatePhoneNumber(row.id, row.user_id, {
-      provider_number_sid: twilioNumber.sid,
+      provider_number_sid: providerNumber.sid,
       status: "active",
     })
 

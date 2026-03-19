@@ -2,7 +2,8 @@
 // GET /api/numbers
 // POST /api/numbers (buy a number)
 // ============================================
-// Lists user's phone numbers and allows purchasing new ones via Twilio.
+// Legacy numbers endpoint (kept for compatibility).
+// Primary number search/buy flow uses /api/numbers/telnyx and /api/numbers/telnyx/buy.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getTwilioClient } from "@/lib/twilio"
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
         number: num.phoneNumber,
         friendly_name: num.friendlyName,
         type: "local" as const,
-        monthly_cost: 2.99, // Twilio local number pricing
+        monthly_cost: 2.99, // Example local number pricing
       })),
     })
   } catch (error) {

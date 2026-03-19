@@ -1,7 +1,7 @@
 // ============================================
 // POST /api/numbers/upload-port-document
 // ============================================
-// Uploads a utility bill to Twilio Documents API for use in a Port In request.
+// Uploads a utility bill to the carrier documents API for use in a Port In request.
 // Accepts multipart form with field "file" (PDF or image, max 10MB).
 
 import { NextRequest, NextResponse } from "next/server"

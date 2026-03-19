@@ -1,7 +1,7 @@
 // ============================================
 // POST /api/admin/configure-porting-webhook
 // ============================================
-// One-time setup: configures Twilio to send port-in status to our webhook.
+// One-time setup: configures provider porting status webhook target URL.
 // Call once per environment after deploy. Protected by PORTING_WEBHOOK_SECRET.
 
 import { NextRequest, NextResponse } from "next/server"

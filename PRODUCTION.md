@@ -20,8 +20,15 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `DATABASE_URL`     | The Neon connection string from step 1. |
 | `SESSION_SECRET`   | Random string for signing cookies (e.g. run `openssl rand -base64 32` and paste). |
 | `TELNYX_API_KEY`   | Your Telnyx API key (for numbers and voice). |
+| `VAPI_API_KEY`     | Your Vapi **private** API key (AI receptionist on fallback / assistant). |
+| `ELEVENLABS_API_KEY` | **Platform** ElevenLabs key — powers voice **preview** and the **voice picker** (premade catalog). Customers do not enter this. |
 
 Save and **redeploy** the project (Deployments → … → Redeploy).
+
+### AI receptionist (optional tuning)
+
+- Default assistant LLM is **`gpt-4o`** for best spoken quality. To save cost, set `ZING_AI_LLM_MODEL=gpt-4o-mini` in Vercel and redeploy.
+- See **`docs/AI-RECEPTIONIST.md`** for how voices and preview work.
 
 ## 3. Sign up on the live site
 

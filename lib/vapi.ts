@@ -8,8 +8,27 @@
 // Required env vars:
 //   VAPI_API_KEY     - your Vapi private API key
 //   VAPI_PHONE_ID    - (optional) Vapi phone number ID for outbound
+//
+// Optional (platform / operator only — customers never set these):
+//   ZING_AI_LLM_MODEL - OpenAI model id for the assistant (default: gpt-4o for quality)
 
 const VAPI_BASE = "https://api.vapi.ai"
+
+/** LLM for spoken receptionist; gpt-4o default for natural reasoning; override to gpt-4o-mini to save cost. */
+function getAssistantLlmModel(): string {
+  const m = process.env.ZING_AI_LLM_MODEL?.trim()
+  return m || "gpt-4o"
+}
+
+/** ElevenLabs voice block tuned for natural phone speech (Vapi forwards these to 11labs). */
+function buildVapiElevenLabsVoice(voiceId: string) {
+  return {
+    provider: "11labs",
+    voiceId,
+    stability: 0.45,
+    similarityBoost: 0.82,
+  }
+}
 
 function getVapiKey(): string {
   const key = process.env.VAPI_API_KEY
@@ -67,7 +86,7 @@ export async function createVapiAssistant(params: {
       name: `Zing - ${businessName}`,
       model: {
         provider: "openai",
-        model: "gpt-4o-mini",
+        model: getAssistantLlmModel(),
         messages: [
           {
             role: "system",
@@ -81,10 +100,7 @@ export async function createVapiAssistant(params: {
         ],
         temperature: typeof temperature === "number" ? temperature : 0.7,
       },
-      voice: {
-        provider: "11labs",
-        voiceId: voiceId || "21m00Tcm4TlvDq8ikWAM", // "Rachel" — warm, professional female voice
-      },
+      voice: buildVapiElevenLabsVoice(voiceId || "21m00Tcm4TlvDq8ikWAM"),
       firstMessage: greeting || `Thank you for calling ${businessName}. No one is available right now, but I'd be happy to help. How can I assist you?`,
       endCallMessage: endCallMessage || "Thank you for calling. Have a great day!",
       transcriber: {
@@ -132,7 +148,7 @@ export async function updateVapiAssistant(
   ) {
     updates.model = {
       provider: "openai",
-      model: "gpt-4o-mini",
+      model: getAssistantLlmModel(),
       messages: [
         {
           role: "system",
@@ -149,10 +165,7 @@ export async function updateVapiAssistant(
   }
 
   if (params.voiceId) {
-    updates.voice = {
-      provider: "11labs",
-      voiceId: params.voiceId,
-    }
+    updates.voice = buildVapiElevenLabsVoice(params.voiceId)
   }
 
   if (params.endCallMessage) {
@@ -223,9 +236,10 @@ Your personality:
 - Speak naturally like a real receptionist, not robotic
 - Keep responses concise (1-2 sentences) since they're spoken aloud
 - Don't say "as an AI" or mention being artificial — just be a helpful receptionist
+- Confirm important details (names, times, phone numbers) by repeating them clearly
 
 Your capabilities:
-1. TAKE MESSAGES: Ask for their name, phone number, and message. Confirm you'll pass it to the team.
+1. TAKE MESSAGES: Ask for their name, phone number, and message. For phone numbers, repeat digits back in small groups so the caller can confirm.
 2. SHARE BUSINESS HOURS: ${hours}
 3. BOOK APPOINTMENTS: Collect their preferred date, time, name, and callback number.
 4. ANSWER COMMON QUESTIONS: Be helpful but honest — if you don't know specific details about ${businessName}, say "I'll have someone from the team get back to you with that information."

@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
+import { AI_VOICE_FALLBACK_OPTIONS, type AiVoiceOption } from "@/lib/ai-voice-catalog"
 
 interface SettingToggle {
   id: string
@@ -65,33 +66,6 @@ interface AiAssistantConfig {
   businessHours: string
   customInstructions: string
 }
-
-// ElevenLabs premade voice IDs — natural options for AI receptionist; preview + live assistant both use these IDs.
-const AI_VOICE_OPTIONS: { id: string; label: string }[] = [
-  { id: "21m00Tcm4TlvDq8ikWAM", label: "Rachel — Warm & professional (US)" },
-  { id: "XB0fDUnXU5powFXDhCwa", label: "Charlotte — Polished front-desk (US)" },
-  { id: "XrExE9yKIg1WjnnlVkGX", label: "Matilda — Warm, human-like (UK)" },
-  { id: "SAz9YHcvj6GT2YYXdXww", label: "River — Soft, natural (US)" },
-  { id: "FGY2WhTYpPnrIDTdsKH5", label: "Laura — Clear & trustworthy (US)" },
-  { id: "Xb7hH8MSUJpSbSDYk0k2", label: "Alice — Bright & approachable (UK)" },
-  { id: "pFZP5JQG7iQjIQuC4Bku", label: "Lily — Smooth narrator tone (UK)" },
-  { id: "LcfcDJNUP1GQjkzn1xUU", label: "Emily — Expressive & friendly (US)" },
-  { id: "cgSgspJ2msm6clMCldW9", label: "Jessica — Upbeat reception (US)" },
-  { id: "jsCqWAovK2LkecY72zG8", label: "Freya — Calm & reassuring (US)" },
-  { id: "EXAVITQu4vr4xnSDxMaL", label: "Bella — Friendly & light (US)" },
-  { id: "AZnzlk1XvdvUeBnXmlld", label: "Domi — Confident & direct (US)" },
-  { id: "pNInz6obpgDQGcFmaJgB", label: "Adam — Conversational male (US)" },
-  { id: "TxGEqnHWrfWFTfGW9XjX", label: "Josh — Balanced male (US)" },
-  { id: "CwhRBWXzGAHq8TQ4Fs17", label: "Roger — Easygoing male (US)" },
-  { id: "GBv7mTt0atIp3Br8iCZE", label: "Thomas — Steady & calm male (US)" },
-  { id: "IKne3meq5aSn9XLyUdCD", label: "Charlie — Natural male (AU)" },
-  { id: "N2lVS1w4EtoT3dr4eOWO", label: "Callum — Transatlantic, clear male" },
-  { id: "JBFqnCBsd6RMkjVDRZzb", label: "George — Documentary-warm male (UK)" },
-  { id: "VR6AewLTigWG4xSOukaG", label: "Arnold — Crisp & articulate male (US)" },
-  { id: "ErXwobaYiN019PkySvjV", label: "Antoni — Calm male (US)" },
-  { id: "onwK4e9ZLuTAKqWW03F9", label: "Daniel — Deep male (US)" },
-  { id: "2EiwWnXFnvU5JabPnv8n", label: "Clyde — Rich, grounded male (US)" },
-]
 
 interface CustomAiPreset {
   id: string
@@ -287,6 +261,8 @@ export function SettingsPage() {
   const [voicePreviewLoading, setVoicePreviewLoading] = useState(false)
   const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+  const [aiVoiceOptions, setAiVoiceOptions] = useState<AiVoiceOption[]>(AI_VOICE_FALLBACK_OPTIONS)
+  const [aiVoicesReady, setAiVoicesReady] = useState(false)
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
     voiceId: "21m00Tcm4TlvDq8ikWAM",
@@ -299,7 +275,7 @@ export function SettingsPage() {
   })
   const previewVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
   const previewVoiceLabel =
-    AI_VOICE_OPTIONS.find((voice) => voice.id === previewVoiceId)?.label ||
+    aiVoiceOptions.find((voice) => voice.id === previewVoiceId)?.label ||
     (customVoiceIdOverride.trim() ? "Custom voice" : "Selected voice")
 
   // Load current user so we can show main line (cell) in profile
@@ -319,6 +295,32 @@ export function SettingsPage() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  // Load voice catalog from Zing (ElevenLabs premades via platform key) so dropdown IDs match live TTS + preview.
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/ai-assistant/voices", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.voices || !Array.isArray(data.voices)) return
+        setAiVoiceOptions(data.voices as AiVoiceOption[])
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setAiVoicesReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // When full catalog loads, clear custom ID field only if it was only holding the same voice as the assistant (now in list).
+  useEffect(() => {
+    if (!aiVoicesReady || aiConfigLoading) return
+    const v = aiConfig.voiceId
+    if (!v || !aiVoiceOptions.some((o) => o.id === v)) return
+    setCustomVoiceIdOverride((prev) => (prev === v ? "" : prev))
+  }, [aiVoicesReady, aiVoiceOptions, aiConfig.voiceId, aiConfigLoading])
 
   // Load saved custom AI presets from cloud API (shared across devices)
   useEffect(() => {
@@ -422,7 +424,7 @@ export function SettingsPage() {
             businessHours: extractBusinessHoursFromPrompt(systemPrompt) || prev.businessHours,
           }))
           const loadedVoiceId = String(config.voiceId || "")
-          if (loadedVoiceId && !AI_VOICE_OPTIONS.some((v) => v.id === loadedVoiceId)) {
+          if (loadedVoiceId && !AI_VOICE_FALLBACK_OPTIONS.some((x) => x.id === loadedVoiceId)) {
             setCustomVoiceIdOverride(loadedVoiceId)
           }
         }
@@ -1595,13 +1597,16 @@ export function SettingsPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-muted-foreground">Voice</label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Choose a voice and save — Zing handles the engine. You don’t add API keys in the app.
+                  </p>
                   <div className="flex items-center gap-2">
                     <select
                       value={aiConfig.voiceId}
                       onChange={(e) => setAiConfig((prev) => ({ ...prev, voiceId: e.target.value }))}
                       className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
                     >
-                      {AI_VOICE_OPTIONS.map((voice) => (
+                      {aiVoiceOptions.map((voice) => (
                         <option key={voice.id} value={voice.id}>
                           {voice.label}
                         </option>

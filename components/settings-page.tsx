@@ -31,15 +31,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { AI_VOICE_FALLBACK_OPTIONS, type AiVoiceOption } from "@/lib/ai-voice-catalog"
-import { DEFAULT_BUSY_GREETING_LOCKSMITH } from "@/lib/ai-intake-defaults"
-import {
-  type AiIntakeProfileId,
-  AI_INTAKE_PROFILE_IDS,
-  INDUSTRY_CATALOG,
-  isAiIntakeProfileId,
-  industryLabel,
-  SIGNUP_INDUSTRY_OPTIONS,
-} from "@/lib/business-industries"
+import { SIGNUP_INDUSTRY_OPTIONS } from "@/lib/business-industries"
 
 interface SettingToggle {
   id: string
@@ -74,86 +66,6 @@ interface AiAssistantConfig {
   silenceTimeoutSeconds: number
   businessHours: string
   customInstructions: string
-}
-
-interface CustomAiPreset {
-  id: string
-  label: string
-  config: AiAssistantConfig
-}
-
-type AiPresetId =
-  | "general"
-  | "dental"
-  | "legal"
-  | "real_estate"
-  | "home_services"
-  | "med_spa"
-
-const AI_PRESETS: Record<
-  AiPresetId,
-  { label: string; config: Partial<AiAssistantConfig> }
-> = {
-  general: {
-    label: "General Small Business",
-    config: {
-      firstMessage: "Thank you for calling. Our team is helping other customers right now, but I can help you quickly. How can I assist you today?",
-      temperature: 0.6,
-      businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
-      customInstructions:
-        "Prioritize message-taking and clear callback details. Keep responses concise and friendly.",
-    },
-  },
-  dental: {
-    label: "Dental Practice",
-    config: {
-      firstMessage: "Thank you for calling our dental office. I can help with appointments, insurance questions, or a message for the front desk. How can I help?",
-      temperature: 0.5,
-      businessHours: "Monday through Friday, 8 AM to 5 PM. Closed weekends.",
-      customInstructions:
-        "If caller has pain or urgent issue, mark as urgent and collect callback number immediately. For appointments, collect preferred date and time.",
-    },
-  },
-  legal: {
-    label: "Law Firm",
-    config: {
-      firstMessage: "Thank you for calling our law office. I can take your information and have the right team member return your call as soon as possible.",
-      temperature: 0.4,
-      businessHours: "Monday through Friday, 8:30 AM to 5:30 PM. Closed weekends.",
-      customInstructions:
-        "Stay professional and avoid legal advice. Collect case type, full name, best callback number, and urgency.",
-    },
-  },
-  real_estate: {
-    label: "Real Estate Team",
-    config: {
-      firstMessage: "Thanks for calling our real estate team. I can help with showing requests, listing questions, or connect your message to an agent.",
-      temperature: 0.7,
-      businessHours: "Monday through Saturday, 9 AM to 6 PM. Sunday by appointment.",
-      customInstructions:
-        "For buyer leads, ask location, budget range, and timeline. For seller leads, ask property address and best callback number.",
-    },
-  },
-  home_services: {
-    label: "Home Services",
-    config: {
-      firstMessage: "Thank you for calling. I can help schedule service, provide availability windows, or take a message for the dispatch team.",
-      temperature: 0.6,
-      businessHours: "Monday through Friday, 7 AM to 6 PM. Saturday 8 AM to 2 PM.",
-      customInstructions:
-        "Collect service address, service type, urgency, and callback number. If emergency issue, mark urgent.",
-    },
-  },
-  med_spa: {
-    label: "Med Spa / Aesthetics",
-    config: {
-      firstMessage: "Thank you for calling our med spa. I can help with treatment questions, availability, or booking a consultation.",
-      temperature: 0.65,
-      businessHours: "Tuesday through Saturday, 10 AM to 7 PM.",
-      customInstructions:
-        "For new clients, collect treatment interest and preferred appointment window. Keep tone warm, polished, and reassuring.",
-    },
-  },
 }
 
 // Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567. Safe for null/undefined or non-string (e.g. from API).
@@ -269,11 +181,6 @@ export function SettingsPage() {
   const [aiConfigLoading, setAiConfigLoading] = useState(false)
   const [aiSaving, setAiSaving] = useState(false)
   const [aiSavedAt, setAiSavedAt] = useState<number | null>(null)
-  const [aiPreset, setAiPreset] = useState<AiPresetId>("general")
-  const [autoApplyPresetToLive, setAutoApplyPresetToLive] = useState(true)
-  const [customAiPresets, setCustomAiPresets] = useState<CustomAiPreset[]>([])
-  const [selectedCustomPresetId, setSelectedCustomPresetId] = useState<string>("")
-  const [customPresetName, setCustomPresetName] = useState("")
   const [customVoiceIdOverride, setCustomVoiceIdOverride] = useState("")
   const [voicePreviewLoading, setVoicePreviewLoading] = useState(false)
   const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false)
@@ -290,29 +197,6 @@ export function SettingsPage() {
     businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
     customInstructions: "",
   })
-  /** Extra fields saved to user_ai_intake (car/lockout notes apply to locksmith script only) */
-  const [aiIntake, setAiIntake] = useState({
-    busyGreeting: "",
-    carKeyNotes: "",
-    lockoutNotes: "",
-    otherNotes: "",
-    smsNotify: true,
-  })
-  /** auto = follow users.industry; else fixed AI playbook */
-  const [aiScriptChoice, setAiScriptChoice] = useState<"auto" | AiIntakeProfileId>("auto")
-
-  function buildIntakeBody() {
-    return {
-      ...(aiScriptChoice === "auto"
-        ? { followIndustryForAi: true }
-        : { profileId: aiScriptChoice }),
-      busyGreeting: aiIntake.busyGreeting,
-      carKeyNotes: aiIntake.carKeyNotes,
-      lockoutNotes: aiIntake.lockoutNotes,
-      otherNotes: aiIntake.otherNotes,
-      smsNotify: aiIntake.smsNotify,
-    }
-  }
   const previewVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
   const previewVoiceLabel =
     aiVoiceOptions.find((voice) => voice.id === previewVoiceId)?.label ||
@@ -363,40 +247,6 @@ export function SettingsPage() {
     if (!v || !aiVoiceOptions.some((o) => o.id === v)) return
     setCustomVoiceIdOverride((prev) => (prev === v ? "" : prev))
   }, [aiVoicesReady, aiVoiceOptions, aiConfig.voiceId, aiConfigLoading])
-
-  // Load saved custom AI presets from cloud API (shared across devices)
-  useEffect(() => {
-    let cancelled = false
-    fetch("/api/ai-assistant/presets", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : { presets: [] }))
-      .then((data) => {
-        if (cancelled) return
-        if (Array.isArray(data.presets)) {
-          setCustomAiPresets(
-            data.presets.map((p: Record<string, unknown>) => ({
-              id: String(p.id),
-              label: String(p.label || "Preset"),
-              config: (p.config as AiAssistantConfig) || {
-                firstMessage: "",
-                voiceId: "21m00Tcm4TlvDq8ikWAM",
-                temperature: 0.7,
-                endCallMessage: "Thank you for calling. Have a great day!",
-                maxDurationSeconds: 300,
-                silenceTimeoutSeconds: 30,
-                businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
-                customInstructions: "",
-              },
-            }))
-          )
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCustomAiPresets([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // Load receptionists for per-number routing picker
   useEffect(() => {
@@ -469,33 +319,6 @@ export function SettingsPage() {
           if (loadedVoiceId && !AI_VOICE_FALLBACK_OPTIONS.some((x) => x.id === loadedVoiceId)) {
             setCustomVoiceIdOverride(loadedVoiceId)
           }
-        }
-        const stored = data.intakeStored as Record<string, unknown> | null | undefined
-        const storedPid = stored && typeof stored.profileId === "string" ? stored.profileId : ""
-        if (storedPid && isAiIntakeProfileId(storedPid)) setAiScriptChoice(storedPid)
-        else setAiScriptChoice("auto")
-
-        const ic = data.intakeConfig as
-          | {
-              profileId?: string
-              busyGreeting?: string
-              carKeyNotes?: string
-              lockoutNotes?: string
-              otherNotes?: string
-              smsNotify?: boolean
-            }
-          | undefined
-        const cfgFirst = config ? String(config.firstMessage || "") : ""
-        if (ic) {
-          setAiIntake({
-            busyGreeting: (ic.busyGreeting && ic.busyGreeting.trim()) || cfgFirst || "",
-            carKeyNotes: ic.carKeyNotes || "",
-            lockoutNotes: ic.lockoutNotes || "",
-            otherNotes: ic.otherNotes || "",
-            smsNotify: ic.smsNotify !== false,
-          })
-        } else if (cfgFirst) {
-          setAiIntake((prev) => ({ ...prev, busyGreeting: cfgFirst || prev.busyGreeting }))
         }
       })
       .catch(() => {})
@@ -774,14 +597,13 @@ export function SettingsPage() {
           endCallMessage: aiConfig.endCallMessage,
           maxDurationSeconds: aiConfig.maxDurationSeconds,
           silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
-          intake: buildIntakeBody(),
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         toast({
           title: "AI setup failed",
-          description: data.error || "Could not activate AI receptionist.",
+          description: data.error || "Could not activate voice assistant.",
           variant: "destructive",
         })
         return
@@ -790,310 +612,11 @@ export function SettingsPage() {
       setAiAssistantId(data.assistantId || null)
       setAiSavedAt(Date.now())
       toast({
-        title: "AI receptionist activated",
-        description: "Your AI receptionist is now ready for fallback calls.",
+        title: "Voice assistant activated",
+        description: "Industry intake is configured in AI call flow — open it from the bottom nav to edit.",
       })
     } finally {
       setAiSaving(false)
-    }
-  }
-
-  async function maybeApplyToLive(config: AiAssistantConfig, sourceLabel: string) {
-    if (!autoApplyPresetToLive || !hasAiAssistant) return
-    try {
-      const res = await fetch("/api/ai-assistant", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          greeting: config.firstMessage,
-          businessName: user?.name || user?.email || "My Business",
-          voiceId: customVoiceIdOverride.trim() || config.voiceId,
-          temperature: config.temperature,
-          businessHours: config.businessHours,
-          customInstructions: config.customInstructions,
-          endCallMessage: config.endCallMessage,
-          maxDurationSeconds: config.maxDurationSeconds,
-          silenceTimeoutSeconds: config.silenceTimeoutSeconds,
-          intake: buildIntakeBody(),
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        toast({
-          title: "Live apply failed",
-          description: data.error || "Preset loaded locally but could not update live assistant.",
-          variant: "destructive",
-        })
-        return
-      }
-      setAiSavedAt(Date.now())
-      toast({
-        title: "Applied to live assistant",
-        description: `${sourceLabel} is now active.`,
-      })
-    } catch {
-      toast({
-        title: "Live apply failed",
-        description: "Preset loaded locally but could not update live assistant.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  function applyAiPreset(presetId: AiPresetId) {
-    setAiPreset(presetId)
-    const preset = AI_PRESETS[presetId]
-    if (!preset) return
-    const nextConfig = {
-      ...aiConfig,
-      ...preset.config,
-    }
-    setAiConfig(nextConfig)
-    toast({
-      title: "Preset applied",
-      description: `${preset.label} template loaded. You can still edit everything.`,
-    })
-    void maybeApplyToLive(nextConfig, preset.label)
-  }
-
-  async function saveCurrentAsCustomPreset() {
-    const label = customPresetName.trim()
-    if (!label) {
-      toast({
-        title: "Preset name required",
-        description: "Enter a name before saving your custom preset.",
-        variant: "destructive",
-      })
-      return
-    }
-    try {
-      const res = await fetch("/api/ai-assistant/presets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          label,
-          config: aiConfig,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: "Save failed",
-          description: data.error || "Could not save custom preset.",
-          variant: "destructive",
-        })
-        return
-      }
-      const created = data.preset as { id: string; label: string; config: AiAssistantConfig }
-      const newPreset: CustomAiPreset = {
-        id: String(created.id),
-        label: String(created.label),
-        config: created.config || { ...aiConfig },
-      }
-      setCustomAiPresets((prev) => [newPreset, ...prev].slice(0, 20))
-      setCustomPresetName("")
-      setSelectedCustomPresetId(newPreset.id)
-      toast({
-        title: "Custom preset saved",
-        description: `${label} is now available in your preset list.`,
-      })
-    } catch {
-      toast({
-        title: "Save failed",
-        description: "Could not save custom preset.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  function applyCustomPresetById(presetId: string) {
-    const preset = customAiPresets.find((p) => p.id === presetId)
-    if (!preset) return
-    setSelectedCustomPresetId(preset.id)
-    setAiConfig({ ...preset.config })
-    toast({
-      title: "Custom preset applied",
-      description: `${preset.label} has been loaded.`,
-    })
-    void maybeApplyToLive({ ...preset.config }, preset.label)
-  }
-
-  async function deleteCustomPresetById(presetId: string) {
-    const preset = customAiPresets.find((p) => p.id === presetId)
-    if (!preset) return
-    try {
-      const res = await fetch(`/api/ai-assistant/presets?id=${encodeURIComponent(presetId)}`, {
-        method: "DELETE",
-        credentials: "include",
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: "Delete failed",
-          description: data.error || "Could not delete preset.",
-          variant: "destructive",
-        })
-        return
-      }
-      setCustomAiPresets((prev) => prev.filter((p) => p.id !== presetId))
-      if (selectedCustomPresetId === presetId) setSelectedCustomPresetId("")
-      toast({
-        title: "Custom preset removed",
-        description: `${preset.label} was deleted.`,
-      })
-    } catch {
-      toast({
-        title: "Delete failed",
-        description: "Could not delete preset.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function renameSelectedCustomPreset() {
-    if (!selectedCustomPresetId) return
-    const current = customAiPresets.find((p) => p.id === selectedCustomPresetId)
-    if (!current) return
-    const nextLabel = window.prompt("Rename preset", current.label)?.trim()
-    if (!nextLabel || nextLabel === current.label) return
-    try {
-      const res = await fetch("/api/ai-assistant/presets", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          id: current.id,
-          label: nextLabel,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: "Rename failed",
-          description: data.error || "Could not rename preset.",
-          variant: "destructive",
-        })
-        return
-      }
-      setCustomAiPresets((prev) =>
-        prev.map((p) => (p.id === current.id ? { ...p, label: nextLabel } : p))
-      )
-      toast({
-        title: "Preset renamed",
-        description: `Updated to "${nextLabel}".`,
-      })
-    } catch {
-      toast({
-        title: "Rename failed",
-        description: "Could not rename preset.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function updateSelectedCustomPresetFromCurrent() {
-    if (!selectedCustomPresetId) return
-    const current = customAiPresets.find((p) => p.id === selectedCustomPresetId)
-    if (!current) return
-    try {
-      const res = await fetch("/api/ai-assistant/presets", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          id: current.id,
-          config: aiConfig,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: "Update failed",
-          description: data.error || "Could not update preset.",
-          variant: "destructive",
-        })
-        return
-      }
-      setCustomAiPresets((prev) =>
-        prev.map((p) => (p.id === current.id ? { ...p, config: { ...aiConfig } } : p))
-      )
-      toast({
-        title: "Preset updated",
-        description: `${current.label} now matches your current AI settings.`,
-      })
-    } catch {
-      toast({
-        title: "Update failed",
-        description: "Could not update preset.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function shareSelectedPresetCode() {
-    if (!selectedCustomPresetId) return
-    const current = customAiPresets.find((p) => p.id === selectedCustomPresetId)
-    if (!current) return
-    const payload = {
-      version: 1,
-      label: current.label,
-      config: current.config,
-    }
-    try {
-      const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
-      await navigator.clipboard.writeText(code)
-      toast({
-        title: "Share code copied",
-        description: "Send this code to a teammate so they can import the preset.",
-      })
-    } catch {
-      toast({
-        title: "Copy failed",
-        description: "Could not copy share code.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  async function importPresetFromCode() {
-    const raw = window.prompt("Paste preset share code")
-    if (!raw) return
-    try {
-      const json = decodeURIComponent(escape(atob(raw.trim())))
-      const parsed = JSON.parse(json) as { label?: string; config?: AiAssistantConfig }
-      const label = String(parsed.label || "Imported Preset").trim()
-      const config = (parsed.config || aiConfig) as AiAssistantConfig
-      const res = await fetch("/api/ai-assistant/presets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ label, config }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: "Import failed",
-          description: data.error || "Could not import preset.",
-          variant: "destructive",
-        })
-        return
-      }
-      const created = data.preset as { id: string; label: string; config: AiAssistantConfig }
-      setCustomAiPresets((prev) => [{ id: created.id, label: created.label, config: created.config }, ...prev])
-      setSelectedCustomPresetId(created.id)
-      toast({
-        title: "Preset imported",
-        description: `${created.label} was added to your cloud presets.`,
-      })
-      void maybeApplyToLive(created.config, created.label)
-    } catch {
-      toast({
-        title: "Import failed",
-        description: "Invalid share code.",
-        variant: "destructive",
-      })
     }
   }
 
@@ -1116,7 +639,6 @@ export function SettingsPage() {
           endCallMessage: aiConfig.endCallMessage,
           maxDurationSeconds: aiConfig.maxDurationSeconds,
           silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
-          intake: buildIntakeBody(),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -1130,8 +652,8 @@ export function SettingsPage() {
       }
       setAiSavedAt(Date.now())
       toast({
-        title: "AI receptionist updated",
-        description: "Voice and behavior settings were saved.",
+        title: "Voice settings saved",
+        description: "Playbook and intake are edited in AI call flow (bottom nav).",
       })
     } finally {
       setAiSaving(false)
@@ -1259,9 +781,7 @@ export function SettingsPage() {
       toast({
         title: "Industry updated",
         description:
-          aiScriptChoice === "auto"
-            ? "Your AI fallback script will follow this industry after you Save the AI receptionist."
-            : "Saved. Change AI script to “Auto” if you want calls to follow this industry.",
+          "When AI flow is set to Auto, your playbook follows this industry. Open AI flow to confirm or override.",
       })
     } catch {
       toast({ title: "Error", description: "Could not save industry.", variant: "destructive" })
@@ -1402,7 +922,7 @@ export function SettingsPage() {
               </button>
             </div>
             {industrySavedAt ? (
-              <p className="text-[11px] text-success">Industry saved — tap Save on AI receptionist if you use Auto script.</p>
+              <p className="text-[11px] text-success">Industry saved — check AI call flow if you use Auto playbook.</p>
             ) : null}
           </div>
           <Badge variant="secondary" className="mt-1 text-[10px]">
@@ -1589,11 +1109,11 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* AI receptionist setup and customization */}
+      {/* Voice AI: industry intake is on AI flow; here = activate + voice/greeting/limits only */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            AI Receptionist
+            Voice AI (fallback)
           </h3>
           {hasAiAssistant ? (
             <span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
@@ -1613,39 +1133,51 @@ export function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-5">
-              <div className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
-                <IconSurface tone="primary">
-                  <Bot className="h-4 w-4" />
-                </IconSurface>
-                <div>
-                  <p className="text-sm font-medium text-foreground">AI receptionist</p>
-                  <p className="text-xs text-muted-foreground">
-                    Answers when no one picks up. Same quality on real calls — save once, you’re done.
-                  </p>
+              <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
+                <div className="flex items-start gap-3">
+                  <IconSurface tone="primary">
+                    <Bot className="h-4 w-4" />
+                  </IconSurface>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Industry playbook & intake</p>
+                    <p className="text-xs text-muted-foreground">
+                      Branches (car key vs lockout, emergency vs routine, etc.), fields we collect, SMS leads, and your
+                      busy opening line live in{" "}
+                      <span className="font-medium text-foreground">AI flow</span> — not here.
+                    </p>
+                  </div>
                 </div>
+                <a
+                  href="/dashboard/ai-flow"
+                  className="flex items-center justify-between rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Open AI call flow
+                  <ChevronRight className="h-4 w-4" />
+                </a>
               </div>
 
               <div className="space-y-2 rounded-xl border border-border/70 bg-secondary/25 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  1 · Turn it on
+                  Live assistant
                 </p>
-                <ol className="list-decimal space-y-1 pl-4 text-[11px] text-muted-foreground">
-                  <li>Activate (or open Save if already on).</li>
-                  <li>Pick a preset or voice, edit the greeting if you want.</li>
-                  <li>Save — live calls use this setup automatically.</li>
-                </ol>
+                <p className="text-[11px] text-muted-foreground">
+                  Activate once. After that, use <span className="font-medium text-foreground">Save changes</span> when
+                  you adjust voice or wording below. Always save playbook edits on the AI flow page first.
+                </p>
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   {!hasAiAssistant ? (
                     <button
+                      type="button"
                       onClick={handleActivateAiAssistant}
                       disabled={aiSaving}
                       className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >
                       {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      Activate AI receptionist
+                      Activate voice assistant
                     </button>
                   ) : (
                     <button
+                      type="button"
                       onClick={handleSaveAiAssistant}
                       disabled={aiSaving}
                       className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
@@ -1658,131 +1190,14 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              <div className="space-y-3 border-t border-border/60 pt-4">
+              <details className="rounded-xl border border-border/70 bg-secondary/20 p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-foreground">
+                  Voice, greeting &amp; call limits
+                </summary>
+                <div className="mt-4 space-y-4 border-t border-border/60 pt-4">
+              <div className="space-y-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  2 · Presets
-                </p>
-              <div className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
-                <div>
-                  <p className="text-xs font-semibold text-foreground">Auto-apply presets to live assistant</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    When on, applying/importing a preset immediately updates your live assistant.
-                  </p>
-                </div>
-                <Switch
-                  checked={autoApplyPresetToLive}
-                  onCheckedChange={setAutoApplyPresetToLive}
-                  aria-label="Auto apply presets to live assistant"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Business preset
-                </label>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={aiPreset}
-                    onChange={(e) => applyAiPreset(e.target.value as AiPresetId)}
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                  >
-                    {Object.entries(AI_PRESETS).map(([id, preset]) => (
-                      <option key={id} value={id}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => applyAiPreset(aiPreset)}
-                    type="button"
-                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Your custom presets
-                </label>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={selectedCustomPresetId}
-                    onChange={(e) => applyCustomPresetById(e.target.value)}
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                  >
-                    <option value="">Select custom preset...</option>
-                    {customAiPresets.map((preset) => (
-                      <option key={preset.id} value={preset.id}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    disabled={!selectedCustomPresetId}
-                    onClick={() => deleteCustomPresetById(selectedCustomPresetId)}
-                    className="zing-btn-sm border border-destructive/30 text-destructive hover:bg-destructive/10 disabled:opacity-40"
-                  >
-                    Delete
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={!selectedCustomPresetId}
-                    onClick={renameSelectedCustomPreset}
-                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
-                  >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!selectedCustomPresetId}
-                    onClick={updateSelectedCustomPresetFromCurrent}
-                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
-                  >
-                    Update from current
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!selectedCustomPresetId}
-                    onClick={shareSelectedPresetCode}
-                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
-                  >
-                    Copy share code
-                  </button>
-                  <button
-                    type="button"
-                    onClick={importPresetFromCode}
-                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
-                  >
-                    Import code
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={customPresetName}
-                    onChange={(e) => setCustomPresetName(e.target.value)}
-                    placeholder="Name this setup (e.g. Weekend Voice)"
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={saveCurrentAsCustomPreset}
-                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
-                  >
-                    Save as preset
-                  </button>
-                </div>
-              </div>
-              </div>
-
-              <div className="space-y-3 border-t border-border/60 pt-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  3 · Voice & tone
+                  Voice &amp; tone
                 </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -1865,7 +1280,7 @@ export function SettingsPage() {
 
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  4 · What callers hear
+                  What callers hear
                 </p>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold text-muted-foreground">First greeting</label>
@@ -1918,7 +1333,7 @@ export function SettingsPage() {
 
               <div className="space-y-3 border-t border-border/60 pt-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  5 · Call limits
+                  Call limits
                 </p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1.5">
@@ -1955,104 +1370,8 @@ export function SettingsPage() {
                 </div>
               </div>
               </div>
-
-              <div className="space-y-3 border-t border-border/60 pt-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  6 · Fallback intake
-                </p>
-                <a
-                  href="/dashboard/ai-flow"
-                  className="flex items-center justify-between rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5 text-left transition-colors hover:bg-primary/10"
-                >
-                  <span className="text-xs font-semibold text-foreground">Open AI call flow dashboard</span>
-                  <ChevronRight className="h-4 w-4 text-primary" />
-                </a>
-                <p className="text-[11px] text-muted-foreground">
-                  Used when the AI answers after a human does not pick up. Leave the busy line blank to use your{" "}
-                  <span className="font-medium text-foreground">First greeting</span> (section 4). For a visual map of
-                  branches and fields, use{" "}
-                  <span className="font-medium text-foreground">AI flow</span> in the bottom navigation.
-                </p>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">AI script (playbook)</label>
-                  <select
-                    value={aiScriptChoice}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setAiScriptChoice(v === "auto" ? "auto" : (v as AiIntakeProfileId))
-                    }}
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                  >
-                    <option value="auto">
-                      Auto — match my industry ({industryLabel(user?.industry)})
-                    </option>
-                    {AI_INTAKE_PROFILE_IDS.map((id) => (
-                      <option key={id} value={id}>
-                        {INDUSTRY_CATALOG.find((r) => r.id === id)?.label ?? id}
-                      </option>
-                    ))}
-                  </select>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">
-                    Busy opening line (optional override)
-                  </label>
-                  <textarea
-                    value={aiIntake.busyGreeting}
-                    onChange={(e) => setAiIntake((p) => ({ ...p, busyGreeting: e.target.value }))}
-                    rows={3}
-                    placeholder={DEFAULT_BUSY_GREETING_LOCKSMITH}
-                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">
-                    Extra notes — car keys (locksmith script only)
-                  </label>
-                  <textarea
-                    value={aiIntake.carKeyNotes}
-                    onChange={(e) => setAiIntake((p) => ({ ...p, carKeyNotes: e.target.value }))}
-                    rows={2}
-                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                    placeholder="Anything special you want the AI to ask or say for car-key jobs"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">
-                    Extra notes — lockouts (locksmith script only)
-                  </label>
-                  <textarea
-                    value={aiIntake.lockoutNotes}
-                    onChange={(e) => setAiIntake((p) => ({ ...p, lockoutNotes: e.target.value }))}
-                    rows={2}
-                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                    placeholder="e.g. mention ID at the door, gate codes, etc."
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">Extra notes — other requests</label>
-                  <textarea
-                    value={aiIntake.otherNotes}
-                    onChange={(e) => setAiIntake((p) => ({ ...p, otherNotes: e.target.value }))}
-                    rows={2}
-                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  />
-                </div>
-                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">Text me new leads</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Sends an SMS to your main line when a lead is saved. Needs{" "}
-                      <code className="rounded bg-secondary px-1">TELNYX_MESSAGING_FROM_E164</code> in server env.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={aiIntake.smsNotify}
-                    onCheckedChange={(v) => setAiIntake((p) => ({ ...p, smsNotify: v }))}
-                    aria-label="SMS lead notifications"
-                  />
-                </div>
-              </div>
+              </details>
 
               {aiAssistantId ? (
                 <details className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
@@ -2062,7 +1381,8 @@ export function SettingsPage() {
               ) : null}
 
               <p className="text-[11px] text-muted-foreground">
-                Tip: Use Save changes at the top after edits. Need help? Adjust presets first, then fine-tune the greeting.
+                Tip: Set up playbook and intake in <span className="font-medium text-foreground">AI flow</span>, then tune
+                voice and greeting here and tap Save changes.
               </p>
             </div>
           )}

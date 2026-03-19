@@ -465,7 +465,7 @@ export function DashboardPage() {
                     onClick={() => setShowSwitcher(false)}
                     aria-hidden="true"
                   />
-                  <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl">
+                  <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-2xl">
                     <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
                       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Route calls to
@@ -569,7 +569,7 @@ export function DashboardPage() {
                   onClick={() => { setShowFallbackSettings(false); setEditingGreeting(false) }}
                   aria-hidden="true"
                 />
-                <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl">
+                <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-2xl">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Fallback Settings</h3>

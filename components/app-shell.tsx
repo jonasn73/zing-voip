@@ -54,10 +54,10 @@ export function AppShell({
       </header>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto pb-[max(env(safe-area-inset-bottom),0px)]">{children}</main>
 
       {/* Bottom navigation */}
-      <nav className="sticky bottom-0 z-40 border-t border-border/70 bg-background/80 backdrop-blur-xl" role="navigation" aria-label="Main navigation">
+      <nav className="sticky bottom-0 z-40 border-t border-border/70 bg-background/80 pb-[max(env(safe-area-inset-bottom),0px)] backdrop-blur-xl" role="navigation" aria-label="Main navigation">
         <div className="mx-2 my-2 flex items-center justify-around rounded-2xl border border-border/60 bg-card/70 px-2 py-1.5">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -67,7 +67,7 @@ export function AppShell({
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
                 className={cn(
-                  "flex min-w-[58px] flex-col items-center gap-1 rounded-xl px-3 py-2 transition-all",
+                  "flex min-h-11 min-w-[58px] flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 transition-all",
                   isActive
                     ? "bg-primary/12 text-primary"
                     : "text-muted-foreground hover:text-foreground"

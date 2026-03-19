@@ -2,7 +2,7 @@
 // POST /api/voice/telnyx/recording-status
 // ============================================
 // Telnyx recording status callback. Updates the call log with recording URL/duration.
-// Same behavior as Twilio recording-status; param names may match TeXML docs.
+// Supports TeXML-compatible callback parameter names.
 
 import { NextRequest, NextResponse } from "next/server"
 import { updateCallLog } from "@/lib/db"

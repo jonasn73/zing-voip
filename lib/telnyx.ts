@@ -1,12 +1,12 @@
 // ============================================
 // Telnyx Client & TeXML Helpers
 // ============================================
-// Use Telnyx for voice (TeXML) and numbers instead of or alongside Twilio.
+// Use Telnyx for voice (TeXML) and numbers.
 // Install: npm install telnyx
 // Env vars:
 //   TELNYX_API_KEY          - REST API (required for numbers, etc.)
 //   TELNYX_PUBLIC_KEY       - Optional: for webhook signature verification
-//   NEXT_PUBLIC_APP_URL     - Your deployed URL (shared with Twilio config)
+//   NEXT_PUBLIC_APP_URL     - Your deployed URL
 
 import Telnyx from "telnyx"
 // Reuse TwiML for TeXML: Telnyx TeXML is TwiML-compatible (same <Response>, <Dial>, <Say>, etc.)
@@ -21,7 +21,7 @@ export function getTelnyxClient(): Telnyx {
   return new Telnyx(apiKey)
 }
 
-// --- App URL (same as Twilio; used for webhook URLs in TeXML) ---
+// --- App URL used for Telnyx webhook URLs ---
 export function getAppUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL || "https://www.getzingapp.com"
 }

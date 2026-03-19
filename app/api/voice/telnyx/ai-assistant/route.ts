@@ -1,7 +1,7 @@
 // ============================================
 // POST /api/voice/telnyx/ai-assistant
 // ============================================
-// AI-powered call handler for Telnyx. Same flow as Twilio: <Gather> + AI SDK.
+// AI-powered call handler for Telnyx using TeXML <Gather> + AI SDK.
 // Greeting -> listen -> LLM response -> speak -> loop until hangup.
 
 import { NextRequest, NextResponse } from "next/server"

@@ -1,5 +1,5 @@
-import { ActivityPage } from "@/components/activity-page"
+import { OperationsPage } from "@/features/operations/components/operations-page"
 
 export default function ActivityRoute() {
-  return <ActivityPage />
+  return <OperationsPage />
 }

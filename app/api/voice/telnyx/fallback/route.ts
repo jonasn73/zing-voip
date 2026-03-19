@@ -2,7 +2,7 @@
 // POST /api/voice/telnyx/fallback
 // ============================================
 // Telnyx calls this when the Dial ends (receptionist didn't answer, etc.).
-// Same logic as Twilio fallback; param name may be DialCallStatus or similar.
+// Uses TeXML-compatible Dial callback fields like DialCallStatus/CallStatus.
 
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"

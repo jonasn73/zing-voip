@@ -25,6 +25,9 @@ import {
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
+import { EmptyState } from "@/components/ui/empty-state"
+import { IconSurface } from "@/components/ui/icon-surface"
 
 // Format E.164 to display, e.g. +15025551234 -> (502) 555-1234
 function formatPhoneDisplay(phone: string | undefined | null): string {
@@ -98,6 +101,7 @@ const fallbackOptions: { id: FallbackOption; label: string; description: string;
 ]
 
 export function DashboardPage() {
+  const { toast } = useToast()
   const [mainLinePhone, setMainLinePhone] = useState<string | null>(null)
   const [receptionists, setReceptionists] = useState<Contact[]>([])
   const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(null)
@@ -114,6 +118,7 @@ export function DashboardPage() {
   const [newRecPhone, setNewRecPhone] = useState("")
   const [addRecLoading, setAddRecLoading] = useState(false)
   const [addRecError, setAddRecError] = useState<string | null>(null)
+  const [addRecSavedAt, setAddRecSavedAt] = useState<number | null>(null)
   const [deletingRecId, setDeletingRecId] = useState<string | null>(null)
 
   // AI assistant state
@@ -197,6 +202,9 @@ export function DashboardPage() {
   const ownerPhoneDisplay = formatPhoneDisplay(mainLinePhone)
   const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) || null
   const isRoutingToOwner = !selectedReceptionist
+  const hasBusinessNumbers = businessNumbers.length > 0
+  const hasReceptionists = receptionists.length > 0
+  const isSetupComplete = hasBusinessNumbers && (hasReceptionists || Boolean(mainLinePhone))
 
   // Save routing for the primary business number (or default if none)
   function saveRouting(updates: Record<string, unknown>) {
@@ -206,7 +214,16 @@ export function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ ...updates, business_number: primaryNumber }),
-    }).catch(() => {})
+    })
+      .then((res) => {
+        if (res.ok) {
+          toast({
+            title: "Routing updated",
+            description: "Incoming calls will follow your new routing rule.",
+          })
+        }
+      })
+      .catch(() => {})
   }
 
   function selectReceptionist(id: string) {
@@ -248,6 +265,11 @@ export function DashboardPage() {
       setNewRecName("")
       setNewRecPhone("")
       setShowAddReceptionist(false)
+      setAddRecSavedAt(Date.now())
+      toast({
+        title: "Receptionist added",
+        description: `${r.name} is ready for call routing.`,
+      })
     } catch {
       setAddRecError("Something went wrong")
     } finally {
@@ -264,8 +286,15 @@ export function DashboardPage() {
         credentials: "include",
       })
       if (res.ok) {
+        const removed = receptionists.find((r) => r.id === id)
         setReceptionists((prev) => prev.filter((r) => r.id !== id))
         if (selectedReceptionistId === id) clearReceptionist()
+        if (removed) {
+          toast({
+            title: "Receptionist removed",
+            description: `${removed.name} will no longer receive routed calls.`,
+          })
+        }
       }
     } catch { /* silent */ }
     setDeletingRecId(null)
@@ -285,8 +314,56 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-5 p-4 pb-8">
+      {!isSetupComplete && (
+        <section className="rounded-2xl border border-primary/25 bg-primary/8 p-4 shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-200">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15">
+              <Check className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-foreground">Quick setup</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Complete these steps to go live fast.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/70 px-3 py-2">
+                  <span className="text-xs text-foreground">1. Add a business number</span>
+                  {hasBusinessNumbers ? (
+                    <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">Done</span>
+                  ) : (
+                    <a href="/dashboard/settings" className="text-[11px] font-semibold text-primary hover:underline">Open settings</a>
+                  )}
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/70 px-3 py-2">
+                  <span className="text-xs text-foreground">2. Add a receptionist (optional)</span>
+                  {hasReceptionists ? (
+                    <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">Done</span>
+                  ) : (
+                    <button
+                      onClick={() => { setShowAddReceptionist(true); setAddRecError(null) }}
+                      className="text-[11px] font-semibold text-primary hover:underline"
+                    >
+                      Add now
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/70 px-3 py-2">
+                  <span className="text-xs text-foreground">3. Choose where calls ring</span>
+                  <button
+                    onClick={() => setShowSwitcher(true)}
+                    className="text-[11px] font-semibold text-primary hover:underline"
+                  >
+                    Set routing
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Routing Status */}
-      <section className="relative rounded-2xl border border-border bg-card p-6">
+      <section className="zing-card relative p-6">
         <div
           className="pointer-events-none absolute inset-0 rounded-2xl"
           style={{
@@ -296,7 +373,7 @@ export function DashboardPage() {
         />
         <div className="relative flex flex-col items-center gap-5">
           {/* Centered icon */}
-          <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-primary bg-primary/10 shadow-[0_0_30px_-5px_var(--primary)]">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-primary/60 bg-primary/10 shadow-[0_0_20px_-8px_var(--primary)]">
             <PhoneForwarded className="h-8 w-8 text-primary" />
           </div>
 
@@ -327,7 +404,7 @@ export function DashboardPage() {
               <button
                 onClick={() => setShowSwitcher(!showSwitcher)}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-full border px-4 py-2 transition-all hover:bg-primary/15 active:scale-[0.98]",
+                  "flex items-center gap-2.5 rounded-full border px-4 py-2 transition-colors hover:bg-primary/15",
                   isRoutingToOwner
                     ? "border-border bg-secondary"
                     : "border-primary/30 bg-primary/10"
@@ -388,7 +465,7 @@ export function DashboardPage() {
                     onClick={() => setShowSwitcher(false)}
                     aria-hidden="true"
                   />
-                  <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+                  <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl">
                     <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
                       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Route calls to
@@ -492,7 +569,7 @@ export function DashboardPage() {
                   onClick={() => { setShowFallbackSettings(false); setEditingGreeting(false) }}
                   aria-hidden="true"
                 />
-                <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+                <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Fallback Settings</h3>
@@ -527,9 +604,9 @@ export function DashboardPage() {
                               : "hover:bg-secondary"
                           )}
                         >
-                          <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", option.bgColor)}>
+                          <IconSurface className={cn("h-10 w-10", option.bgColor)}>
                             <Icon className={cn("h-5 w-5", option.color)} />
-                          </div>
+                          </IconSurface>
                           <div className="flex-1">
                             <p className="text-sm font-medium leading-tight text-foreground">
                               {option.label}
@@ -580,13 +657,13 @@ export function DashboardPage() {
                                 setEditingGreeting(false)
                                 saveRouting({ ai_greeting: greetingDraft })
                               }}
-                              className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                              className="zing-btn-sm flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
                             >
                               Save
                             </button>
                             <button
                               onClick={() => setEditingGreeting(false)}
-                              className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                              className="zing-btn-sm bg-secondary text-muted-foreground hover:text-foreground"
                             >
                               Cancel
                             </button>
@@ -637,17 +714,19 @@ export function DashboardPage() {
         </div>
 
         {receptionists.length === 0 && !showAddReceptionist ? (
-          <div className="rounded-xl border border-dashed border-border bg-card/50 p-6 text-center">
-            <User className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
-            <p className="text-sm font-medium text-foreground">No receptionists yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">Add a receptionist to route calls to them instead of your phone.</p>
-            <button
-              onClick={() => setShowAddReceptionist(true)}
-              className="mt-3 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-            >
-              Add Receptionist
-            </button>
-          </div>
+          <EmptyState
+            icon={<User className="h-8 w-8" />}
+            title="No receptionists yet"
+            description="Add a receptionist to route calls to them instead of your phone."
+            action={(
+              <button
+                onClick={() => setShowAddReceptionist(true)}
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                Add Receptionist
+              </button>
+            )}
+          />
         ) : (
           <div className="flex flex-col gap-2">
             {receptionists.map((rec) => (
@@ -701,7 +780,7 @@ export function DashboardPage() {
                   placeholder="Sarah Miller"
                   value={newRecName}
                   onChange={(e) => setNewRecName(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                   autoFocus
                 />
               </div>
@@ -712,7 +791,7 @@ export function DashboardPage() {
                   placeholder="(555) 234-5678"
                   value={newRecPhone}
                   onChange={(e) => setNewRecPhone(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                 />
               </div>
               {addRecError && <p className="text-xs text-destructive">{addRecError}</p>}
@@ -720,18 +799,19 @@ export function DashboardPage() {
                 <button
                   onClick={handleAddReceptionist}
                   disabled={addRecLoading || !newRecName.trim() || !newRecPhone.trim()}
-                  className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                  className="flex-1 rounded-xl bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                 >
                   {addRecLoading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Add"}
                 </button>
                 <button
                   onClick={() => { setShowAddReceptionist(false); setNewRecName(""); setNewRecPhone(""); setAddRecError(null) }}
                   disabled={addRecLoading}
-                  className="rounded-lg border border-border px-4 py-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                  className="rounded-xl border border-border px-4 py-2.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
                 >
                   Cancel
                 </button>
               </div>
+              {addRecSavedAt && <p className="text-[11px] text-success">Saved just now</p>}
             </div>
           </div>
         )}
@@ -747,9 +827,9 @@ export function DashboardPage() {
         {hasVapiAssistant ? (
           <div className="rounded-xl border border-chart-4/20 bg-chart-4/5 p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-chart-4/10">
+              <IconSurface tone="primary" className="h-10 w-10">
                 <Sparkles className="h-5 w-5 text-chart-4" />
-              </div>
+              </IconSurface>
               <div className="flex-1">
                 <p className="text-sm font-medium text-foreground">AI Receptionist Active</p>
                 <p className="text-[11px] text-muted-foreground">
@@ -799,9 +879,9 @@ export function DashboardPage() {
                 key={stat.label}
                 className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5"
               >
-                <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", stat.bgColor)}>
+                <IconSurface className={cn("h-10 w-10", stat.bgColor)}>
                   <Icon className={cn("h-5 w-5", stat.color)} />
-                </div>
+                </IconSurface>
                 <div>
                   <p className="text-lg font-bold text-foreground leading-tight">{stat.value}</p>
                   <p className="text-[11px] text-muted-foreground">{stat.label}</p>
@@ -814,9 +894,9 @@ export function DashboardPage() {
         {/* Talk Time Summary */}
         <div className="mt-2 flex items-center justify-between rounded-xl border border-border bg-card p-3.5">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+            <IconSurface tone="warning" className="h-10 w-10">
               <Clock className="h-5 w-5 text-warning" />
-            </div>
+            </IconSurface>
             <div>
               <p className="text-sm font-medium text-foreground">Total Talk Time</p>
               <p className="text-[11px] text-muted-foreground">All calls this month</p>

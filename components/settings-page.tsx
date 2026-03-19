@@ -26,6 +26,8 @@ import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
+import { IconSurface } from "@/components/ui/icon-surface"
 
 interface SettingToggle {
   id: string
@@ -61,6 +63,7 @@ function formatPhoneDisplay(phone: string | undefined | null): string {
 }
 
 export function SettingsPage() {
+  const { toast } = useToast()
   const [user, setUser] = useState<{ name: string; email: string; phone: string } | null>(null)
   const [settings, setSettings] = useState<SettingToggle[]>([
     {
@@ -134,6 +137,7 @@ export function SettingsPage() {
   const [mainLineEdit, setMainLineEdit] = useState("")
   const [mainLineSaveLoading, setMainLineSaveLoading] = useState(false)
   const [mainLineError, setMainLineError] = useState<string | null>(null)
+  const [mainLineSavedAt, setMainLineSavedAt] = useState<number | null>(null)
 
   // Per-number routing state
   const [receptionistsList, setReceptionistsList] = useState<ReceptionistInfo[]>([])
@@ -287,6 +291,10 @@ export function SettingsPage() {
         return
       }
       setBuySuccess(phoneNumber)
+      toast({
+        title: "Number purchased",
+        description: `${formatPhoneDisplay(phoneNumber)} is ready to receive calls.`,
+      })
       setAvailableNumbers((prev) => prev.filter((n) => n.number !== phoneNumber))
       // Add the newly purchased number to the displayed list right away
       setMyNumbers((prev) => [...prev, {
@@ -332,6 +340,10 @@ export function SettingsPage() {
       }
       setPortSubmitMessage(data.message || "Your number is being transferred to Zing.")
       setPortSubmitted(true)
+      toast({
+        title: "Port request submitted",
+        description: "We started your transfer and will keep status updated here.",
+      })
       const portingRes = await fetch("/api/numbers/porting", { credentials: "include" })
       const portingData = await portingRes.json()
       if (Array.isArray(portingData.porting)) setPortingNumbers(portingData.porting)
@@ -419,6 +431,10 @@ export function SettingsPage() {
           return [...prev, { business_number: e164, selected_receptionist_id: receptionistId }]
         })
         setRoutingModalNumber(null)
+        toast({
+          title: "Routing saved",
+          description: `${formatPhoneDisplay(e164)} was updated.`,
+        })
       }
     } catch {
       // silently fail
@@ -473,6 +489,11 @@ export function SettingsPage() {
             email: sessionData.data.user.email ?? "",
             phone: sessionData.data.user.phone ?? "",
           })
+          toast({
+            title: "Main line updated",
+            description: "Default destination number has been saved.",
+          })
+          setMainLineSavedAt(Date.now())
         }
       }
     } catch {
@@ -485,13 +506,13 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-6 p-4 pb-8">
       {/* Profile card: main line = owner's cell (default destination for calls) */}
-      <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center gap-4 rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm transition-colors">
         <Avatar className="h-14 w-14">
           <AvatarFallback className="bg-primary text-primary-foreground text-lg font-semibold">
             ME
           </AvatarFallback>
         </Avatar>
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-base font-semibold text-foreground">{user?.name ?? "My Business"}</p>
           <p className="text-sm text-muted-foreground">{user?.email || "owner@mybusiness.com"}</p>
           {editingMainLine ? (
@@ -501,7 +522,7 @@ export function SettingsPage() {
                 value={mainLineEdit}
                 onChange={(e) => setMainLineEdit(e.target.value)}
                 placeholder="(555) 123-4567"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                className="w-full rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/40"
                 autoFocus
               />
               {mainLineError && (
@@ -512,7 +533,7 @@ export function SettingsPage() {
                   type="button"
                   onClick={saveMainLine}
                   disabled={mainLineSaveLoading || !mainLineEdit.trim()}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  className="zing-btn-sm bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                 >
                   {mainLineSaveLoading ? "Saving…" : "Save"}
                 </button>
@@ -520,11 +541,14 @@ export function SettingsPage() {
                   type="button"
                   onClick={cancelEditMainLine}
                   disabled={mainLineSaveLoading}
-                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                  className="zing-btn-sm border border-border/70 text-foreground transition-colors hover:bg-muted disabled:opacity-50"
                 >
                   Cancel
                 </button>
               </div>
+              {mainLineSavedAt && (
+                <p className="text-[11px] text-success">Saved just now</p>
+              )}
             </div>
           ) : (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -532,7 +556,7 @@ export function SettingsPage() {
               <button
                 type="button"
                 onClick={startEditMainLine}
-                className="font-medium text-primary underline hover:no-underline"
+                className="font-medium text-primary underline decoration-primary/60 underline-offset-2 hover:no-underline"
               >
                 Edit
               </button>
@@ -546,13 +570,15 @@ export function SettingsPage() {
       </div>
 
       {/* Business numbers: the numbers customers call; buy or port; route to cell or receptionists */}
-      <section>
-        <h3 className="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Business numbers
-        </h3>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Numbers your customers call (buy or port). Calls to these numbers ring your main line above or a receptionist.
-        </p>
+      <section className="space-y-3">
+        <div>
+          <h3 className="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Business numbers
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Numbers your customers call (buy or port). Calls ring your main line or receptionist.
+          </p>
+        </div>
         <div className="flex flex-col gap-2">
           {myNumbers
             .filter((num) => num.status === "active")
@@ -562,12 +588,12 @@ export function SettingsPage() {
               <button
                 key={num.number}
                 onClick={() => setRoutingModalNumber(num.number)}
-                className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
+                className="flex w-full items-center justify-between rounded-2xl border border-border/70 bg-card/85 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                    <Phone className="h-4 w-4 text-primary" />
-                  </div>
+                  <IconSurface tone="primary">
+                    <Phone className="h-4 w-4" />
+                  </IconSurface>
                   <div>
                     <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(num.number)}</p>
                     <p className="text-xs text-muted-foreground">
@@ -588,7 +614,7 @@ export function SettingsPage() {
           })}
 
           {portingLoading && portingNumbers.length === 0 ? (
-            <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-6">
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-border/70 bg-card/85 py-6 shadow-sm">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Loading port status…</span>
             </div>
@@ -609,8 +635,8 @@ export function SettingsPage() {
                 key={p.id || p.number}
                 {...(isComplete ? { onClick: () => setRoutingModalNumber(p.number) } : {})}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left",
-                  isComplete && "transition-all hover:border-primary/30 hover:bg-primary/5"
+                  "flex w-full items-center justify-between rounded-2xl border border-border/70 bg-card/85 p-4 text-left shadow-sm",
+                  isComplete && "transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5"
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -651,7 +677,7 @@ export function SettingsPage() {
                           alert("Failed to cancel. Try again.")
                         }
                       }}
-                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-destructive hover:bg-destructive/10"
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-destructive transition-colors hover:bg-destructive/10"
                     >
                       Cancel
                     </button>
@@ -667,12 +693,12 @@ export function SettingsPage() {
 
           <button
             onClick={() => { setShowNumberModal(true); setNumberTab("buy"); setBuyStep("search"); setSelectedAreaCode(""); resetPortForm() }}
-            className="flex w-full items-center justify-between rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4 text-left transition-all hover:bg-primary/10"
+            className="flex w-full items-center justify-between rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary/10"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                <Plus className="h-4 w-4 text-primary" />
-              </div>
+              <IconSurface tone="primary">
+                <Plus className="h-4 w-4" />
+              </IconSurface>
               <div>
                 <p className="text-sm font-medium text-primary">Add business number</p>
                 <p className="text-xs text-muted-foreground">Buy new or port existing — calls route to your cell</p>
@@ -684,8 +710,8 @@ export function SettingsPage() {
       </section>
 
       {/* Routing settings */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Call Routing
         </h3>
         <div className="flex flex-col gap-2">
@@ -694,12 +720,12 @@ export function SettingsPage() {
             return (
               <div
                 key={setting.id}
-                className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
+                className="flex items-center justify-between rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                  <IconSurface>
                     <Icon className={cn("h-4 w-4", setting.iconColor)} />
-                  </div>
+                  </IconSurface>
                   <div>
                     <p className="text-sm font-medium text-foreground">
                       {setting.label}
@@ -721,15 +747,15 @@ export function SettingsPage() {
       </section>
 
       {/* Schedule */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Schedule
         </h3>
-        <button className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5">
+        <button className="flex w-full items-center justify-between rounded-2xl border border-border/70 bg-card/85 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+            <IconSurface>
               <Clock className="h-4 w-4 text-primary" />
-            </div>
+            </IconSurface>
             <div>
               <p className="text-sm font-medium text-foreground">
                 Business Hours
@@ -747,17 +773,17 @@ export function SettingsPage() {
       {showNumberModal && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
+            className="fixed inset-0 z-40 animate-in fade-in-0 bg-background/60 backdrop-blur-sm duration-150"
             onClick={() => setShowNumberModal(false)}
             aria-hidden="true"
           />
-          <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+          <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h3 className="text-sm font-semibold text-foreground">Get a Number</h3>
               <button
                 onClick={() => setShowNumberModal(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -805,13 +831,13 @@ export function SettingsPage() {
                           maxLength={3}
                           value={selectedAreaCode}
                           onChange={(e) => setSelectedAreaCode(e.target.value.replace(/\D/g, ""))}
-                          className="w-full rounded-lg border border-border bg-secondary py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                          className="w-full rounded-xl border border-border/70 bg-secondary py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                         />
                       </div>
                       <button
                         onClick={handleSearchNumbers}
                         disabled={selectedAreaCode.length < 3}
-                        className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+                        className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
                       >
                         {buyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
                       </button>
@@ -832,7 +858,7 @@ export function SettingsPage() {
                     </div>
 
                     {buySuccess && (
-                      <div className="flex items-center gap-2 rounded-lg bg-success/10 p-3">
+                      <div className="flex items-center gap-2 rounded-xl bg-success/10 p-3">
                         <Check className="h-4 w-4 text-success" />
                         <p className="text-xs font-medium text-success">
                           {formatPhoneDisplay(buySuccess)} purchased! It will appear in your business numbers shortly.
@@ -848,7 +874,7 @@ export function SettingsPage() {
                           key={num.number}
                           onClick={() => handleBuyNumber(num.number)}
                           disabled={buyingNumber !== null}
-                          className="flex items-center justify-between rounded-lg border border-border bg-secondary p-3 text-left transition-all hover:border-primary/30 hover:bg-primary/5 disabled:opacity-50"
+                          className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5 disabled:opacity-50"
                         >
                           <div>
                             <p className="text-sm font-medium text-foreground">{num.friendly}</p>
@@ -892,7 +918,7 @@ export function SettingsPage() {
                     </div>
                     <button
                       onClick={() => { setShowNumberModal(false); resetPortForm() }}
-                      className="mt-2 rounded-lg bg-primary px-6 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                      className="mt-2 rounded-xl bg-primary px-6 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                     >
                       Done
                     </button>
@@ -909,7 +935,7 @@ export function SettingsPage() {
                     {/* Step 1: Phone number */}
                     {portStep === 1 && (
                       <>
-                        <div className="flex items-start gap-2.5 rounded-lg bg-secondary p-3">
+                        <div className="flex items-start gap-2.5 rounded-xl bg-secondary p-3">
                           <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                           <p className="text-xs leading-relaxed text-muted-foreground">
                             Port your existing business number to Zing. No downtime, no missed calls.
@@ -922,7 +948,7 @@ export function SettingsPage() {
                             placeholder="(555) 123-4567"
                             value={portNumber}
                             onChange={(e) => setPortNumber(e.target.value)}
-                            className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                            className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                             autoFocus
                           />
                         </div>
@@ -930,7 +956,7 @@ export function SettingsPage() {
                         <button
                           onClick={() => { setPortError(null); setPortStep(2) }}
                           disabled={!portNumber.replace(/\D/g, "").length}
-                          className="mt-1 w-full rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+                          className="zing-btn-sm mt-1 w-full bg-primary py-2.5 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
                         >
                           Next: Account info
                         </button>
@@ -945,25 +971,25 @@ export function SettingsPage() {
                         </p>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Name on account</label>
-                          <input type="text" placeholder="Your name or business name" value={portAccountName} onChange={(e) => setPortAccountName(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
+                          <input type="text" placeholder="Your name or business name" value={portAccountName} onChange={(e) => setPortAccountName(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Authorized person (who can approve the transfer)</label>
-                          <input type="text" placeholder="Your full name" value={portAuthPerson} onChange={(e) => setPortAuthPerson(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                          <input type="text" placeholder="Your full name" value={portAuthPerson} onChange={(e) => setPortAuthPerson(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Account number (optional)</label>
-                          <input type="text" placeholder="From your current provider's bill" value={portAccountNumber} onChange={(e) => setPortAccountNumber(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                          <input type="text" placeholder="From your current provider's bill" value={portAccountNumber} onChange={(e) => setPortAccountNumber(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Account PIN (optional)</label>
-                          <input type="text" placeholder="If your carrier requires a PIN" value={portPin} onChange={(e) => setPortPin(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                          <input type="text" placeholder="If your carrier requires a PIN" value={portPin} onChange={(e) => setPortPin(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Recent carrier bill / invoice</label>
                           <p className="text-[10px] text-muted-foreground -mt-1">Upload a photo or PDF of your most recent phone bill. Required by carriers to verify the transfer.</p>
                           <label className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-3 text-sm transition-colors",
+                            "flex cursor-pointer items-center gap-2 rounded-xl border border-dashed px-3 py-3 text-sm transition-colors",
                             portInvoiceFile
                               ? "border-primary/40 bg-primary/5 text-primary"
                               : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:bg-primary/5"
@@ -995,8 +1021,8 @@ export function SettingsPage() {
                           </label>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => setPortStep(1)} className="flex-1 rounded-lg border border-border py-2.5 text-xs font-semibold text-foreground hover:bg-muted">Back</button>
-                          <button onClick={() => setPortStep(3)} disabled={!portAccountName || !portAuthPerson || !portInvoiceFile} className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">Next: Address</button>
+                          <button onClick={() => setPortStep(1)} className="flex-1 rounded-xl border border-border/70 py-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted">Back</button>
+                          <button onClick={() => setPortStep(3)} disabled={!portAccountName || !portAuthPerson || !portInvoiceFile} className="flex-1 rounded-xl bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">Next: Address</button>
                         </div>
                       </>
                     )}
@@ -1009,26 +1035,26 @@ export function SettingsPage() {
                         </p>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Street address</label>
-                          <input type="text" placeholder="123 Main St" value={portStreet} onChange={(e) => setPortStreet(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
+                          <input type="text" placeholder="123 Main St" value={portStreet} onChange={(e) => setPortStreet(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
                         </div>
                         <div className="grid grid-cols-3 gap-2">
                           <div className="col-span-1 flex flex-col gap-1.5">
                             <label className="text-[11px] font-semibold text-muted-foreground">City</label>
-                            <input type="text" placeholder="City" value={portCity} onChange={(e) => setPortCity(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                            <input type="text" placeholder="City" value={portCity} onChange={(e) => setPortCity(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                           </div>
                           <div className="col-span-1 flex flex-col gap-1.5">
                             <label className="text-[11px] font-semibold text-muted-foreground">State</label>
-                            <input type="text" placeholder="KY" maxLength={2} value={portState} onChange={(e) => setPortState(e.target.value.toUpperCase())} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                            <input type="text" placeholder="KY" maxLength={2} value={portState} onChange={(e) => setPortState(e.target.value.toUpperCase())} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                           </div>
                           <div className="col-span-1 flex flex-col gap-1.5">
                             <label className="text-[11px] font-semibold text-muted-foreground">ZIP</label>
-                            <input type="text" placeholder="40000" maxLength={5} value={portZip} onChange={(e) => setPortZip(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
+                            <input type="text" placeholder="40000" maxLength={5} value={portZip} onChange={(e) => setPortZip(e.target.value.replace(/\D/g, ""))} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                           </div>
                         </div>
                         {portError && <p className="text-xs text-destructive">{portError}</p>}
                         <div className="flex gap-2">
-                          <button onClick={() => setPortStep(2)} disabled={portSubmitLoading} className="flex-1 rounded-lg border border-border py-2.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50">Back</button>
-                          <button onClick={handlePortSubmit} disabled={!portStreet || !portCity || !portState || !portZip || portSubmitLoading} className="flex-1 rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">
+                          <button onClick={() => setPortStep(2)} disabled={portSubmitLoading} className="flex-1 rounded-xl border border-border/70 py-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50">Back</button>
+                          <button onClick={handlePortSubmit} disabled={!portStreet || !portCity || !portState || !portZip || portSubmitLoading} className="flex-1 rounded-xl bg-primary py-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40">
                             {portSubmitLoading ? (<><Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />Submitting...</>) : "Submit port request"}
                           </button>
                         </div>
@@ -1049,11 +1075,11 @@ export function SettingsPage() {
       {routingModalNumber && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
+            className="fixed inset-0 z-40 animate-in fade-in-0 bg-background/60 backdrop-blur-sm duration-150"
             onClick={() => setRoutingModalNumber(null)}
             aria-hidden="true"
           />
-          <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+          <div className="fixed inset-x-4 top-1/2 z-50 mx-auto max-w-sm -translate-y-1/2 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
@@ -1167,8 +1193,8 @@ export function SettingsPage() {
       )}
 
       {/* Account */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Account
         </h3>
         <div className="flex flex-col gap-2">
@@ -1176,12 +1202,12 @@ export function SettingsPage() {
             href={process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL || "/privacy"}
             target={process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL ? "_blank" : undefined}
             rel={process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL ? "noopener noreferrer" : undefined}
-            className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
+            className="flex w-full items-center justify-between rounded-2xl border border-border/70 bg-card/85 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+              <IconSurface>
                 <Shield className="h-4 w-4 text-muted-foreground" />
-              </div>
+              </IconSurface>
               <p className="text-sm font-medium text-foreground">
                 Security & Privacy
               </p>
@@ -1193,12 +1219,12 @@ export function SettingsPage() {
             href={process.env.NEXT_PUBLIC_SUPPORT_URL || "/support"}
             target={process.env.NEXT_PUBLIC_SUPPORT_URL ? "_blank" : undefined}
             rel={process.env.NEXT_PUBLIC_SUPPORT_URL ? "noopener noreferrer" : undefined}
-            className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
+            className="flex w-full items-center justify-between rounded-2xl border border-border/70 bg-card/85 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+              <IconSurface>
                 <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </div>
+              </IconSurface>
               <p className="text-sm font-medium text-foreground">
                 Help & Support
               </p>
@@ -1206,11 +1232,11 @@ export function SettingsPage() {
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </a>
 
-          <button className="flex w-full items-center justify-between rounded-xl border border-border bg-card p-4 text-left transition-all hover:bg-destructive/5">
+          <button className="flex w-full items-center justify-between rounded-2xl border border-border/70 bg-card/85 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-destructive/5">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-destructive/10">
+              <IconSurface tone="danger">
                 <LogOut className="h-4 w-4 text-destructive" />
-              </div>
+              </IconSurface>
               <p className="text-sm font-medium text-destructive">Sign Out</p>
             </div>
           </button>

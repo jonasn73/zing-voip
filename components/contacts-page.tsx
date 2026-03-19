@@ -29,6 +29,9 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { EmptyState } from "@/components/ui/empty-state"
+import { useToast } from "@/hooks/use-toast"
+import { IconSurface } from "@/components/ui/icon-surface"
 
 interface Contact {
   id: string
@@ -49,6 +52,7 @@ const initialContacts: Contact[] = [
 ]
 
 export function ContactsPage() {
+  const { toast } = useToast()
   const [contacts, setContacts] = useState<Contact[]>(initialContacts)
   const [searchQuery, setSearchQuery] = useState("")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -76,7 +80,14 @@ export function ContactsPage() {
   }
 
   function removeContact(id: string) {
+    const removed = contacts.find((c) => c.id === id)
     setContacts((prev) => prev.filter((c) => c.id !== id))
+    if (removed) {
+      toast({
+        title: "Team member removed",
+        description: `${removed.name} will no longer receive calls.`,
+      })
+    }
   }
 
   function addContact() {
@@ -104,16 +115,20 @@ export function ContactsPage() {
     setNewName("")
     setNewPhone("")
     setShowAddDialog(false)
+    toast({
+      title: "Team member added",
+      description: `${newName.trim()} can now be enabled for call routing.`,
+    })
   }
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="zing-section-header">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Contacts</h2>
+          <h2 className="text-xl font-semibold text-foreground">Team</h2>
           <p className="text-sm text-muted-foreground">
-            {activeCount} of {contacts.length} receiving calls
+            {activeCount} of {contacts.length} currently receiving calls
           </p>
         </div>
         <Button
@@ -176,7 +191,7 @@ export function ContactsPage() {
           <div
             key={contact.id}
             className={cn(
-              "flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-all",
+              "zing-card flex items-center justify-between p-4 transition-all",
               contact.active && "border-primary/30 bg-primary/5"
             )}
           >
@@ -206,7 +221,9 @@ export function ContactsPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Phone className="h-3 w-3 text-muted-foreground" />
+                  <IconSurface className="h-5 w-5 rounded-md">
+                    <Phone className="h-3 w-3 text-muted-foreground" />
+                  </IconSurface>
                   <p className="text-xs text-muted-foreground">
                     {contact.phone}
                   </p>
@@ -241,10 +258,19 @@ export function ContactsPage() {
         ))}
 
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
-            <Search className="h-8 w-8" />
-            <p className="text-sm">No contacts found</p>
-          </div>
+          <EmptyState
+            icon={<Search className="h-8 w-8" />}
+            title="No team members found"
+            description="Add a team member so you can route calls to them."
+            action={(
+              <button
+                onClick={() => setShowAddDialog(true)}
+                className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/15"
+              >
+                Add team member
+              </button>
+            )}
+          />
         )}
       </div>
 

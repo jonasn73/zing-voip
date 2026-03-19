@@ -18,6 +18,9 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { useOperationsData, type UiCallRecord } from "@/lib/hooks/use-operations-data"
+import { Skeleton } from "@/components/ui/skeleton"
+import { EmptyState } from "@/components/ui/empty-state"
+import { IconSurface } from "@/components/ui/icon-surface"
 
 type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
 type FilterType = "all" | CallType
@@ -113,28 +116,58 @@ export function ActivityPage() {
   const topMissedCallers = insights?.top_missed_callers ?? []
   const maxTrendSetup = Math.max(...trend.map((d) => d.avg_setup_ms ?? 0), 1)
 
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4 p-4 pb-8">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-36 rounded-lg" />
+          <Skeleton className="h-4 w-56 rounded-lg" />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Skeleton className="h-20 rounded-2xl" />
+          <Skeleton className="h-20 rounded-2xl" />
+          <Skeleton className="h-20 rounded-2xl" />
+        </div>
+        <Skeleton className="h-12 rounded-2xl" />
+        <Skeleton className="h-36 rounded-2xl" />
+        <Skeleton className="h-36 rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col gap-4 p-4 pb-8">
+        <EmptyState
+          title="Could not load activity"
+          description="Please refresh to try again. If this continues, check your network and API credentials."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
       <div>
-        <h2 className="text-xl font-semibold text-foreground">Operations</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">Operations</h2>
         <p className="text-sm text-muted-foreground">Live quality KPIs and call activity</p>
       </div>
 
       {/* Core KPI Cards */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Phone className="mb-1 h-4 w-4 text-primary" />
           <span className="text-lg font-bold text-foreground">{totalCalls}</span>
           <span className="text-[10px] text-muted-foreground">Total Calls</span>
         </div>
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Clock className="mb-1 h-4 w-4 text-warning" />
           <span className="text-lg font-bold text-foreground">
             {Math.floor(totalDuration / 60)}m
           </span>
           <span className="text-[10px] text-muted-foreground">Talk Time</span>
         </div>
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Download className="mb-1 h-4 w-4 text-success" />
           <span className="text-lg font-bold text-foreground">{recordingsCount}</span>
           <span className="text-[10px] text-muted-foreground">Recordings</span>
@@ -143,19 +176,19 @@ export function ActivityPage() {
 
       {/* Quality KPI Cards */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <CheckCircle2 className="mb-1 h-4 w-4 text-success" />
           <span className="text-lg font-bold text-foreground">{answerRate.toFixed(1)}%</span>
           <span className="text-[10px] text-muted-foreground">Answer Rate</span>
         </div>
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Gauge className="mb-1 h-4 w-4 text-warning" />
           <span className="text-lg font-bold text-foreground">
             {avgSetup == null ? "--" : `${Math.round(avgSetup)}ms`}
           </span>
           <span className="text-[10px] text-muted-foreground">Avg Setup</span>
         </div>
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Timer className="mb-1 h-4 w-4 text-primary" />
           <span className="text-lg font-bold text-foreground">
             {p95Setup == null ? "--" : `${Math.round(p95Setup)}ms`}
@@ -172,7 +205,7 @@ export function ActivityPage() {
           placeholder="Search calls, contacts..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-xl border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full rounded-2xl border border-border/70 bg-card/80 py-3 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
 
@@ -188,7 +221,7 @@ export function ActivityPage() {
               "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all",
               filter === f.id
                 ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-muted-foreground hover:text-foreground"
+                : "border border-border/70 bg-card text-muted-foreground hover:text-foreground"
             )}
           >
             {f.label}
@@ -197,7 +230,7 @@ export function ActivityPage() {
       </div>
 
       {/* 7-Day Setup Trend */}
-      <section className="rounded-xl border border-border bg-card p-3.5">
+      <section className="zing-card p-4">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-sm font-medium text-foreground">7-day setup latency trend</p>
           <span className="text-xs text-muted-foreground">Goal: &lt; 1000ms</span>
@@ -224,14 +257,14 @@ export function ActivityPage() {
       </section>
 
       {/* Per-number quality */}
-      <section className="rounded-xl border border-border bg-card p-3.5">
+      <section className="zing-card p-4">
         <p className="mb-2 text-sm font-medium text-foreground">Per-number quality</p>
         {numberQuality.length === 0 ? (
           <p className="text-xs text-muted-foreground">No per-number data yet.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {numberQuality.map((n) => (
-              <div key={n.number} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
+              <div key={n.number} className="flex items-center justify-between rounded-xl bg-secondary/35 px-3.5 py-2.5">
                 <div>
                   <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(n.number)}</p>
                   <p className="text-[11px] text-muted-foreground">{n.total_calls} calls</p>
@@ -247,14 +280,14 @@ export function ActivityPage() {
       </section>
 
       {/* Top missed callers */}
-      <section className="rounded-xl border border-border bg-card p-3.5">
+      <section className="zing-card p-4">
         <p className="mb-2 text-sm font-medium text-foreground">Top missed callers</p>
         {topMissedCallers.length === 0 ? (
           <p className="text-xs text-muted-foreground">No missed callers in selected window.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {topMissedCallers.map((m) => (
-              <div key={m.caller_number} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
+              <div key={m.caller_number} className="flex items-center justify-between rounded-xl bg-secondary/35 px-3.5 py-2.5">
                 <div>
                   <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(m.caller_number)}</p>
                   <p className="text-[11px] text-muted-foreground">
@@ -294,15 +327,15 @@ export function ActivityPage() {
               const isExpanded = expandedId === call.id
 
               return (
-                <div key={call.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                <div key={call.id} className="overflow-hidden rounded-2xl border border-border/70 bg-card/80 shadow-sm">
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : call.id)}
                     className="flex w-full items-center justify-between p-3.5 text-left"
                   >
                     <div className="flex items-center gap-3">
-                      <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", config.bgColor)}>
+                      <IconSurface className={config.bgColor}>
                         <Icon className={cn("h-4 w-4", config.color)} />
-                      </div>
+                      </IconSurface>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">
                           {call.callerName}

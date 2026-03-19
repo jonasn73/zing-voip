@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { IconSurface } from "@/components/ui/icon-surface"
 
 interface DailyBreakdown {
   day: string
@@ -235,7 +236,7 @@ export function AnalyticsPage() {
   return (
     <div className="flex flex-col gap-5 p-4 pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="zing-section-header">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Pay</h2>
           <p className="text-sm text-muted-foreground">
@@ -245,7 +246,7 @@ export function AnalyticsPage() {
         <button
           onClick={() => setShowRateConfig(!showRateConfig)}
           className={cn(
-            "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
+            "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
             showRateConfig
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-card text-muted-foreground hover:text-foreground"
@@ -258,7 +259,7 @@ export function AnalyticsPage() {
 
       {/* Pay Rate Configuration Panel */}
       {showRateConfig && (
-        <section className="rounded-xl border border-primary/20 bg-card">
+        <section className="zing-card border-primary/20">
           <div className="border-b border-border px-4 py-3">
             <h3 className="text-sm font-semibold text-foreground">Configure Pay Rates</h3>
             <p className="text-xs text-muted-foreground">
@@ -340,10 +341,10 @@ export function AnalyticsPage() {
       )}
 
       {/* Week Selector */}
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+      <div className="zing-card flex items-center justify-between px-4 py-3">
         <button
           onClick={() => setWeekOffset((w) => Math.max(w - 1, -1))}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           aria-label="Previous week"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -355,7 +356,7 @@ export function AnalyticsPage() {
           onClick={() => setWeekOffset((w) => Math.min(w + 1, 0))}
           disabled={weekOffset >= 0}
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+            "flex h-8 w-8 items-center justify-center rounded-xl transition-colors",
             weekOffset >= 0
               ? "text-muted-foreground/30"
               : "text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -368,28 +369,28 @@ export function AnalyticsPage() {
 
       {/* Weekly Summary Cards */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-3.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+        <div className="zing-card flex flex-col items-center gap-1 p-3.5">
+          <IconSurface tone="primary">
             <Clock className="h-5 w-5 text-primary" />
-          </div>
+          </IconSurface>
           <p className="text-lg font-bold text-foreground leading-tight">
             {formatMinutes(totalMinutes)}
           </p>
           <p className="text-[10px] text-muted-foreground">Total Time</p>
         </div>
-        <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-3.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-success/10">
+        <div className="zing-card flex flex-col items-center gap-1 p-3.5">
+          <IconSurface tone="success">
             <Phone className="h-5 w-5 text-success" />
-          </div>
+          </IconSurface>
           <p className="text-lg font-bold text-foreground leading-tight">
             {totalCalls}
           </p>
           <p className="text-[10px] text-muted-foreground">Total Calls</p>
         </div>
-        <div className="flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-3.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10">
+        <div className="zing-card flex flex-col items-center gap-1 p-3.5">
+          <IconSurface tone="warning">
             <DollarSign className="h-5 w-5 text-warning" />
-          </div>
+          </IconSurface>
           <p className="text-lg font-bold text-foreground leading-tight">
             {formatCurrency(totalPayout)}
           </p>

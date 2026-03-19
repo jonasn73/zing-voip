@@ -66,6 +66,17 @@ interface AiAssistantConfig {
   customInstructions: string
 }
 
+const AI_VOICE_OPTIONS: { id: string; label: string }[] = [
+  { id: "21m00Tcm4TlvDq8ikWAM", label: "Rachel - Warm & Professional" },
+  { id: "AZnzlk1XvdvUeBnXmlld", label: "Domi - Confident Female" },
+  { id: "EXAVITQu4vr4xnSDxMaL", label: "Bella - Friendly Female" },
+  { id: "ErXwobaYiN019PkySvjV", label: "Antoni - Calm Male" },
+  { id: "pNInz6obpgDQGcFmaJgB", label: "Adam - Conversational Male" },
+  { id: "TxGEqnHWrfWFTfGW9XjX", label: "Josh - Balanced Male" },
+  { id: "onwK4e9ZLuTAKqWW03F9", label: "Daniel - Deep Male" },
+  { id: "XB0fDUnXU5powFXDhCwa", label: "Charlotte - Polished Female" },
+]
+
 interface CustomAiPreset {
   id: string
   label: string
@@ -256,6 +267,7 @@ export function SettingsPage() {
   const [customAiPresets, setCustomAiPresets] = useState<CustomAiPreset[]>([])
   const [selectedCustomPresetId, setSelectedCustomPresetId] = useState<string>("")
   const [customPresetName, setCustomPresetName] = useState("")
+  const [customVoiceIdOverride, setCustomVoiceIdOverride] = useState("")
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
     voiceId: "21m00Tcm4TlvDq8ikWAM",
@@ -386,6 +398,10 @@ export function SettingsPage() {
                 : prev.silenceTimeoutSeconds,
             businessHours: extractBusinessHoursFromPrompt(systemPrompt) || prev.businessHours,
           }))
+          const loadedVoiceId = String(config.voiceId || "")
+          if (loadedVoiceId && !AI_VOICE_OPTIONS.some((v) => v.id === loadedVoiceId)) {
+            setCustomVoiceIdOverride(loadedVoiceId)
+          }
         }
       })
       .catch(() => {})
@@ -649,6 +665,7 @@ export function SettingsPage() {
   async function handleActivateAiAssistant() {
     setAiSaving(true)
     try {
+      const resolvedVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
       const res = await fetch("/api/ai-assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -656,7 +673,7 @@ export function SettingsPage() {
         body: JSON.stringify({
           greeting: aiConfig.firstMessage,
           businessName: user?.name || user?.email || "My Business",
-          voiceId: aiConfig.voiceId,
+          voiceId: resolvedVoiceId,
           temperature: aiConfig.temperature,
           businessHours: aiConfig.businessHours,
           customInstructions: aiConfig.customInstructions,
@@ -679,7 +696,7 @@ export function SettingsPage() {
       setAiSavedAt(Date.now())
       toast({
         title: "AI receptionist activated",
-        description: "Your Vapi assistant is now ready for fallback calls.",
+        description: "Your AI receptionist is now ready for fallback calls.",
       })
     } finally {
       setAiSaving(false)
@@ -696,7 +713,7 @@ export function SettingsPage() {
         body: JSON.stringify({
           greeting: config.firstMessage,
           businessName: user?.name || user?.email || "My Business",
-          voiceId: config.voiceId,
+          voiceId: customVoiceIdOverride.trim() || config.voiceId,
           temperature: config.temperature,
           businessHours: config.businessHours,
           customInstructions: config.customInstructions,
@@ -717,7 +734,7 @@ export function SettingsPage() {
       setAiSavedAt(Date.now())
       toast({
         title: "Applied to live assistant",
-        description: `${sourceLabel} is now active in Vapi.`,
+        description: `${sourceLabel} is now active.`,
       })
     } catch {
       toast({
@@ -988,6 +1005,7 @@ export function SettingsPage() {
     if (!hasAiAssistant) return
     setAiSaving(true)
     try {
+      const resolvedVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
       const res = await fetch("/api/ai-assistant", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -995,7 +1013,7 @@ export function SettingsPage() {
         body: JSON.stringify({
           greeting: aiConfig.firstMessage,
           businessName: user?.name || user?.email || "My Business",
-          voiceId: aiConfig.voiceId,
+          voiceId: resolvedVoiceId,
           temperature: aiConfig.temperature,
           businessHours: aiConfig.businessHours,
           customInstructions: aiConfig.customInstructions,
@@ -1021,6 +1039,27 @@ export function SettingsPage() {
     } finally {
       setAiSaving(false)
     }
+  }
+
+  function previewSelectedVoice() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast({
+        title: "Preview unavailable",
+        description: "Voice preview is not supported on this device/browser.",
+        variant: "destructive",
+      })
+      return
+    }
+    const text =
+      aiConfig.firstMessage?.trim() ||
+      "Hello! Thanks for calling. I can help with appointments, messages, and business information."
+    const utterance = new SpeechSynthesisUtterance(text)
+    const voiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
+    const maleVoiceIds = new Set(["ErXwobaYiN019PkySvjV", "pNInz6obpgDQGcFmaJgB", "TxGEqnHWrfWFTfGW9XjX", "onwK4e9ZLuTAKqWW03F9"])
+    utterance.pitch = maleVoiceIds.has(voiceId) ? 0.9 : 1.1
+    utterance.rate = 1
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
   }
 
   function startEditMainLine() {
@@ -1349,7 +1388,7 @@ export function SettingsPage() {
                   <Bot className="h-4 w-4" />
                 </IconSurface>
                 <div>
-                  <p className="text-sm font-medium text-foreground">Vapi Voice Agent</p>
+                  <p className="text-sm font-medium text-foreground">Voice Assistant Engine</p>
                   <p className="text-xs text-muted-foreground">
                     Customize voice, greeting, and call behavior for fallback calls.
                   </p>
@@ -1360,7 +1399,7 @@ export function SettingsPage() {
                 <div>
                   <p className="text-xs font-semibold text-foreground">Auto-apply presets to live assistant</p>
                   <p className="text-[11px] text-muted-foreground">
-                    When on, applying/importing a preset immediately updates Vapi.
+                    When on, applying/importing a preset immediately updates your live assistant.
                   </p>
                 </div>
                 <Switch
@@ -1476,16 +1515,36 @@ export function SettingsPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-muted-foreground">Voice</label>
-                  <select
-                    value={aiConfig.voiceId}
-                    onChange={(e) => setAiConfig((prev) => ({ ...prev, voiceId: e.target.value }))}
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                  >
-                    <option value="21m00Tcm4TlvDq8ikWAM">Rachel - Warm & Professional</option>
-                    <option value="AZnzlk1XvdvUeBnXmlld">Domi - Confident Female</option>
-                    <option value="EXAVITQu4vr4xnSDxMaL">Bella - Friendly Female</option>
-                    <option value="ErXwobaYiN019PkySvjV">Antoni - Calm Male</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={aiConfig.voiceId}
+                      onChange={(e) => setAiConfig((prev) => ({ ...prev, voiceId: e.target.value }))}
+                      className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                    >
+                      {AI_VOICE_OPTIONS.map((voice) => (
+                        <option key={voice.id} value={voice.id}>
+                          {voice.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={previewSelectedVoice}
+                      className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
+                    >
+                      Preview
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={customVoiceIdOverride}
+                    onChange={(e) => setCustomVoiceIdOverride(e.target.value)}
+                    placeholder="Optional: paste any voice ID from your voice library"
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Want more voices? Paste any voice ID above to use your full voice library.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-muted-foreground">

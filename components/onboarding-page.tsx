@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { DEFAULT_BUSY_GENERIC } from "@/lib/ai-intake-defaults" // Default opening line for the voice AI (high-volume tone, not "we're closed")
 import { cn } from "@/lib/utils"
 import {
   Phone,
@@ -39,9 +40,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
 
   // Step 3 -- Configure AI fallback
   const [aiEnabled, setAiEnabled] = useState(true)
-  const [aiGreeting, setAiGreeting] = useState(
-    "Thank you for calling. Our team is currently unavailable. I can take a message, provide our business hours, or help direct your call. How can I help you?"
-  )
+  const [aiGreeting, setAiGreeting] = useState(DEFAULT_BUSY_GENERIC) // Same default as dashboard / Vapi so onboarding matches the live product
 
   const availableNumbers = [
     { number: `(${areaCode || "555"}) 100-4001`, type: "Local", price: "$2.99/mo" },
@@ -347,7 +346,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
               <div>
                 <h1 className="text-2xl font-bold text-foreground">Set up AI fallback</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  When no one answers, AI can pick up, greet callers, and take messages for you.
+                  When nobody picks up, your AI receptionist answers with a script for your trade, captures job details, and can text you leads.
                 </p>
               </div>
 
@@ -367,8 +366,8 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                     <Sparkles className={cn("h-5 w-5", aiEnabled ? "text-primary" : "text-muted-foreground")} />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-semibold text-foreground">AI Assistant</p>
-                    <p className="text-[11px] text-muted-foreground">Answers missed calls automatically</p>
+                    <p className="text-sm font-semibold text-foreground">AI receptionist</p>
+                    <p className="text-[11px] text-muted-foreground">Voice AI for missed calls — industry intake and lead capture</p>
                   </div>
                 </div>
                 <div
@@ -389,7 +388,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
               {/* Greeting editor */}
               {aiEnabled && (
                 <div className="flex flex-col gap-3">
-                  <label className="text-xs font-semibold text-muted-foreground">AI Greeting Script</label>
+                  <label className="text-xs font-semibold text-muted-foreground">Opening line (first thing AI says)</label>
                   <textarea
                     value={aiGreeting}
                     onChange={(e) => setAiGreeting(e.target.value)}
@@ -397,7 +396,12 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                     className="resize-none rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                   />
                   <div className="flex flex-wrap gap-1.5">
-                    {["Take messages", "Share hours", "Book appointments", "Answer FAQs"].map((tag) => (
+                    {[
+                      "Industry-smart intake",
+                      "Lead capture",
+                      "Optional SMS to your cell",
+                      "Business hours",
+                    ].map((tag) => (
                       <span
                         key={tag}
                         className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary"

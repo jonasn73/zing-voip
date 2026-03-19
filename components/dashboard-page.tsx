@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/ui/empty-state"
 import { IconSurface } from "@/components/ui/icon-surface"
+import { DEFAULT_BUSY_GENERIC } from "@/lib/ai-intake-defaults"
 
 // Format E.164 to display, e.g. +15025551234 -> (502) 555-1234
 function formatPhoneDisplay(phone: string | undefined | null): string {
@@ -96,9 +97,24 @@ type FallbackOption = "owner" | "ai" | "voicemail"
 
 const fallbackOptions: { id: FallbackOption; label: string; description: string; icon: React.ElementType; color: string; bgColor: string }[] = [
   { id: "owner", label: "Ring Your Phone", description: "Call forwards to your cell phone", icon: Phone, color: "text-primary", bgColor: "bg-primary/10" },
-  { id: "ai", label: "AI Assistant", description: "AI answers, takes messages, and guides callers", icon: Bot, color: "text-chart-4", bgColor: "bg-chart-4/10" },
+  {
+    id: "ai",
+    label: "AI receptionist",
+    description: "Voice AI answers with your industry script, collects job details, can text you leads",
+    icon: Bot,
+    color: "text-chart-4",
+    bgColor: "bg-chart-4/10",
+  },
   { id: "voicemail", label: "Voicemail", description: "Send caller to voicemail", icon: Voicemail, color: "text-warning", bgColor: "bg-warning/10" },
 ]
+
+/** Shown under AI fallback — matches Vapi intake (not the old generic receptionist list) */
+const AI_CAPABILITY_CHIPS = [
+  "Industry-smart intake",
+  "Captures leads after the call",
+  "Optional SMS to your cell",
+  "Business hours when asked",
+] as const
 
 export function DashboardPage() {
   const { toast } = useToast()
@@ -108,7 +124,7 @@ export function DashboardPage() {
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [fallback, setFallback] = useState<FallbackOption>("owner")
   const [showFallbackSettings, setShowFallbackSettings] = useState(false)
-  const [aiGreeting, setAiGreeting] = useState("Thank you for calling. Our team is currently unavailable. I can take a message, provide our business hours, or help direct your call. How can I help you?")
+  const [aiGreeting, setAiGreeting] = useState(DEFAULT_BUSY_GENERIC)
   const [editingGreeting, setEditingGreeting] = useState(false)
   const [greetingDraft, setGreetingDraft] = useState("")
 
@@ -156,45 +172,44 @@ export function DashboardPage() {
       .catch(() => {})
   }, [])
 
-  // Load business numbers first, then load routing for the primary number
+  // Load business numbers, then routing + AI assistant together (live Vapi greeting wins over stale routing ai_greeting)
   useEffect(() => {
     fetch("/api/numbers/mine", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : { numbers: [] }))
       .then((data) => {
-        if (Array.isArray(data.numbers)) {
-          const active = data.numbers.filter((n: Record<string, string>) => n.status === "active").map((n: Record<string, string>) => ({
-            number: n.number,
-            status: n.status,
-          }))
-          setBusinessNumbers(active)
+        if (!Array.isArray(data.numbers)) return
+        const active = data.numbers.filter((n: Record<string, string>) => n.status === "active").map((n: Record<string, string>) => ({
+          number: n.number,
+          status: n.status,
+        }))
+        setBusinessNumbers(active)
 
-          // Load routing for the first active business number (per-number config)
-          // Falls back to default config on the server if no per-number config exists
-          const primaryNumber = active[0]?.number
-          const routingUrl = primaryNumber
-            ? `/api/routing?number=${encodeURIComponent(primaryNumber)}`
-            : "/api/routing"
-          fetch(routingUrl, { credentials: "include" })
-            .then((res) => (res.ok ? res.json() : null))
-            .then((rData) => {
-              if (rData?.config) {
-                setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
-                setFallback(rData.config.fallback_type || "owner")
-                if (rData.config.ai_greeting) setAiGreeting(rData.config.ai_greeting)
-              }
-            })
-            .catch(() => {})
-        }
-      })
-      .catch(() => {})
-  }, [])
+        const primaryNumber = active[0]?.number
+        const routingUrl = primaryNumber
+          ? `/api/routing?number=${encodeURIComponent(primaryNumber)}`
+          : "/api/routing"
 
-  // Check if user has a Vapi AI assistant
-  useEffect(() => {
-    fetch("/api/ai-assistant", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.hasAssistant) setHasVapiAssistant(true)
+        Promise.all([
+          fetch(routingUrl, { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
+          fetch("/api/ai-assistant", { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
+        ])
+          .then(([rData, aiData]) => {
+            if (rData?.config) {
+              setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
+              setFallback(rData.config.fallback_type || "owner")
+            }
+            const routingMsg =
+              rData?.config?.ai_greeting && String(rData.config.ai_greeting).trim()
+                ? String(rData.config.ai_greeting)
+                : ""
+            const assistantMsg =
+              aiData?.hasAssistant && aiData.assistantConfig?.firstMessage
+                ? String(aiData.assistantConfig.firstMessage).trim()
+                : ""
+            if (aiData?.hasAssistant) setHasVapiAssistant(true)
+            setAiGreeting(assistantMsg || routingMsg || DEFAULT_BUSY_GENERIC)
+          })
+          .catch(() => {})
       })
       .catch(() => {})
   }, [])
@@ -305,11 +320,28 @@ export function DashboardPage() {
     try {
       const res = await fetch("/api/ai-assistant", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({
+          greeting: aiGreeting || DEFAULT_BUSY_GENERIC,
+        }),
       })
       if (res.ok) setHasVapiAssistant(true)
     } catch { /* silent */ }
     setActivatingAi(false)
+  }
+
+  /** Keep Vapi first message in sync when the user edits the opening line here */
+  async function syncLiveAssistantGreeting(text: string) {
+    if (!hasVapiAssistant) return
+    try {
+      await fetch("/api/ai-assistant", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ greeting: text }),
+      })
+    } catch { /* non-fatal */ }
   }
 
   return (
@@ -626,15 +658,45 @@ export function DashboardPage() {
                   {/* AI Config -- only visible when AI is selected */}
                   {fallback === "ai" && (
                     <div className="border-t border-border px-4 py-3">
+                      {!hasVapiAssistant && (
+                        <div className="mb-3 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5">
+                          <p className="text-[11px] font-medium text-foreground">Activate voice AI</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            Turn on the live assistant in Settings so callers get your industry script and lead capture — not just the basic phone tree.
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <a
+                              href="/dashboard/settings"
+                              className="inline-flex rounded-lg bg-primary px-3 py-1.5 text-[10px] font-semibold text-primary-foreground hover:bg-primary/90"
+                            >
+                              Open AI Receptionist
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => void handleActivateAi()}
+                              disabled={activatingAi}
+                              className="inline-flex rounded-lg border border-border px-3 py-1.5 text-[10px] font-semibold text-foreground hover:bg-secondary disabled:opacity-50"
+                            >
+                              {activatingAi ? "Working…" : "Quick activate"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <div className="mb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Bot className="h-4 w-4 text-chart-4" />
-                          <span className="text-xs font-semibold text-foreground">AI Greeting</span>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <Bot className="h-4 w-4 text-chart-4" />
+                            <span className="text-xs font-semibold text-foreground">Opening line (first thing AI says)</span>
+                          </div>
+                          <p className="pl-6 text-[10px] text-muted-foreground">
+                            High-call-volume tone — not &quot;we&apos;re closed.&quot; Syncs to your live assistant when it&apos;s on.
+                          </p>
                         </div>
                         {!editingGreeting && (
                           <button
+                            type="button"
                             onClick={() => { setEditingGreeting(true); setGreetingDraft(aiGreeting) }}
-                            className="text-[11px] font-medium text-primary hover:underline"
+                            className="shrink-0 text-[11px] font-medium text-primary hover:underline"
                           >
                             Edit
                           </button>
@@ -645,23 +707,27 @@ export function DashboardPage() {
                           <textarea
                             value={greetingDraft}
                             onChange={(e) => setGreetingDraft(e.target.value)}
-                            rows={4}
+                            rows={5}
                             className="w-full resize-none rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                            placeholder="Enter what the AI should say..."
+                            placeholder="Thanks for calling — we're helping other customers…"
                             autoFocus
                           />
                           <div className="flex gap-2">
                             <button
+                              type="button"
                               onClick={() => {
-                                setAiGreeting(greetingDraft)
+                                const next = greetingDraft.trim() || DEFAULT_BUSY_GENERIC
+                                setAiGreeting(next)
                                 setEditingGreeting(false)
-                                saveRouting({ ai_greeting: greetingDraft })
+                                saveRouting({ ai_greeting: next })
+                                void syncLiveAssistantGreeting(next)
                               }}
                               className="zing-btn-sm flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
                             >
                               Save
                             </button>
                             <button
+                              type="button"
                               onClick={() => setEditingGreeting(false)}
                               className="zing-btn-sm bg-secondary text-muted-foreground hover:text-foreground"
                             >
@@ -676,10 +742,10 @@ export function DashboardPage() {
                       )}
                       <div className="mt-2.5 flex flex-col gap-1.5">
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                          AI can also
+                          With voice AI on
                         </p>
                         <div className="flex flex-wrap gap-1.5">
-                          {["Take messages", "Share business hours", "Book appointments", "Answer FAQs"].map((capability) => (
+                          {AI_CAPABILITY_CHIPS.map((capability) => (
                             <span
                               key={capability}
                               className="rounded-full bg-chart-4/10 px-2.5 py-1 text-[10px] font-medium text-chart-4"
@@ -688,6 +754,12 @@ export function DashboardPage() {
                             </span>
                           ))}
                         </div>
+                        <a
+                          href="/dashboard/settings"
+                          className="mt-1 text-[10px] font-medium text-primary underline-offset-2 hover:underline"
+                        >
+                          Industry, branches &amp; SMS alerts → Settings → AI Receptionist
+                        </a>
                       </div>
                     </div>
                   )}
@@ -833,7 +905,7 @@ export function DashboardPage() {
               <div className="flex-1">
                 <p className="text-sm font-medium text-foreground">AI Receptionist Active</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Handles calls when no one answers — takes messages, shares hours, books appointments
+                  Voice AI when nobody picks up — industry intake, lead capture, optional SMS. Tune in Settings.
                 </p>
               </div>
               <span className="rounded-full bg-chart-4/10 px-2 py-0.5 text-[10px] font-semibold text-chart-4">
@@ -846,10 +918,11 @@ export function DashboardPage() {
             <Sparkles className="mx-auto mb-2 h-8 w-8 text-chart-4/60" />
             <p className="text-sm font-medium text-foreground">AI Receptionist</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              When no one answers, an AI agent picks up — takes messages, shares business hours, and books appointments. Sounds like a real person.
+              Natural voice assistant with scripts for your trade (locksmith, plumbing, HVAC, and more). Saves leads and can text your cell.
             </p>
             <button
-              onClick={handleActivateAi}
+              type="button"
+              onClick={() => void handleActivateAi()}
               disabled={activatingAi}
               className="mt-3 rounded-lg bg-chart-4 px-5 py-2 text-xs font-semibold text-white hover:bg-chart-4/90 disabled:opacity-50"
             >

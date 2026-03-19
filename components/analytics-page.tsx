@@ -368,8 +368,8 @@ export function AnalyticsPage() {
       </div>
 
       {/* Weekly Summary Cards */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="zing-card flex flex-col items-center gap-1 p-3.5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="zing-card col-span-2 flex flex-col items-center gap-1 p-3.5 sm:col-span-1">
           <IconSurface tone="primary">
             <Clock className="h-5 w-5 text-primary" />
           </IconSurface>

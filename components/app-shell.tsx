@@ -80,7 +80,7 @@ export function AppShell({
                     isActive && "drop-shadow-[0_0_5px_var(--primary)]"
                   )}
                 />
-                <span className="text-[10px] font-medium">{item.label}</span>
+                <span className="text-[11px] font-medium">{item.label}</span>
               </button>
             )
           })}

@@ -123,7 +123,7 @@ export function ActivityPage() {
           <Skeleton className="h-7 w-36 rounded-lg" />
           <Skeleton className="h-4 w-56 rounded-lg" />
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Skeleton className="h-20 rounded-2xl" />
           <Skeleton className="h-20 rounded-2xl" />
           <Skeleton className="h-20 rounded-2xl" />
@@ -154,7 +154,7 @@ export function ActivityPage() {
       </div>
 
       {/* Core KPI Cards */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Phone className="mb-1 h-4 w-4 text-primary" />
           <span className="text-lg font-bold text-foreground">{totalCalls}</span>
@@ -175,7 +175,7 @@ export function ActivityPage() {
       </div>
 
       {/* Quality KPI Cards */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <CheckCircle2 className="mb-1 h-4 w-4 text-success" />
           <span className="text-lg font-bold text-foreground">{answerRate.toFixed(1)}%</span>

@@ -1037,16 +1037,16 @@ export function SettingsPage() {
                           <label className="text-[11px] font-semibold text-muted-foreground">Street address</label>
                           <input type="text" placeholder="123 Main St" value={portStreet} onChange={(e) => setPortStreet(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-1 flex flex-col gap-1.5">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <div className="flex flex-col gap-1.5">
                             <label className="text-[11px] font-semibold text-muted-foreground">City</label>
                             <input type="text" placeholder="City" value={portCity} onChange={(e) => setPortCity(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                           </div>
-                          <div className="col-span-1 flex flex-col gap-1.5">
+                          <div className="flex flex-col gap-1.5">
                             <label className="text-[11px] font-semibold text-muted-foreground">State</label>
                             <input type="text" placeholder="KY" maxLength={2} value={portState} onChange={(e) => setPortState(e.target.value.toUpperCase())} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                           </div>
-                          <div className="col-span-1 flex flex-col gap-1.5">
+                          <div className="flex flex-col gap-1.5">
                             <label className="text-[11px] font-semibold text-muted-foreground">ZIP</label>
                             <input type="text" placeholder="40000" maxLength={5} value={portZip} onChange={(e) => setPortZip(e.target.value.replace(/\D/g, ""))} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                           </div>

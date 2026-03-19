@@ -13,8 +13,40 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Zing - Receptionist & Dispatch Management',
-  description: 'Route business calls, track agent talk time, and calculate pay. The simplest way for small businesses to manage receptionists and dispatchers on the go.',
+  metadataBase: new URL('https://www.getzingapp.com'),
+  title: {
+    default: 'Zing - AI Call Routing for Small Businesses',
+    template: '%s | Zing',
+  },
+  description:
+    'Zing helps small businesses buy or port numbers, route calls to receptionists, and use AI fallback so no lead is missed.',
+  keywords: [
+    'business phone system',
+    'AI call routing',
+    'virtual receptionist',
+    'Telnyx call routing',
+    'small business VoIP',
+    'call analytics',
+  ],
+  openGraph: {
+    title: 'Zing - AI Call Routing for Small Businesses',
+    description:
+      'Buy or port numbers, route calls instantly, and use AI fallback to capture every customer call.',
+    url: 'https://www.getzingapp.com',
+    siteName: 'Zing',
+    type: 'website',
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Zing - AI Call Routing for Small Businesses',
+    description:
+      'Route calls to your team or AI in seconds. Built for small business operations.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 }
 
 export const viewport: Viewport = {
@@ -34,6 +66,26 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} ${geistMono.variable} font-sans antialiased`}>
         {children}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'SoftwareApplication',
+              name: 'Zing',
+              applicationCategory: 'BusinessApplication',
+              operatingSystem: 'Web',
+              description:
+                'AI call routing and receptionist operations platform for small businesses.',
+              offers: {
+                '@type': 'Offer',
+                priceCurrency: 'USD',
+                price: '19',
+              },
+              url: 'https://www.getzingapp.com',
+            }),
+          }}
+        />
         <Analytics />
       </body>
     </html>

@@ -1,7 +1,11 @@
-"use client"
-
 import Link from "next/link"
 import { Shield, ArrowLeft } from "lucide-react"
+import type { Metadata } from "next"
+
+export const metadata: Metadata = {
+  title: "Privacy",
+  description: "Learn how Zing protects account data, call routing settings, and call records.",
+}
 
 export default function PrivacyPage() {
   return (

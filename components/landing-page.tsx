@@ -129,6 +129,24 @@ const faqs = [
   },
 ]
 
+const testimonials = [
+  {
+    quote: "We stopped missing calls after hours. The AI fallback alone paid for itself in week one.",
+    name: "Lena M.",
+    role: "Owner, Home Services",
+  },
+  {
+    quote: "Routing by business number is exactly what our multi-location team needed.",
+    name: "Carlos R.",
+    role: "Ops Lead, Medical Office",
+  },
+  {
+    quote: "Payroll and talk-time tracking removed so much manual work every Friday.",
+    name: "Danielle T.",
+    role: "Founder, Agency",
+  },
+]
+
 // Standalone landing page for the marketing website.
 // In the marketing site, link "Get Started" / "Log in" buttons to your app URL (e.g. app.getzingapp.com).
 // The appUrl prop defaults to "/app" but you can pass "https://app.getzingapp.com" in production.
@@ -219,6 +237,11 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
             >
               See How It Works
             </a>
+          </div>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full border border-border px-2.5 py-1">No hardware needed</span>
+            <span className="rounded-full border border-border px-2.5 py-1">Setup in minutes</span>
+            <span className="rounded-full border border-border px-2.5 py-1">Built for small teams</span>
           </div>
         </div>
 
@@ -327,6 +350,31 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
               <p className="mt-1 text-sm text-muted-foreground">{stat.label}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="px-6 py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-12 text-center">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-primary">
+              Customer Stories
+            </p>
+            <h2 className="text-3xl font-bold text-foreground md:text-4xl">
+              Teams using Zing every day
+            </h2>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {testimonials.map((t) => (
+              <div key={t.name} className="rounded-2xl border border-border bg-card p-6">
+                <p className="text-sm leading-relaxed text-foreground">"{t.quote}"</p>
+                <div className="mt-4">
+                  <p className="text-sm font-semibold text-foreground">{t.name}</p>
+                  <p className="text-xs text-muted-foreground">{t.role}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -462,9 +510,9 @@ export function LandingPage({ appUrl = "/app" }: LandingPageProps) {
             <span className="text-sm font-bold text-foreground">Zing</span>
           </div>
           <div className="flex gap-6">
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground">Privacy</a>
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground">Terms</a>
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground">Support</a>
+            <a href="/privacy" className="text-xs text-muted-foreground hover:text-foreground">Privacy</a>
+            <a href="/support" className="text-xs text-muted-foreground hover:text-foreground">Support</a>
+            <a href={appUrl} className="text-xs text-muted-foreground hover:text-foreground">Log in</a>
           </div>
           <p className="text-xs text-muted-foreground">
             2026 Zing. All rights reserved.

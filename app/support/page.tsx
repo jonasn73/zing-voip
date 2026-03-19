@@ -1,7 +1,11 @@
-"use client"
-
 import Link from "next/link"
 import { HelpCircle, ArrowLeft, Mail } from "lucide-react"
+import type { Metadata } from "next"
+
+export const metadata: Metadata = {
+  title: "Support",
+  description: "Get help with Zing call routing, numbers, receptionists, and account setup.",
+}
 
 export default function SupportPage() {
   const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@getzingapp.com"

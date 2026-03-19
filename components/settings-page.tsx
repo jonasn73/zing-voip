@@ -1066,12 +1066,7 @@ export function SettingsPage() {
         body: JSON.stringify({ voiceId, text }),
       })
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        toast({
-          title: "Preview failed",
-          description: data.error || "Could not generate voice preview.",
-          variant: "destructive",
-        })
+        playBrowserPreviewFallback(text, voiceId)
         return
       }
       const blob = await res.blob()
@@ -1084,21 +1079,39 @@ export function SettingsPage() {
       audio.onended = () => URL.revokeObjectURL(objectUrl)
       void audio.play().catch(() => {
         URL.revokeObjectURL(objectUrl)
-        toast({
-          title: "Playback blocked",
-          description: "Tap Preview again if your browser blocked autoplay.",
-          variant: "destructive",
-        })
+        playBrowserPreviewFallback(text, voiceId)
       })
     } catch {
-      toast({
-        title: "Preview failed",
-        description: "Could not generate voice preview.",
-        variant: "destructive",
-      })
+      playBrowserPreviewFallback(text, voiceId)
     } finally {
       setVoicePreviewLoading(false)
     }
+  }
+
+  function playBrowserPreviewFallback(text: string, voiceId: string) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast({
+        title: "Preview unavailable",
+        description: "Voice preview is not supported on this device/browser.",
+        variant: "destructive",
+      })
+      return
+    }
+    toast({
+      title: "Using local preview",
+      description: "Playing browser preview because server audio is unavailable.",
+    })
+    const utterance = new SpeechSynthesisUtterance(text)
+    const maleVoiceIds = new Set([
+      "ErXwobaYiN019PkySvjV",
+      "pNInz6obpgDQGcFmaJgB",
+      "TxGEqnHWrfWFTfGW9XjX",
+      "onwK4e9ZLuTAKqWW03F9",
+    ])
+    utterance.pitch = maleVoiceIds.has(voiceId) ? 0.9 : 1.1
+    utterance.rate = 1
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
   }
 
   function startEditMainLine() {

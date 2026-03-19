@@ -269,6 +269,7 @@ export function SettingsPage() {
   const [customPresetName, setCustomPresetName] = useState("")
   const [customVoiceIdOverride, setCustomVoiceIdOverride] = useState("")
   const [voicePreviewLoading, setVoicePreviewLoading] = useState(false)
+  const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
@@ -1057,6 +1058,7 @@ export function SettingsPage() {
       return
     }
 
+    stopVoicePreview()
     setVoicePreviewLoading(true)
     try {
       const res = await fetch("/api/ai-assistant/voice-preview", {
@@ -1066,53 +1068,59 @@ export function SettingsPage() {
         body: JSON.stringify({ voiceId, text }),
       })
       if (!res.ok) {
-        playBrowserPreviewFallback(text, voiceId)
+        const data = await res.json().catch(() => ({}))
+        toast({
+          title: "High-quality preview unavailable",
+          description: data.error || "Try Save, then place a quick test call for exact voice quality.",
+          variant: "destructive",
+        })
         return
       }
       const blob = await res.blob()
       const objectUrl = URL.createObjectURL(blob)
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause()
-      }
       const audio = new Audio(objectUrl)
       previewAudioRef.current = audio
-      audio.onended = () => URL.revokeObjectURL(objectUrl)
-      void audio.play().catch(() => {
+      audio.onended = () => {
+        setVoicePreviewPlaying(false)
         URL.revokeObjectURL(objectUrl)
-        playBrowserPreviewFallback(text, voiceId)
+      }
+      audio.onpause = () => setVoicePreviewPlaying(false)
+      setVoicePreviewPlaying(true)
+      void audio.play().catch(() => {
+        setVoicePreviewPlaying(false)
+        URL.revokeObjectURL(objectUrl)
+        toast({
+          title: "Preview blocked",
+          description: "Tap Preview again if your browser blocked playback.",
+          variant: "destructive",
+        })
       })
     } catch {
-      playBrowserPreviewFallback(text, voiceId)
+      toast({
+        title: "Preview failed",
+        description: "Could not generate preview. Try again.",
+        variant: "destructive",
+      })
     } finally {
       setVoicePreviewLoading(false)
     }
   }
 
-  function playBrowserPreviewFallback(text: string, voiceId: string) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast({
-        title: "Preview unavailable",
-        description: "Voice preview is not supported on this device/browser.",
-        variant: "destructive",
-      })
-      return
+  function stopVoicePreview() {
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause()
+      previewAudioRef.current.currentTime = 0
+      previewAudioRef.current = null
     }
-    toast({
-      title: "Using local preview",
-      description: "Playing browser preview because server audio is unavailable.",
-    })
-    const utterance = new SpeechSynthesisUtterance(text)
-    const maleVoiceIds = new Set([
-      "ErXwobaYiN019PkySvjV",
-      "pNInz6obpgDQGcFmaJgB",
-      "TxGEqnHWrfWFTfGW9XjX",
-      "onwK4e9ZLuTAKqWW03F9",
-    ])
-    utterance.pitch = maleVoiceIds.has(voiceId) ? 0.9 : 1.1
-    utterance.rate = 1
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+    }
+    setVoicePreviewPlaying(false)
   }
+
+  useEffect(() => {
+    return () => stopVoicePreview()
+  }, [])
 
   function startEditMainLine() {
     setMainLineError(null)
@@ -1586,6 +1594,14 @@ export function SettingsPage() {
                       className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
                     >
                       {voicePreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Preview"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopVoicePreview}
+                      disabled={!voicePreviewPlaying && !voicePreviewLoading}
+                      className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
+                    >
+                      Stop
                     </button>
                   </div>
                   <input

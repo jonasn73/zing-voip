@@ -807,6 +807,57 @@ export async function updatePhoneNumber(
   }
 }
 
+// --- AI Assistant Presets (cloud-synced) ---
+export async function getAiAssistantPresets(userId: string): Promise<{
+  id: string
+  label: string
+  config: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}[]> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, label, config, created_at, updated_at
+    FROM ai_assistant_presets
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+  `
+  return rows.map((row) => ({
+    id: String(row.id),
+    label: String(row.label),
+    config: (row.config as Record<string, unknown>) || {},
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+  }))
+}
+
+export async function insertAiAssistantPreset(params: {
+  user_id: string
+  label: string
+  config: Record<string, unknown>
+}): Promise<{ id: string; label: string; config: Record<string, unknown> }> {
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  const rows = await sql`
+    INSERT INTO ai_assistant_presets (id, user_id, label, config, created_at, updated_at)
+    VALUES (${id}, ${params.user_id}, ${params.label}, ${JSON.stringify(params.config)}, now(), now())
+    RETURNING id, label, config
+  `
+  return {
+    id: String(rows[0].id),
+    label: String(rows[0].label),
+    config: (rows[0].config as Record<string, unknown>) || {},
+  }
+}
+
+export async function deleteAiAssistantPreset(userId: string, presetId: string): Promise<void> {
+  const sql = getSql()
+  await sql`
+    DELETE FROM ai_assistant_presets
+    WHERE id = ${presetId} AND user_id = ${userId}
+  `
+}
+
 // Get talk time analytics for a date range
 export async function getAgentTalkTime(
   userId: string,

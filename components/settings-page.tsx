@@ -284,31 +284,39 @@ export function SettingsPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Load saved custom AI presets from localStorage for this user/device
+  // Load saved custom AI presets from cloud API (shared across devices)
   useEffect(() => {
-    const storageKey = `zing-ai-presets:${(user?.email || "default").toLowerCase()}`
-    try {
-      const raw = localStorage.getItem(storageKey)
-      if (!raw) {
-        setCustomAiPresets([])
-        return
-      }
-      const parsed = JSON.parse(raw) as CustomAiPreset[]
-      if (Array.isArray(parsed)) setCustomAiPresets(parsed)
-    } catch {
-      setCustomAiPresets([])
+    let cancelled = false
+    fetch("/api/ai-assistant/presets", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { presets: [] }))
+      .then((data) => {
+        if (cancelled) return
+        if (Array.isArray(data.presets)) {
+          setCustomAiPresets(
+            data.presets.map((p: Record<string, unknown>) => ({
+              id: String(p.id),
+              label: String(p.label || "Preset"),
+              config: (p.config as AiAssistantConfig) || {
+                firstMessage: "",
+                voiceId: "21m00Tcm4TlvDq8ikWAM",
+                temperature: 0.7,
+                endCallMessage: "Thank you for calling. Have a great day!",
+                maxDurationSeconds: 300,
+                silenceTimeoutSeconds: 30,
+                businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
+                customInstructions: "",
+              },
+            }))
+          )
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCustomAiPresets([])
+      })
+    return () => {
+      cancelled = true
     }
-  }, [user?.email])
-
-  // Persist custom AI presets when they change
-  useEffect(() => {
-    const storageKey = `zing-ai-presets:${(user?.email || "default").toLowerCase()}`
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(customAiPresets))
-    } catch {
-      // ignore storage failures
-    }
-  }, [customAiPresets, user?.email])
+  }, [])
 
   // Load receptionists for per-number routing picker
   useEffect(() => {
@@ -691,7 +699,7 @@ export function SettingsPage() {
     })
   }
 
-  function saveCurrentAsCustomPreset() {
+  async function saveCurrentAsCustomPreset() {
     const label = customPresetName.trim()
     if (!label) {
       toast({
@@ -701,18 +709,45 @@ export function SettingsPage() {
       })
       return
     }
-    const newPreset: CustomAiPreset = {
-      id: crypto.randomUUID(),
-      label,
-      config: { ...aiConfig },
+    try {
+      const res = await fetch("/api/ai-assistant/presets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          label,
+          config: aiConfig,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          title: "Save failed",
+          description: data.error || "Could not save custom preset.",
+          variant: "destructive",
+        })
+        return
+      }
+      const created = data.preset as { id: string; label: string; config: AiAssistantConfig }
+      const newPreset: CustomAiPreset = {
+        id: String(created.id),
+        label: String(created.label),
+        config: created.config || { ...aiConfig },
+      }
+      setCustomAiPresets((prev) => [newPreset, ...prev].slice(0, 20))
+      setCustomPresetName("")
+      setSelectedCustomPresetId(newPreset.id)
+      toast({
+        title: "Custom preset saved",
+        description: `${label} is now available in your preset list.`,
+      })
+    } catch {
+      toast({
+        title: "Save failed",
+        description: "Could not save custom preset.",
+        variant: "destructive",
+      })
     }
-    setCustomAiPresets((prev) => [newPreset, ...prev].slice(0, 20))
-    setCustomPresetName("")
-    setSelectedCustomPresetId(newPreset.id)
-    toast({
-      title: "Custom preset saved",
-      description: `${label} is now available in your preset list.`,
-    })
   }
 
   function applyCustomPresetById(presetId: string) {
@@ -726,15 +761,36 @@ export function SettingsPage() {
     })
   }
 
-  function deleteCustomPresetById(presetId: string) {
+  async function deleteCustomPresetById(presetId: string) {
     const preset = customAiPresets.find((p) => p.id === presetId)
     if (!preset) return
-    setCustomAiPresets((prev) => prev.filter((p) => p.id !== presetId))
-    if (selectedCustomPresetId === presetId) setSelectedCustomPresetId("")
-    toast({
-      title: "Custom preset removed",
-      description: `${preset.label} was deleted.`,
-    })
+    try {
+      const res = await fetch(`/api/ai-assistant/presets?id=${encodeURIComponent(presetId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          title: "Delete failed",
+          description: data.error || "Could not delete preset.",
+          variant: "destructive",
+        })
+        return
+      }
+      setCustomAiPresets((prev) => prev.filter((p) => p.id !== presetId))
+      if (selectedCustomPresetId === presetId) setSelectedCustomPresetId("")
+      toast({
+        title: "Custom preset removed",
+        description: `${preset.label} was deleted.`,
+      })
+    } catch {
+      toast({
+        title: "Delete failed",
+        description: "Could not delete preset.",
+        variant: "destructive",
+      })
+    }
   }
 
   async function handleSaveAiAssistant() {

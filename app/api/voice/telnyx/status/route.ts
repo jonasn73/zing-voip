@@ -5,8 +5,11 @@
 // Configure this URL in your Telnyx TeXML app or connection as the status callback.
 
 import { NextRequest, NextResponse } from "next/server"
-import { updateCallLog } from "@/lib/db"
+import { recordCallStatusEvent, updateCallLog } from "@/lib/db"
 import type { CallType } from "@/lib/types"
+
+export const runtime = "nodejs"
+export const preferredRegion = "iad1"
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
@@ -14,6 +17,10 @@ export async function POST(req: NextRequest) {
   const callStatus = (formData.get("CallStatus") as string) || ""
   const duration = parseInt((formData.get("CallDuration") as string) || "0", 10)
   const direction = (formData.get("Direction") as string) || ""
+  const eventTimestamp =
+    (formData.get("Timestamp") as string) ||
+    (formData.get("EventTimestamp") as string) ||
+    ""
 
   try {
     let callType: CallType = "incoming"
@@ -23,11 +30,14 @@ export async function POST(req: NextRequest) {
       callType = "missed"
     }
 
-    await updateCallLog(callSid, {
-      status: callStatus,
-      duration_seconds: duration,
-      call_type: callType,
-    })
+    // Timing metrics update can fail safely (e.g. before migration runs).
+    try {
+      await recordCallStatusEvent(callSid, callStatus, duration, eventTimestamp || undefined)
+    } catch (metricsError) {
+      console.error("[Telnyx] Metrics update failed in status callback:", metricsError)
+    }
+
+    await updateCallLog(callSid, { call_type: callType, status: callStatus, duration_seconds: duration })
   } catch (error) {
     console.error("[Telnyx] Error in status callback:", error)
   }

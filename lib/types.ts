@@ -71,6 +71,11 @@ export interface CallLog {
   has_recording: boolean
   recording_url: string | null
   recording_duration_seconds: number | null
+  first_ring_at?: string | null
+  answered_at?: string | null
+  ended_at?: string | null
+  setup_duration_ms?: number | null
+  post_dial_delay_ms?: number | null
   created_at: string
 }
 

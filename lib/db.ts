@@ -430,11 +430,11 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
     INSERT INTO call_logs (
       user_id, twilio_call_sid, from_number, to_number, caller_name,
       call_type, status, duration_seconds, routed_to_receptionist_id,
-      routed_to_name, has_recording, recording_url, recording_duration_seconds
+      routed_to_name, has_recording, recording_url, recording_duration_seconds, first_ring_at
     ) VALUES (
       ${log.user_id}, ${log.twilio_call_sid}, ${log.from_number}, ${log.to_number}, ${log.caller_name},
       ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
-      ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}
+      ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}, now()
     )
   `
 }
@@ -442,7 +442,7 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
 // Update a call log (e.g., when status callback arrives)
 export async function updateCallLog(
   twilioCallSid: string,
-  updates: Partial<Pick<CallLog, "status" | "duration_seconds" | "call_type" | "has_recording" | "recording_url" | "recording_duration_seconds">>
+  updates: Partial<Pick<CallLog, "status" | "duration_seconds" | "call_type" | "has_recording" | "recording_url" | "recording_duration_seconds" | "answered_at" | "ended_at" | "setup_duration_ms" | "post_dial_delay_ms">>
 ): Promise<void> {
   const sql = getSql()
   if (updates.status !== undefined) {
@@ -456,6 +456,119 @@ export async function updateCallLog(
   }
   if (updates.has_recording !== undefined) {
     await sql`UPDATE call_logs SET has_recording = ${updates.has_recording}, recording_url = ${updates.recording_url ?? null}, recording_duration_seconds = ${updates.recording_duration_seconds ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+  if (updates.answered_at !== undefined) {
+    await sql`UPDATE call_logs SET answered_at = ${updates.answered_at ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+  if (updates.ended_at !== undefined) {
+    await sql`UPDATE call_logs SET ended_at = ${updates.ended_at ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+  if (updates.setup_duration_ms !== undefined) {
+    await sql`UPDATE call_logs SET setup_duration_ms = ${updates.setup_duration_ms ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+  if (updates.post_dial_delay_ms !== undefined) {
+    await sql`UPDATE call_logs SET post_dial_delay_ms = ${updates.post_dial_delay_ms ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+  }
+}
+
+// Record a provider status event and derive setup timing metrics.
+export async function recordCallStatusEvent(
+  twilioCallSid: string,
+  callStatus: string,
+  durationSeconds: number,
+  occurredAtIso?: string
+): Promise<void> {
+  const sql = getSql()
+  const occurredAt = occurredAtIso ? new Date(occurredAtIso) : new Date()
+  await sql`
+    UPDATE call_logs
+    SET
+      status = ${callStatus},
+      duration_seconds = ${durationSeconds},
+      answered_at = CASE
+        WHEN ${callStatus} IN ('answered', 'in-progress', 'completed') AND answered_at IS NULL THEN ${occurredAt}
+        ELSE answered_at
+      END,
+      ended_at = CASE
+        WHEN ${callStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled') THEN ${occurredAt}
+        ELSE ended_at
+      END,
+      setup_duration_ms = CASE
+        WHEN ${callStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
+          EXTRACT(EPOCH FROM (${occurredAt} - first_ring_at))::int * 1000
+        ELSE setup_duration_ms
+      END,
+      post_dial_delay_ms = CASE
+        WHEN ${callStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
+          EXTRACT(EPOCH FROM (${occurredAt} - first_ring_at))::int * 1000
+        ELSE post_dial_delay_ms
+      END
+    WHERE twilio_call_sid = ${twilioCallSid}
+  `
+}
+
+export async function getCallQualitySummary(userId: string, days = 7): Promise<{
+  total_calls: number
+  answered_calls: number
+  answer_rate_percent: number
+  avg_setup_ms: number | null
+  p95_setup_ms: number | null
+  avg_post_dial_delay_ms: number | null
+}> {
+  const sql = getSql()
+  const rows = await sql`
+    WITH base AS (
+      SELECT status, setup_duration_ms, post_dial_delay_ms
+      FROM call_logs
+      WHERE user_id = ${userId}
+        AND created_at >= now() - (${days}::int || ' days')::interval
+    ),
+    stats AS (
+      SELECT
+        COUNT(*)::int AS total_calls,
+        COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+        AVG(setup_duration_ms)::float8 AS avg_setup_ms,
+        AVG(post_dial_delay_ms)::float8 AS avg_post_dial_delay_ms
+      FROM base
+    ),
+    p95 AS (
+      SELECT
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY setup_duration_ms)::float8 AS p95_setup_ms
+      FROM base
+      WHERE setup_duration_ms IS NOT NULL
+    )
+    SELECT
+      stats.total_calls,
+      stats.answered_calls,
+      CASE
+        WHEN stats.total_calls = 0 THEN 0
+        ELSE ROUND((stats.answered_calls::numeric / stats.total_calls::numeric) * 100, 2)::float8
+      END AS answer_rate_percent,
+      stats.avg_setup_ms,
+      p95.p95_setup_ms,
+      stats.avg_post_dial_delay_ms
+    FROM stats, p95
+  `
+
+  const row = rows[0]
+  if (!row) {
+    return {
+      total_calls: 0,
+      answered_calls: 0,
+      answer_rate_percent: 0,
+      avg_setup_ms: null,
+      p95_setup_ms: null,
+      avg_post_dial_delay_ms: null,
+    }
+  }
+
+  return {
+    total_calls: Number(row.total_calls ?? 0),
+    answered_calls: Number(row.answered_calls ?? 0),
+    answer_rate_percent: Number(row.answer_rate_percent ?? 0),
+    avg_setup_ms: row.avg_setup_ms == null ? null : Number(row.avg_setup_ms),
+    p95_setup_ms: row.p95_setup_ms == null ? null : Number(row.p95_setup_ms),
+    avg_post_dial_delay_ms: row.avg_post_dial_delay_ms == null ? null : Number(row.avg_post_dial_delay_ms),
   }
 }
 
@@ -498,6 +611,11 @@ export async function getCallLogs(
     has_recording: Boolean(row.has_recording),
     recording_url: row.recording_url ? String(row.recording_url) : null,
     recording_duration_seconds: row.recording_duration_seconds ? Number(row.recording_duration_seconds) : null,
+    first_ring_at: row.first_ring_at ? String(row.first_ring_at) : null,
+    answered_at: row.answered_at ? String(row.answered_at) : null,
+    ended_at: row.ended_at ? String(row.ended_at) : null,
+    setup_duration_ms: row.setup_duration_ms == null ? null : Number(row.setup_duration_ms),
+    post_dial_delay_ms: row.post_dial_delay_ms == null ? null : Number(row.post_dial_delay_ms),
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }))
 }

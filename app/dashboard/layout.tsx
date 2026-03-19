@@ -9,7 +9,7 @@ import { ContactsPage } from "@/components/contacts-page"
 import { AnalyticsPage } from "@/components/analytics-page"
 import { SettingsPage } from "@/components/settings-page"
 
-const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "contacts", "analytics", "settings"]
+const VALID_PAGES: PageId[] = ["dashboard", "ai-flow", "activity", "leads", "contacts", "analytics", "settings"]
 
 function getActivePage(pathname: string): PageId {
   const segment = pathname.replace(/^\/dashboard\/?/, "").trim() || "dashboard"
@@ -55,6 +55,7 @@ export default function DashboardLayout({
 
   const handleNavigate = (page: PageId) => {
     if (page === "dashboard") router.push("/dashboard")
+    else if (page === "ai-flow") router.push("/dashboard/ai-flow")
     else router.push(`/dashboard/${page}`)
   }
 

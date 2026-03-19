@@ -19,6 +19,24 @@ function toE164(phone: string): string {
   return `+${digits}`
 }
 
+/** Zing no longer uses the legacy TeXML + LLM loop; if Vapi cannot run, send callers to voicemail. */
+function playIndustryAiUnavailableVoicemail(
+  texml: InstanceType<typeof VoiceResponse>, // Same TeXML builder type as `new VoiceResponse()` in this file
+  appUrl: string,
+  userId: string,
+  callSid: string
+) {
+  texml.say(
+    "Thanks for calling. Our automated assistant is not available on this line right now. Please leave your name, phone number, and what you need after the tone and we will get back to you."
+  )
+  texml.record({
+    maxLength: 120,
+    transcribe: true,
+    recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
+    action: `${appUrl}/api/voice/telnyx/voicemail-complete?userId=${userId}&callSid=${callSid}`,
+  })
+}
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
   // Telnyx may use DialCallStatus (TwiML-compat) or CallStatus; try both
@@ -66,8 +84,7 @@ export async function POST(req: NextRequest) {
       }
 
       case "ai": {
-        // If user has a Vapi assistant, transfer the caller to Vapi for natural AI conversation.
-        // Otherwise fall back to the basic TeXML Gather-based AI.
+        // Industry playbook runs only on Vapi — legacy TeXML + LLM path has been removed.
         if (user?.vapi_assistant_id) {
           try {
             const { createVapiCall } = await import("@/lib/vapi")
@@ -77,29 +94,18 @@ export async function POST(req: NextRequest) {
                 assistantId: user.vapi_assistant_id,
                 customerNumber: callerNumber,
               })
-              // Vapi will call the customer back — hang up the current leg
               texml.say("Please hold while I connect you with our assistant.")
               texml.pause({ length: 2 })
               texml.hangup()
             } else {
-              // No caller number — fall back to basic AI
-              texml.redirect(
-                { method: "POST" },
-                `${appUrl}/api/voice/telnyx/ai-assistant?userId=${userId}&callSid=${callSid}`
-              )
+              playIndustryAiUnavailableVoicemail(texml, appUrl, userId, callSid)
             }
           } catch (vapiErr) {
-            console.error("[Telnyx] Vapi call failed, falling back to basic AI:", vapiErr)
-            texml.redirect(
-              { method: "POST" },
-              `${appUrl}/api/voice/telnyx/ai-assistant?userId=${userId}&callSid=${callSid}`
-            )
+            console.error("[Telnyx] Vapi call failed, using voicemail:", vapiErr)
+            playIndustryAiUnavailableVoicemail(texml, appUrl, userId, callSid)
           }
         } else {
-          texml.redirect(
-            { method: "POST" },
-            `${appUrl}/api/voice/telnyx/ai-assistant?userId=${userId}&callSid=${callSid}`
-          )
+          playIndustryAiUnavailableVoicemail(texml, appUrl, userId, callSid)
         }
         break
       }

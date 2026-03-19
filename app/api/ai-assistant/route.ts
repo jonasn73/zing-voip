@@ -14,6 +14,7 @@ import {
   updateUser,
   getAiIntakeConfigRaw,
   upsertAiIntakeConfig,
+  updateRoutingConfig,
 } from "@/lib/db"
 import { createVapiAssistant, getVapiAssistant, updateVapiAssistant } from "@/lib/vapi"
 import { normalizeIntakeConfig, type AiIntakeConfig } from "@/lib/ai-intake-defaults"
@@ -178,9 +179,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const user = await getUser(userId)
-    if (!user?.vapi_assistant_id) {
-      return NextResponse.json({ error: "No AI assistant configured" }, { status: 400 })
-    }
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
 
     const body = await req.json()
     const {
@@ -205,6 +204,33 @@ export async function PATCH(req: NextRequest) {
       maxDurationSeconds?: number
       silenceTimeoutSeconds?: number
       intake?: Record<string, unknown>
+    }
+
+    // No Vapi assistant yet: still persist intake + optional greeting so the AI Call Flow page works pre-activation.
+    if (!user.vapi_assistant_id) {
+      const hasIntake = intakeBody !== undefined && typeof intakeBody === "object"
+      const hasGreeting = typeof greeting === "string" && greeting.trim().length > 0
+      if (!hasIntake && !hasGreeting) {
+        return NextResponse.json(
+          {
+            error:
+              "No voice assistant yet. Use Save on the AI call flow page (with intake fields) or activate the assistant in Settings.",
+          },
+          { status: 400 }
+        )
+      }
+      const prevIntake = await getAiIntakeConfigRaw(userId)
+      const merged = mergeIntakeConfig(prevIntake, intakeBody, greeting)
+      await upsertAiIntakeConfig(userId, merged)
+      if (hasGreeting) {
+        await updateRoutingConfig(userId, { ai_greeting: greeting!.trim() }, null)
+      }
+      return NextResponse.json({
+        success: true,
+        message: hasGreeting
+          ? "Saved. Activate the voice assistant in AI flow or Settings to use this on live calls."
+          : "Intake saved. Activate the voice assistant when you are ready.",
+      })
     }
 
     const prevIntake = await getAiIntakeConfigRaw(userId)

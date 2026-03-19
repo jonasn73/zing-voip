@@ -666,10 +666,10 @@ export function DashboardPage() {
                           </p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             <a
-                              href="/dashboard/settings"
+                              href="/dashboard/ai-flow"
                               className="inline-flex rounded-lg bg-primary px-3 py-1.5 text-[10px] font-semibold text-primary-foreground hover:bg-primary/90"
                             >
-                              Open AI Receptionist
+                              Open AI call flow
                             </a>
                             <button
                               type="button"
@@ -755,10 +755,10 @@ export function DashboardPage() {
                           ))}
                         </div>
                         <a
-                          href="/dashboard/settings"
+                          href="/dashboard/ai-flow"
                           className="mt-1 text-[10px] font-medium text-primary underline-offset-2 hover:underline"
                         >
-                          Industry, branches &amp; SMS alerts → Settings → AI Receptionist
+                          Configure playbook, branches &amp; intake → AI flow
                         </a>
                       </div>
                     </div>

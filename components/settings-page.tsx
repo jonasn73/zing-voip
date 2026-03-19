@@ -1960,9 +1960,18 @@ export function SettingsPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   6 · Fallback intake
                 </p>
+                <a
+                  href="/dashboard/ai-flow"
+                  className="flex items-center justify-between rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5 text-left transition-colors hover:bg-primary/10"
+                >
+                  <span className="text-xs font-semibold text-foreground">Open AI call flow dashboard</span>
+                  <ChevronRight className="h-4 w-4 text-primary" />
+                </a>
                 <p className="text-[11px] text-muted-foreground">
                   Used when the AI answers after a human does not pick up. Leave the busy line blank to use your{" "}
-                  <span className="font-medium text-foreground">First greeting</span> (section 4).
+                  <span className="font-medium text-foreground">First greeting</span> (section 4). For a visual map of
+                  branches and fields, use{" "}
+                  <span className="font-medium text-foreground">AI flow</span> in the bottom navigation.
                 </p>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-muted-foreground">AI script (playbook)</label>

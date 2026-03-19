@@ -37,6 +37,33 @@ function parseRoutingRow(row: Record<string, unknown>): RoutingConfig {
   }
 }
 
+// Cache for incoming voice routing to reduce per-request DB latency.
+// In serverless, the module can stay warm briefly, so this helps most traffic bursts.
+type IncomingRoutingByNumber =
+  | {
+    user_id: string
+    user_name: string
+    owner_phone: string
+    selected_receptionist_id: string | null
+    fallback_type: RoutingConfig["fallback_type"]
+    ring_timeout_seconds: number
+    receptionist_name: string | null
+    receptionist_phone: string | null
+  }
+  | null
+
+const incomingRoutingCache = new Map<string, { expiresAt: number; value: IncomingRoutingByNumber }>()
+const INCOMING_ROUTING_CACHE_TTL_MS = 10_000
+
+// Normalize to E.164 (+1XXXXXXXXXX) so it matches how we store numbers in `phone_numbers.number`.
+function normalizeToE164(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (phone.startsWith("+")) return phone
+  return `+${digits}`
+}
+
 // Get the default (global) routing config for a user (business_number IS NULL)
 export async function getRoutingConfig(userId: string): Promise<RoutingConfig | null> {
   const sql = getSql()
@@ -303,34 +330,52 @@ export async function getIncomingRoutingByNumber(toNumber: string): Promise<{
   receptionist_name: string | null
   receptionist_phone: string | null
 } | null> {
+  const normalized = normalizeToE164(toNumber)
+
+  // Return cached result if it is still fresh.
+  const cached = incomingRoutingCache.get(normalized)
+  if (cached && cached.expiresAt > Date.now()) return cached.value
+
   const sql = getSql()
   const rows = await sql`
     SELECT
       u.id AS user_id,
       u.name AS user_name,
       u.phone AS owner_phone,
-      rc.selected_receptionist_id,
-      COALESCE(rc.fallback_type, 'owner') AS fallback_type,
-      COALESCE(rc.ring_timeout_seconds, 30) AS ring_timeout_seconds,
-      r.name AS receptionist_name,
-      r.phone AS receptionist_phone
+      -- Use the specific per-number config if it exists, even if it sets fields to NULL.
+      CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.selected_receptionist_id ELSE rc_def.selected_receptionist_id END
+        AS selected_receptionist_id,
+      COALESCE(
+        CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.fallback_type ELSE rc_def.fallback_type END,
+        'owner'
+      ) AS fallback_type,
+      COALESCE(
+        CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.ring_timeout_seconds ELSE rc_def.ring_timeout_seconds END,
+        30
+      ) AS ring_timeout_seconds,
+      CASE WHEN rc_spec.id IS NOT NULL THEN rs.name ELSE rd.name END AS receptionist_name,
+      CASE WHEN rc_spec.id IS NOT NULL THEN rs.phone ELSE rd.phone END AS receptionist_phone
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
-    LEFT JOIN LATERAL (
-      SELECT selected_receptionist_id, fallback_type, ring_timeout_seconds
-      FROM routing_config
-      WHERE user_id = u.id
-        AND (business_number = pn.number OR business_number IS NULL)
-      ORDER BY CASE WHEN business_number = pn.number THEN 0 ELSE 1 END
-      LIMIT 1
-    ) rc ON true
-    LEFT JOIN receptionists r ON r.id = rc.selected_receptionist_id
-    WHERE pn.number = ${toNumber} AND pn.status = 'active'
+    LEFT JOIN routing_config rc_spec
+      ON rc_spec.user_id = u.id
+      AND rc_spec.business_number = pn.number
+    LEFT JOIN routing_config rc_def
+      ON rc_def.user_id = u.id
+      AND rc_def.business_number IS NULL
+    LEFT JOIN receptionists rs ON rs.id = rc_spec.selected_receptionist_id
+    LEFT JOIN receptionists rd ON rd.id = rc_def.selected_receptionist_id
+    WHERE pn.number = ${normalized} AND pn.status = 'active'
     LIMIT 1
   `
+
   const row = rows[0]
-  if (!row) return null
-  return {
+  if (!row) {
+    incomingRoutingCache.set(normalized, { expiresAt: Date.now() + INCOMING_ROUTING_CACHE_TTL_MS, value: null })
+    return null
+  }
+
+  const value: IncomingRoutingByNumber = {
     user_id: String(row.user_id),
     user_name: String(row.user_name),
     owner_phone: String(row.owner_phone),
@@ -340,6 +385,9 @@ export async function getIncomingRoutingByNumber(toNumber: string): Promise<{
     receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
     receptionist_phone: row.receptionist_phone ? String(row.receptionist_phone) : null,
   }
+
+  incomingRoutingCache.set(normalized, { expiresAt: Date.now() + INCOMING_ROUTING_CACHE_TTL_MS, value })
+  return value
 }
 
 // Get user by ID

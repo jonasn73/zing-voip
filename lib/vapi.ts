@@ -40,8 +40,26 @@ export async function createVapiAssistant(params: {
   businessName: string
   greeting: string
   ownerPhone: string
+  voiceId?: string
+  businessHours?: string
+  customInstructions?: string
+  temperature?: number
+  endCallMessage?: string
+  maxDurationSeconds?: number
+  silenceTimeoutSeconds?: number
 }): Promise<{ id: string; phoneNumber?: string }> {
-  const { businessName, greeting, ownerPhone } = params
+  const {
+    businessName,
+    greeting,
+    ownerPhone,
+    voiceId,
+    businessHours,
+    customInstructions,
+    temperature,
+    endCallMessage,
+    maxDurationSeconds,
+    silenceTimeoutSeconds,
+  } = params
 
   const assistant = await vapiFetch("/assistant", {
     method: "POST",
@@ -53,24 +71,29 @@ export async function createVapiAssistant(params: {
         messages: [
           {
             role: "system",
-            content: buildSystemPrompt(businessName, ownerPhone),
+            content: buildSystemPrompt({
+              businessName,
+              ownerPhone,
+              businessHours,
+              customInstructions,
+            }),
           },
         ],
-        temperature: 0.7,
+        temperature: typeof temperature === "number" ? temperature : 0.7,
       },
       voice: {
         provider: "11labs",
-        voiceId: "21m00Tcm4TlvDq8ikWAM", // "Rachel" — warm, professional female voice
+        voiceId: voiceId || "21m00Tcm4TlvDq8ikWAM", // "Rachel" — warm, professional female voice
       },
       firstMessage: greeting || `Thank you for calling ${businessName}. No one is available right now, but I'd be happy to help. How can I assist you?`,
-      endCallMessage: "Thank you for calling. Have a great day!",
+      endCallMessage: endCallMessage || "Thank you for calling. Have a great day!",
       transcriber: {
         provider: "deepgram",
         model: "nova-2",
         language: "en",
       },
-      silenceTimeoutSeconds: 30,
-      maxDurationSeconds: 300,
+      silenceTimeoutSeconds: typeof silenceTimeoutSeconds === "number" ? silenceTimeoutSeconds : 30,
+      maxDurationSeconds: typeof maxDurationSeconds === "number" ? maxDurationSeconds : 300,
       endCallFunctionEnabled: true,
     }),
   })
@@ -85,6 +108,13 @@ export async function updateVapiAssistant(
     businessName?: string
     greeting?: string
     ownerPhone?: string
+    voiceId?: string
+    businessHours?: string
+    customInstructions?: string
+    temperature?: number
+    endCallMessage?: string
+    maxDurationSeconds?: number
+    silenceTimeoutSeconds?: number
   }
 ): Promise<void> {
   const updates: Record<string, unknown> = {}
@@ -93,21 +123,48 @@ export async function updateVapiAssistant(
     updates.firstMessage = params.greeting
   }
 
-  if (params.businessName || params.ownerPhone) {
+  if (
+    params.businessName ||
+    params.ownerPhone ||
+    params.businessHours ||
+    params.customInstructions ||
+    typeof params.temperature === "number"
+  ) {
     updates.model = {
       provider: "openai",
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: buildSystemPrompt(
-            params.businessName || "the business",
-            params.ownerPhone || ""
-          ),
+          content: buildSystemPrompt({
+            businessName: params.businessName || "the business",
+            ownerPhone: params.ownerPhone || "",
+            businessHours: params.businessHours,
+            customInstructions: params.customInstructions,
+          }),
         },
       ],
-      temperature: 0.7,
+      temperature: typeof params.temperature === "number" ? params.temperature : 0.7,
     }
+  }
+
+  if (params.voiceId) {
+    updates.voice = {
+      provider: "11labs",
+      voiceId: params.voiceId,
+    }
+  }
+
+  if (params.endCallMessage) {
+    updates.endCallMessage = params.endCallMessage
+  }
+
+  if (typeof params.maxDurationSeconds === "number") {
+    updates.maxDurationSeconds = params.maxDurationSeconds
+  }
+
+  if (typeof params.silenceTimeoutSeconds === "number") {
+    updates.silenceTimeoutSeconds = params.silenceTimeoutSeconds
   }
 
   if (Object.keys(updates).length > 0) {
@@ -148,7 +205,16 @@ export async function deleteVapiAssistant(assistantId: string): Promise<void> {
 }
 
 // Build the system prompt for the AI receptionist
-function buildSystemPrompt(businessName: string, ownerPhone: string): string {
+function buildSystemPrompt(params: {
+  businessName: string
+  ownerPhone: string
+  businessHours?: string
+  customInstructions?: string
+}): string {
+  const { businessName, ownerPhone, businessHours, customInstructions } = params
+  const hours = (businessHours || "Monday through Friday, 9 AM to 5 PM. Closed weekends.").trim()
+  const custom = (customInstructions || "").trim()
+
   return `You are a friendly and professional AI phone receptionist for ${businessName}.
 You are answering a call that came in when no one at the business was available to pick up.
 
@@ -160,12 +226,13 @@ Your personality:
 
 Your capabilities:
 1. TAKE MESSAGES: Ask for their name, phone number, and message. Confirm you'll pass it to the team.
-2. SHARE BUSINESS HOURS: Monday through Friday, 9 AM to 5 PM. Closed weekends.
+2. SHARE BUSINESS HOURS: ${hours}
 3. BOOK APPOINTMENTS: Collect their preferred date, time, name, and callback number.
 4. ANSWER COMMON QUESTIONS: Be helpful but honest — if you don't know specific details about ${businessName}, say "I'll have someone from the team get back to you with that information."
 5. TRANSFER: If they urgently need to reach someone, let them know you'll try to connect them.
 
 ${ownerPhone ? `The business owner's number is ${ownerPhone} for urgent transfers.` : ""}
+${custom ? `\nAdditional business rules:\n${custom}\n` : ""}
 
 Always end by asking "Is there anything else I can help you with?" before saying goodbye.
 If the caller is done, say a brief, warm farewell.`

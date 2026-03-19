@@ -16,6 +16,8 @@ import {
   Phone,
   PhoneForwarded,
   ArrowRightLeft,
+  Bot,
+  Sparkles,
   Plus,
   Hash,
   X,
@@ -53,6 +55,17 @@ interface NumberRouting {
   selected_receptionist_id: string | null
 }
 
+interface AiAssistantConfig {
+  firstMessage: string
+  voiceId: string
+  temperature: number
+  endCallMessage: string
+  maxDurationSeconds: number
+  silenceTimeoutSeconds: number
+  businessHours: string
+  customInstructions: string
+}
+
 // Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567. Safe for null/undefined or non-string (e.g. from API).
 function formatPhoneDisplay(phone: string | undefined | null): string {
   if (phone == null || typeof phone !== "string") return "your cell"
@@ -60,6 +73,15 @@ function formatPhoneDisplay(phone: string | undefined | null): string {
   if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
   if (digits.length === 11 && digits.startsWith("1")) return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
   return phone
+}
+
+function extractBusinessHoursFromPrompt(prompt: string): string {
+  const marker = "2. SHARE BUSINESS HOURS:"
+  const idx = prompt.indexOf(marker)
+  if (idx === -1) return ""
+  const rest = prompt.slice(idx + marker.length).trim()
+  const endIdx = rest.indexOf("\n")
+  return (endIdx === -1 ? rest : rest.slice(0, endIdx)).trim()
 }
 
 export function SettingsPage() {
@@ -144,6 +166,21 @@ export function SettingsPage() {
   const [numberRoutings, setNumberRoutings] = useState<NumberRouting[]>([])
   const [routingModalNumber, setRoutingModalNumber] = useState<string | null>(null) // E.164 number being configured, or null if closed
   const [routingSaving, setRoutingSaving] = useState(false)
+  const [hasAiAssistant, setHasAiAssistant] = useState(false)
+  const [aiAssistantId, setAiAssistantId] = useState<string | null>(null)
+  const [aiConfigLoading, setAiConfigLoading] = useState(false)
+  const [aiSaving, setAiSaving] = useState(false)
+  const [aiSavedAt, setAiSavedAt] = useState<number | null>(null)
+  const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
+    firstMessage: "",
+    voiceId: "21m00Tcm4TlvDq8ikWAM",
+    temperature: 0.7,
+    endCallMessage: "Thank you for calling. Have a great day!",
+    maxDurationSeconds: 300,
+    silenceTimeoutSeconds: 30,
+    businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
+    customInstructions: "",
+  })
 
   // Load current user so we can show main line (cell) in profile
   useEffect(() => {
@@ -198,6 +235,47 @@ export function SettingsPage() {
       })
       .catch(() => {})
     return () => { cancelled = true }
+  }, [])
+
+  // Load AI assistant status + existing config from Vapi
+  useEffect(() => {
+    let cancelled = false
+    setAiConfigLoading(true)
+    fetch("/api/ai-assistant", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        setHasAiAssistant(Boolean(data.hasAssistant))
+        setAiAssistantId(data.assistantId || null)
+        const config = data.assistantConfig as Record<string, unknown> | null
+        if (config) {
+          const systemPrompt = String(config.systemPrompt || "")
+          setAiConfig((prev) => ({
+            ...prev,
+            firstMessage: String(config.firstMessage || prev.firstMessage),
+            voiceId: String(config.voiceId || prev.voiceId),
+            temperature:
+              typeof config.temperature === "number" ? Number(config.temperature) : prev.temperature,
+            endCallMessage: String(config.endCallMessage || prev.endCallMessage),
+            maxDurationSeconds:
+              typeof config.maxDurationSeconds === "number"
+                ? Number(config.maxDurationSeconds)
+                : prev.maxDurationSeconds,
+            silenceTimeoutSeconds:
+              typeof config.silenceTimeoutSeconds === "number"
+                ? Number(config.silenceTimeoutSeconds)
+                : prev.silenceTimeoutSeconds,
+            businessHours: extractBusinessHoursFromPrompt(systemPrompt) || prev.businessHours,
+          }))
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setAiConfigLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Load porting orders so dashboard shows progress
@@ -447,6 +525,85 @@ export function SettingsPage() {
     setSettings((prev) =>
       prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s))
     )
+  }
+
+  async function handleActivateAiAssistant() {
+    setAiSaving(true)
+    try {
+      const res = await fetch("/api/ai-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          greeting: aiConfig.firstMessage,
+          businessName: user?.name || user?.email || "My Business",
+          voiceId: aiConfig.voiceId,
+          temperature: aiConfig.temperature,
+          businessHours: aiConfig.businessHours,
+          customInstructions: aiConfig.customInstructions,
+          endCallMessage: aiConfig.endCallMessage,
+          maxDurationSeconds: aiConfig.maxDurationSeconds,
+          silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          title: "AI setup failed",
+          description: data.error || "Could not activate AI receptionist.",
+          variant: "destructive",
+        })
+        return
+      }
+      setHasAiAssistant(true)
+      setAiAssistantId(data.assistantId || null)
+      setAiSavedAt(Date.now())
+      toast({
+        title: "AI receptionist activated",
+        description: "Your Vapi assistant is now ready for fallback calls.",
+      })
+    } finally {
+      setAiSaving(false)
+    }
+  }
+
+  async function handleSaveAiAssistant() {
+    if (!hasAiAssistant) return
+    setAiSaving(true)
+    try {
+      const res = await fetch("/api/ai-assistant", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          greeting: aiConfig.firstMessage,
+          businessName: user?.name || user?.email || "My Business",
+          voiceId: aiConfig.voiceId,
+          temperature: aiConfig.temperature,
+          businessHours: aiConfig.businessHours,
+          customInstructions: aiConfig.customInstructions,
+          endCallMessage: aiConfig.endCallMessage,
+          maxDurationSeconds: aiConfig.maxDurationSeconds,
+          silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          title: "AI update failed",
+          description: data.error || "Could not save assistant changes.",
+          variant: "destructive",
+        })
+        return
+      }
+      setAiSavedAt(Date.now())
+      toast({
+        title: "AI receptionist updated",
+        description: "Voice and behavior settings were saved.",
+      })
+    } finally {
+      setAiSaving(false)
+    }
   }
 
   function startEditMainLine() {
@@ -743,6 +900,176 @@ export function SettingsPage() {
               </div>
             )
           })}
+        </div>
+      </section>
+
+      {/* AI receptionist setup and customization */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            AI Receptionist
+          </h3>
+          {hasAiAssistant ? (
+            <span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
+              Active
+            </span>
+          ) : (
+            <span className="rounded-full bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning">
+              Not active
+            </span>
+          )}
+        </div>
+        <div className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
+          {aiConfigLoading ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading AI settings...
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
+                <IconSurface tone="primary">
+                  <Bot className="h-4 w-4" />
+                </IconSurface>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Vapi Voice Agent</p>
+                  <p className="text-xs text-muted-foreground">
+                    Customize voice, greeting, and call behavior for fallback calls.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">Voice</label>
+                  <select
+                    value={aiConfig.voiceId}
+                    onChange={(e) => setAiConfig((prev) => ({ ...prev, voiceId: e.target.value }))}
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="21m00Tcm4TlvDq8ikWAM">Rachel - Warm & Professional</option>
+                    <option value="AZnzlk1XvdvUeBnXmlld">Domi - Confident Female</option>
+                    <option value="EXAVITQu4vr4xnSDxMaL">Bella - Friendly Female</option>
+                    <option value="ErXwobaYiN019PkySvjV">Antoni - Calm Male</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">
+                    Tone ({aiConfig.temperature.toFixed(1)})
+                  </label>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={1}
+                    step={0.1}
+                    value={aiConfig.temperature}
+                    onChange={(e) =>
+                      setAiConfig((prev) => ({ ...prev, temperature: Number(e.target.value) }))
+                    }
+                    className="w-full accent-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">First greeting</label>
+                <textarea
+                  value={aiConfig.firstMessage}
+                  onChange={(e) => setAiConfig((prev) => ({ ...prev, firstMessage: e.target.value }))}
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  placeholder="Thanks for calling. How can I help?"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">Business hours text</label>
+                <input
+                  type="text"
+                  value={aiConfig.businessHours}
+                  onChange={(e) => setAiConfig((prev) => ({ ...prev, businessHours: e.target.value }))}
+                  className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  placeholder="Mon-Fri 9am-5pm, closed weekends"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">
+                  Custom instructions (optional)
+                </label>
+                <textarea
+                  value={aiConfig.customInstructions}
+                  onChange={(e) =>
+                    setAiConfig((prev) => ({ ...prev, customInstructions: e.target.value }))
+                  }
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  placeholder="Example: prioritize collecting appointment requests and mention same-day callbacks."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">Silence timeout (sec)</label>
+                  <input
+                    type="number"
+                    min={10}
+                    max={120}
+                    value={aiConfig.silenceTimeoutSeconds}
+                    onChange={(e) =>
+                      setAiConfig((prev) => ({
+                        ...prev,
+                        silenceTimeoutSeconds: Number(e.target.value || 30),
+                      }))
+                    }
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">Max call length (sec)</label>
+                  <input
+                    type="number"
+                    min={60}
+                    max={1200}
+                    value={aiConfig.maxDurationSeconds}
+                    onChange={(e) =>
+                      setAiConfig((prev) => ({
+                        ...prev,
+                        maxDurationSeconds: Number(e.target.value || 300),
+                      }))
+                    }
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!hasAiAssistant ? (
+                  <button
+                    onClick={handleActivateAiAssistant}
+                    disabled={aiSaving}
+                    className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    Activate AI Receptionist
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSaveAiAssistant}
+                    disabled={aiSaving}
+                    className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    Save AI Settings
+                  </button>
+                )}
+                {aiAssistantId && (
+                  <span className="text-[11px] text-muted-foreground">Assistant ID: {aiAssistantId}</span>
+                )}
+              </div>
+              {aiSavedAt && <p className="text-[11px] text-success">Saved just now</p>}
+            </div>
+          )}
         </div>
       </section>
 

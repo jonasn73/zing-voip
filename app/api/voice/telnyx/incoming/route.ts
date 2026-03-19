@@ -11,9 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import {
-  getUserByPhoneNumber,
-  getRoutingConfigForNumber,
-  getReceptionist,
+  getIncomingRoutingByNumber,
   insertCallLog,
 } from "@/lib/db"
 
@@ -35,27 +33,24 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
   if (debug) console.log(`[Zing] Incoming call: To=${calledNumber} From=${callerNumber} CallSid=${callSid}`)
 
   try {
-    // 1. Find which user owns this business number
-    const user = await getUserByPhoneNumber(calledNumber)
-    if (!user) {
+    // 1. Resolve owner + per-number routing + receptionist in one DB query.
+    const routing = await getIncomingRoutingByNumber(calledNumber)
+    if (!routing) {
       if (debug) console.log(`[Zing] No user found for number ${calledNumber}`)
       texml.say("Sorry, this number is not configured. Goodbye.")
       texml.hangup()
       return texml
     }
 
-    if (debug) console.log(`[Zing] Found user ${user.id} (${user.name}) for number ${calledNumber}`)
-
-    // 2. Get routing config for this specific business number (falls back to default)
-    const config = await getRoutingConfigForNumber(user.id, calledNumber)
-    if (debug) console.log(`[Zing] Routing config: receptionist=${config?.selected_receptionist_id || "none"}, fallback=${config?.fallback_type || "owner"}`)
+    if (debug) console.log(`[Zing] Found user ${routing.user_id} (${routing.user_name}) for number ${calledNumber}`)
+    if (debug) console.log(`[Zing] Routing config: receptionist=${routing.selected_receptionist_id || "none"}, fallback=${routing.fallback_type || "owner"}`)
 
     // 3. Log the incoming call (don't let logging failures break call routing)
     try {
       // Fire-and-forget so Telnyx doesn't wait for database writes.
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       void insertCallLog({
-        user_id: user.id,
+        user_id: routing.user_id,
         twilio_call_sid: callSid,
         from_number: callerNumber,
         to_number: calledNumber,
@@ -63,7 +58,7 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
         call_type: "incoming",
         status: "ringing",
         duration_seconds: 0,
-        routed_to_receptionist_id: config?.selected_receptionist_id || null,
+        routed_to_receptionist_id: routing.selected_receptionist_id || null,
         routed_to_name: null,
         has_recording: false,
         recording_url: null,
@@ -77,29 +72,18 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
 
     // 4. Route: receptionist (per-number or default) → owner's cell as fallback
     // callerId is REQUIRED by Telnyx TeXML for the outbound leg — use the business number
-    if (config?.selected_receptionist_id) {
-      const receptionist = await getReceptionist(config.selected_receptionist_id)
-      if (receptionist) {
-        const recPhone = toE164(receptionist.phone)
-        if (debug) console.log(`[Zing] Routing to receptionist: ${receptionist.name} (${recPhone})`)
-        const dial = texml.dial({
-          callerId: calledNumber,
-          timeout: config.ring_timeout_seconds || 20,
-          action: `${appUrl}/api/voice/telnyx/fallback?userId=${user.id}&callSid=${callSid}`,
-          method: "POST",
-        })
-        dial.number(recPhone)
-      } else {
-        const ownerPhone = toE164(user.phone)
-        if (debug) console.log(`[Zing] Receptionist ${config.selected_receptionist_id} not found, routing to owner: ${ownerPhone}`)
-        const dial = texml.dial({
-          callerId: calledNumber,
-          timeout: 30,
-        })
-        dial.number(ownerPhone)
-      }
+    if (routing.selected_receptionist_id && routing.receptionist_phone) {
+      const recPhone = toE164(routing.receptionist_phone)
+      if (debug) console.log(`[Zing] Routing to receptionist: ${routing.receptionist_name || "Receptionist"} (${recPhone})`)
+      const dial = texml.dial({
+        callerId: calledNumber,
+        timeout: routing.ring_timeout_seconds || 20,
+        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}`,
+        method: "POST",
+      })
+      dial.number(recPhone)
     } else {
-      const ownerPhone = toE164(user.phone)
+      const ownerPhone = toE164(routing.owner_phone)
       if (debug) console.log(`[Zing] No receptionist assigned, routing to owner: ${ownerPhone}`)
       const dial = texml.dial({
         callerId: calledNumber,

@@ -291,6 +291,57 @@ export async function getUserByPhoneNumber(toNumber: string): Promise<User | nul
   return rows[0] ? parseUserRow(rows[0]) : null
 }
 
+// Fast routing lookup for incoming voice webhooks.
+// Returns user + resolved routing + receptionist in one query to reduce latency.
+export async function getIncomingRoutingByNumber(toNumber: string): Promise<{
+  user_id: string
+  user_name: string
+  owner_phone: string
+  selected_receptionist_id: string | null
+  fallback_type: RoutingConfig["fallback_type"]
+  ring_timeout_seconds: number
+  receptionist_name: string | null
+  receptionist_phone: string | null
+} | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT
+      u.id AS user_id,
+      u.name AS user_name,
+      u.phone AS owner_phone,
+      rc.selected_receptionist_id,
+      COALESCE(rc.fallback_type, 'owner') AS fallback_type,
+      COALESCE(rc.ring_timeout_seconds, 30) AS ring_timeout_seconds,
+      r.name AS receptionist_name,
+      r.phone AS receptionist_phone
+    FROM phone_numbers pn
+    JOIN users u ON u.id = pn.user_id
+    LEFT JOIN LATERAL (
+      SELECT selected_receptionist_id, fallback_type, ring_timeout_seconds
+      FROM routing_config
+      WHERE user_id = u.id
+        AND (business_number = pn.number OR business_number IS NULL)
+      ORDER BY CASE WHEN business_number = pn.number THEN 0 ELSE 1 END
+      LIMIT 1
+    ) rc ON true
+    LEFT JOIN receptionists r ON r.id = rc.selected_receptionist_id
+    WHERE pn.number = ${toNumber} AND pn.status = 'active'
+    LIMIT 1
+  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    user_id: String(row.user_id),
+    user_name: String(row.user_name),
+    owner_phone: String(row.owner_phone),
+    selected_receptionist_id: row.selected_receptionist_id ? String(row.selected_receptionist_id) : null,
+    fallback_type: (row.fallback_type as RoutingConfig["fallback_type"]) || "owner",
+    ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
+    receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
+    receptionist_phone: row.receptionist_phone ? String(row.receptionist_phone) : null,
+  }
+}
+
 // Get user by ID
 export async function getUser(userId: string): Promise<User | null> {
   const sql = getSql()

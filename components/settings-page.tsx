@@ -66,6 +66,12 @@ interface AiAssistantConfig {
   customInstructions: string
 }
 
+interface CustomAiPreset {
+  id: string
+  label: string
+  config: AiAssistantConfig
+}
+
 type AiPresetId =
   | "general"
   | "dental"
@@ -246,6 +252,9 @@ export function SettingsPage() {
   const [aiSaving, setAiSaving] = useState(false)
   const [aiSavedAt, setAiSavedAt] = useState<number | null>(null)
   const [aiPreset, setAiPreset] = useState<AiPresetId>("general")
+  const [customAiPresets, setCustomAiPresets] = useState<CustomAiPreset[]>([])
+  const [selectedCustomPresetId, setSelectedCustomPresetId] = useState<string>("")
+  const [customPresetName, setCustomPresetName] = useState("")
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
     voiceId: "21m00Tcm4TlvDq8ikWAM",
@@ -274,6 +283,32 @@ export function SettingsPage() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  // Load saved custom AI presets from localStorage for this user/device
+  useEffect(() => {
+    const storageKey = `zing-ai-presets:${(user?.email || "default").toLowerCase()}`
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (!raw) {
+        setCustomAiPresets([])
+        return
+      }
+      const parsed = JSON.parse(raw) as CustomAiPreset[]
+      if (Array.isArray(parsed)) setCustomAiPresets(parsed)
+    } catch {
+      setCustomAiPresets([])
+    }
+  }, [user?.email])
+
+  // Persist custom AI presets when they change
+  useEffect(() => {
+    const storageKey = `zing-ai-presets:${(user?.email || "default").toLowerCase()}`
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(customAiPresets))
+    } catch {
+      // ignore storage failures
+    }
+  }, [customAiPresets, user?.email])
 
   // Load receptionists for per-number routing picker
   useEffect(() => {
@@ -653,6 +688,52 @@ export function SettingsPage() {
     toast({
       title: "Preset applied",
       description: `${preset.label} template loaded. You can still edit everything.`,
+    })
+  }
+
+  function saveCurrentAsCustomPreset() {
+    const label = customPresetName.trim()
+    if (!label) {
+      toast({
+        title: "Preset name required",
+        description: "Enter a name before saving your custom preset.",
+        variant: "destructive",
+      })
+      return
+    }
+    const newPreset: CustomAiPreset = {
+      id: crypto.randomUUID(),
+      label,
+      config: { ...aiConfig },
+    }
+    setCustomAiPresets((prev) => [newPreset, ...prev].slice(0, 20))
+    setCustomPresetName("")
+    setSelectedCustomPresetId(newPreset.id)
+    toast({
+      title: "Custom preset saved",
+      description: `${label} is now available in your preset list.`,
+    })
+  }
+
+  function applyCustomPresetById(presetId: string) {
+    const preset = customAiPresets.find((p) => p.id === presetId)
+    if (!preset) return
+    setSelectedCustomPresetId(preset.id)
+    setAiConfig({ ...preset.config })
+    toast({
+      title: "Custom preset applied",
+      description: `${preset.label} has been loaded.`,
+    })
+  }
+
+  function deleteCustomPresetById(presetId: string) {
+    const preset = customAiPresets.find((p) => p.id === presetId)
+    if (!preset) return
+    setCustomAiPresets((prev) => prev.filter((p) => p.id !== presetId))
+    if (selectedCustomPresetId === presetId) setSelectedCustomPresetId("")
+    toast({
+      title: "Custom preset removed",
+      description: `${preset.label} was deleted.`,
     })
   }
 
@@ -1050,6 +1131,50 @@ export function SettingsPage() {
                     className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
                   >
                     Apply
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">
+                  Your custom presets
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedCustomPresetId}
+                    onChange={(e) => applyCustomPresetById(e.target.value)}
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="">Select custom preset...</option>
+                    {customAiPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!selectedCustomPresetId}
+                    onClick={() => deleteCustomPresetById(selectedCustomPresetId)}
+                    className="zing-btn-sm border border-destructive/30 text-destructive hover:bg-destructive/10 disabled:opacity-40"
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={customPresetName}
+                    onChange={(e) => setCustomPresetName(e.target.value)}
+                    placeholder="Name this setup (e.g. Weekend Voice)"
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveCurrentAsCustomPreset}
+                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
+                  >
+                    Save as preset
                   </button>
                 </div>
               </div>

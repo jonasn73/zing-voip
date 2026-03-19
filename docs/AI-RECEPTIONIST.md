@@ -12,8 +12,9 @@ End users **never** add Vapi or ElevenLabs keys in the app. Zing runs voice + pr
 
 ## Voice list behavior
 
-- `GET /api/ai-assistant/voices` loads **ElevenLabs premade** voices for the **platform** key, merges with Zing’s curated order, and caches ~30 minutes.
-- If the key is missing or the API fails, the UI uses `lib/ai-voice-catalog.ts` fallback IDs (still valid premades).
+- `GET /api/ai-assistant/voices` uses the **platform** ElevenLabs key to **match labels** to Zing’s **curated premade ID list** only.
+- Extra premades returned by ElevenLabs are **not** exposed in the app — many are “library” voices that **fail in-app preview** on free API tiers while still confusing users in the dropdown.
+- If the key is missing or the API fails, the UI uses the full curated list from `lib/ai-voice-catalog.ts`.
 
 ## Quality defaults
 

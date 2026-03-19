@@ -55,9 +55,10 @@ export function buildVoiceLabelFromApi(v: {
 }
 
 /**
- * Merge premade voices from API with curated order: preferred IDs first, then rest A–Z.
+ * Curated list only — same IDs users can expect to preview on typical plans.
+ * We do NOT append other ElevenLabs premades (many are “library” voices and fail API preview on free tier).
  */
-export function mergePremadeVoices(
+export function buildCuratedVoiceListFromApi(
   apiVoices: { voice_id: string; name?: string; labels?: Record<string, string> }[]
 ): AiVoiceOption[] {
   const byId = new Map<string, AiVoiceOption>()
@@ -70,16 +71,13 @@ export function mergePremadeVoices(
     byId.set(id, { id, label })
   }
 
-  const preferred: AiVoiceOption[] = []
+  const out: AiVoiceOption[] = []
   for (const id of AI_VOICE_PREFERRED_ORDER) {
-    const opt = byId.get(id)
-    if (opt) preferred.push(opt)
+    const fromApi = byId.get(id)
+    const fallback = fallbackLabel.get(id)
+    if (fallback) {
+      out.push(fromApi ?? { id, label: fallback })
+    }
   }
-
-  const rest = [...byId.values()]
-    .filter((o) => !AI_VOICE_PREFERRED_ORDER.includes(o.id))
-    .sort((a, b) => a.label.localeCompare(b.label, "en"))
-
-  const merged = [...preferred, ...rest]
-  return merged.length > 0 ? merged : [...AI_VOICE_FALLBACK_OPTIONS]
+  return out.length > 0 ? out : [...AI_VOICE_FALLBACK_OPTIONS]
 }

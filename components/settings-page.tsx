@@ -1091,9 +1091,17 @@ export function SettingsPage() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
+        const err = String(data.error || "").toLowerCase()
+        const isPlanLimit =
+          err.includes("library") ||
+          err.includes("subscription") ||
+          err.includes("free users") ||
+          err.includes("upgrade")
         toast({
-          title: "High-quality preview unavailable",
-          description: data.error || "Try Save, then place a quick test call for exact voice quality.",
+          title: isPlanLimit ? "Preview limited" : "Preview unavailable",
+          description: isPlanLimit
+            ? "Live calls still use your saved assistant. Preview needs a supported speech plan for this voice, or try another voice in the list."
+            : data.error || "Try another voice or save and test on a quick call.",
           variant: "destructive",
         })
         return
@@ -1464,19 +1472,56 @@ export function SettingsPage() {
               Loading AI settings...
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-5">
               <div className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
                 <IconSurface tone="primary">
                   <Bot className="h-4 w-4" />
                 </IconSurface>
                 <div>
-                  <p className="text-sm font-medium text-foreground">Voice Assistant Engine</p>
+                  <p className="text-sm font-medium text-foreground">AI receptionist</p>
                   <p className="text-xs text-muted-foreground">
-                    Customize voice, greeting, and call behavior for fallback calls.
+                    Answers when no one picks up. Same quality on real calls — save once, you’re done.
                   </p>
                 </div>
               </div>
 
+              <div className="space-y-2 rounded-xl border border-border/70 bg-secondary/25 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  1 · Turn it on
+                </p>
+                <ol className="list-decimal space-y-1 pl-4 text-[11px] text-muted-foreground">
+                  <li>Activate (or open Save if already on).</li>
+                  <li>Pick a preset or voice, edit the greeting if you want.</li>
+                  <li>Save — live calls use this setup automatically.</li>
+                </ol>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {!hasAiAssistant ? (
+                    <button
+                      onClick={handleActivateAiAssistant}
+                      disabled={aiSaving}
+                      className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Activate AI receptionist
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSaveAiAssistant}
+                      disabled={aiSaving}
+                      className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      Save changes
+                    </button>
+                  )}
+                  {aiSavedAt && <span className="text-[11px] text-success">Saved just now</span>}
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  2 · Presets
+                </p>
               <div className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
                 <div>
                   <p className="text-xs font-semibold text-foreground">Auto-apply presets to live assistant</p>
@@ -1593,12 +1638,18 @@ export function SettingsPage() {
                   </button>
                 </div>
               </div>
+              </div>
 
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  3 · Voice & tone
+                </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-muted-foreground">Voice</label>
                   <p className="text-[11px] text-muted-foreground">
-                    Choose a voice and save — Zing handles the engine. You don’t add API keys in the app.
+                    Curated voices — each one is tested for live calls. Preview may depend on your speech plan; real
+                    calls always use your saved assistant.
                   </p>
                   <div className="flex items-center gap-2">
                     <select
@@ -1640,17 +1691,17 @@ export function SettingsPage() {
                       )}
                     </button>
                   </div>
+                  <label className="text-[11px] font-semibold text-muted-foreground">Advanced (optional)</label>
                   <input
                     type="text"
                     value={customVoiceIdOverride}
                     onChange={(e) => setCustomVoiceIdOverride(e.target.value)}
-                    placeholder="Optional: paste any voice ID from your voice library"
+                    placeholder="Custom voice ID — only if your provider gave you one"
                     className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Want more voices? Paste an ID above to use it live. Preview only works for preset voices and
-                    ElevenLabs voice IDs tied to your account—other providers’ IDs still work on real calls after you
-                    save.
+                    Leave blank for normal setup. Custom IDs may not preview here but can still work on live calls
+                    after Save.
                   </p>
                 </div>
                 <div className="space-y-1.5">
@@ -1670,7 +1721,12 @@ export function SettingsPage() {
                   />
                 </div>
               </div>
+              </div>
 
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  4 · What callers hear
+                </p>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold text-muted-foreground">First greeting</label>
                 <textarea
@@ -1708,6 +1764,22 @@ export function SettingsPage() {
                 />
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">Goodbye message</label>
+                <input
+                  type="text"
+                  value={aiConfig.endCallMessage}
+                  onChange={(e) => setAiConfig((prev) => ({ ...prev, endCallMessage: e.target.value }))}
+                  className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  placeholder="Thank you for calling. Have a great day!"
+                />
+              </div>
+              </div>
+
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  5 · Call limits
+                </p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-muted-foreground">Silence timeout (sec)</label>
@@ -1742,32 +1814,18 @@ export function SettingsPage() {
                   />
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                {!hasAiAssistant ? (
-                  <button
-                    onClick={handleActivateAiAssistant}
-                    disabled={aiSaving}
-                    className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    Activate AI Receptionist
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSaveAiAssistant}
-                    disabled={aiSaving}
-                    className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    Save AI Settings
-                  </button>
-                )}
-                {aiAssistantId && (
-                  <span className="text-[11px] text-muted-foreground">Assistant ID: {aiAssistantId}</span>
-                )}
               </div>
-              {aiSavedAt && <p className="text-[11px] text-success">Saved just now</p>}
+
+              {aiAssistantId ? (
+                <details className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
+                  <summary className="cursor-pointer font-medium text-foreground">Technical reference</summary>
+                  <p className="mt-2 break-all">Assistant ID: {aiAssistantId}</p>
+                </details>
+              ) : null}
+
+              <p className="text-[11px] text-muted-foreground">
+                Tip: Use Save changes at the top after edits. Need help? Adjust presets first, then fine-tune the greeting.
+              </p>
             </div>
           )}
         </div>

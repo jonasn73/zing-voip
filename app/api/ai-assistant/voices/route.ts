@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import {
   AI_VOICE_FALLBACK_OPTIONS,
-  mergePremadeVoices,
+  buildCuratedVoiceListFromApi,
 } from "@/lib/ai-voice-catalog"
 
 /** Do not cache at CDN — voice list is per-deployment and may change. */
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       voices: AI_VOICE_FALLBACK_OPTIONS,
       source: "fallback",
-      hint: "Curated voices — add ELEVENLABS_API_KEY (platform) to sync the full premade library.",
+      hint: "Curated voice list — add ELEVENLABS_API_KEY (platform) to refresh labels from ElevenLabs.",
     })
   }
 
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const voices = mergePremadeVoices(
+    const voices = buildCuratedVoiceListFromApi(
       premadeOnly.map((v) => ({
         voice_id: String(v.voice_id || ""),
         name: v.name,

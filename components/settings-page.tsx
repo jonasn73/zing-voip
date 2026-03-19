@@ -66,6 +66,80 @@ interface AiAssistantConfig {
   customInstructions: string
 }
 
+type AiPresetId =
+  | "general"
+  | "dental"
+  | "legal"
+  | "real_estate"
+  | "home_services"
+  | "med_spa"
+
+const AI_PRESETS: Record<
+  AiPresetId,
+  { label: string; config: Partial<AiAssistantConfig> }
+> = {
+  general: {
+    label: "General Small Business",
+    config: {
+      firstMessage: "Thank you for calling. Our team is helping other customers right now, but I can help you quickly. How can I assist you today?",
+      temperature: 0.6,
+      businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
+      customInstructions:
+        "Prioritize message-taking and clear callback details. Keep responses concise and friendly.",
+    },
+  },
+  dental: {
+    label: "Dental Practice",
+    config: {
+      firstMessage: "Thank you for calling our dental office. I can help with appointments, insurance questions, or a message for the front desk. How can I help?",
+      temperature: 0.5,
+      businessHours: "Monday through Friday, 8 AM to 5 PM. Closed weekends.",
+      customInstructions:
+        "If caller has pain or urgent issue, mark as urgent and collect callback number immediately. For appointments, collect preferred date and time.",
+    },
+  },
+  legal: {
+    label: "Law Firm",
+    config: {
+      firstMessage: "Thank you for calling our law office. I can take your information and have the right team member return your call as soon as possible.",
+      temperature: 0.4,
+      businessHours: "Monday through Friday, 8:30 AM to 5:30 PM. Closed weekends.",
+      customInstructions:
+        "Stay professional and avoid legal advice. Collect case type, full name, best callback number, and urgency.",
+    },
+  },
+  real_estate: {
+    label: "Real Estate Team",
+    config: {
+      firstMessage: "Thanks for calling our real estate team. I can help with showing requests, listing questions, or connect your message to an agent.",
+      temperature: 0.7,
+      businessHours: "Monday through Saturday, 9 AM to 6 PM. Sunday by appointment.",
+      customInstructions:
+        "For buyer leads, ask location, budget range, and timeline. For seller leads, ask property address and best callback number.",
+    },
+  },
+  home_services: {
+    label: "Home Services",
+    config: {
+      firstMessage: "Thank you for calling. I can help schedule service, provide availability windows, or take a message for the dispatch team.",
+      temperature: 0.6,
+      businessHours: "Monday through Friday, 7 AM to 6 PM. Saturday 8 AM to 2 PM.",
+      customInstructions:
+        "Collect service address, service type, urgency, and callback number. If emergency issue, mark urgent.",
+    },
+  },
+  med_spa: {
+    label: "Med Spa / Aesthetics",
+    config: {
+      firstMessage: "Thank you for calling our med spa. I can help with treatment questions, availability, or booking a consultation.",
+      temperature: 0.65,
+      businessHours: "Tuesday through Saturday, 10 AM to 7 PM.",
+      customInstructions:
+        "For new clients, collect treatment interest and preferred appointment window. Keep tone warm, polished, and reassuring.",
+    },
+  },
+}
+
 // Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567. Safe for null/undefined or non-string (e.g. from API).
 function formatPhoneDisplay(phone: string | undefined | null): string {
   if (phone == null || typeof phone !== "string") return "your cell"
@@ -171,6 +245,7 @@ export function SettingsPage() {
   const [aiConfigLoading, setAiConfigLoading] = useState(false)
   const [aiSaving, setAiSaving] = useState(false)
   const [aiSavedAt, setAiSavedAt] = useState<number | null>(null)
+  const [aiPreset, setAiPreset] = useState<AiPresetId>("general")
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
     voiceId: "21m00Tcm4TlvDq8ikWAM",
@@ -567,6 +642,20 @@ export function SettingsPage() {
     }
   }
 
+  function applyAiPreset(presetId: AiPresetId) {
+    setAiPreset(presetId)
+    const preset = AI_PRESETS[presetId]
+    if (!preset) return
+    setAiConfig((prev) => ({
+      ...prev,
+      ...preset.config,
+    }))
+    toast({
+      title: "Preset applied",
+      description: `${preset.label} template loaded. You can still edit everything.`,
+    })
+  }
+
   async function handleSaveAiAssistant() {
     if (!hasAiAssistant) return
     setAiSaving(true)
@@ -936,6 +1025,32 @@ export function SettingsPage() {
                   <p className="text-xs text-muted-foreground">
                     Customize voice, greeting, and call behavior for fallback calls.
                   </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground">
+                  Business preset
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={aiPreset}
+                    onChange={(e) => applyAiPreset(e.target.value as AiPresetId)}
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    {Object.entries(AI_PRESETS).map(([id, preset]) => (
+                      <option key={id} value={id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => applyAiPreset(aiPreset)}
+                    type="button"
+                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
+                  >
+                    Apply
+                  </button>
                 </div>
               </div>
 

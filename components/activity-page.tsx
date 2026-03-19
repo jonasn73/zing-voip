@@ -1,9 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useMemo, useState, useEffect } from "react"
 import {
-  Play,
-  Pause,
   ArrowDownLeft,
   ArrowUpRight,
   PhoneMissed,
@@ -13,6 +11,9 @@ import {
   Filter,
   Download,
   Phone,
+  Gauge,
+  CheckCircle2,
+  Timer,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -32,60 +33,17 @@ interface CallRecord {
   time: string
   durationSeconds: number
   hasRecording: boolean
+  recordingUrl: string | null
 }
 
-const callRecords: CallRecord[] = [
-  {
-    id: "1", type: "incoming", callerName: "Acme Corp", callerNumber: "(555) 111-2222",
-    routedTo: "Sarah Miller", routedInitials: "SM", routedColor: "bg-primary",
-    date: "Today", time: "2:34 PM", durationSeconds: 423, hasRecording: true,
-  },
-  {
-    id: "2", type: "outgoing", callerName: "Follow Up - Johnson", callerNumber: "(555) 333-4444",
-    routedTo: "You", routedInitials: "YO", routedColor: "bg-chart-2",
-    date: "Today", time: "1:12 PM", durationSeconds: 187, hasRecording: true,
-  },
-  {
-    id: "3", type: "missed", callerName: "Unknown Caller", callerNumber: "(555) 555-6666",
-    routedTo: "Voicemail", routedInitials: "VM", routedColor: "bg-destructive",
-    date: "Today", time: "11:45 AM", durationSeconds: 0, hasRecording: false,
-  },
-  {
-    id: "4", type: "voicemail", callerName: "David Chen", callerNumber: "(555) 777-8888",
-    routedTo: "Voicemail", routedInitials: "DC", routedColor: "bg-chart-5",
-    date: "Today", time: "10:20 AM", durationSeconds: 45, hasRecording: true,
-  },
-  {
-    id: "5", type: "incoming", callerName: "Maria Santos", callerNumber: "(555) 999-0000",
-    routedTo: "Sarah Miller", routedInitials: "SM", routedColor: "bg-primary",
-    date: "Yesterday", time: "4:56 PM", durationSeconds: 612, hasRecording: true,
-  },
-  {
-    id: "6", type: "incoming", callerName: "TechStart Inc", callerNumber: "(555) 222-3333",
-    routedTo: "James Wilson", routedInitials: "JW", routedColor: "bg-chart-2",
-    date: "Yesterday", time: "3:18 PM", durationSeconds: 298, hasRecording: true,
-  },
-  {
-    id: "7", type: "outgoing", callerName: "Client Callback", callerNumber: "(555) 444-5555",
-    routedTo: "You", routedInitials: "YO", routedColor: "bg-chart-2",
-    date: "Yesterday", time: "1:05 PM", durationSeconds: 145, hasRecording: false,
-  },
-  {
-    id: "8", type: "missed", callerName: "Spam Likely", callerNumber: "(555) 666-7777",
-    routedTo: "Voicemail", routedInitials: "VM", routedColor: "bg-destructive",
-    date: "Yesterday", time: "9:30 AM", durationSeconds: 0, hasRecording: false,
-  },
-  {
-    id: "9", type: "incoming", callerName: "Big Deal Vendor", callerNumber: "(555) 888-9999",
-    routedTo: "Rachel Kim", routedInitials: "RK", routedColor: "bg-chart-5",
-    date: "Feb 23", time: "5:42 PM", durationSeconds: 934, hasRecording: true,
-  },
-  {
-    id: "10", type: "voicemail", callerName: "Insurance Co", callerNumber: "(555) 123-9876",
-    routedTo: "Voicemail", routedInitials: "VM", routedColor: "bg-chart-5",
-    date: "Feb 23", time: "2:15 PM", durationSeconds: 62, hasRecording: true,
-  },
-]
+interface VoiceQualitySummary {
+  total_calls: number
+  answered_calls: number
+  answer_rate_percent: number
+  avg_setup_ms: number | null
+  p95_setup_ms: number | null
+  avg_post_dial_delay_ms: number | null
+}
 
 function formatDuration(seconds: number): string {
   if (seconds === 0) return "--"
@@ -112,87 +70,39 @@ const callTypeConfig: Record<CallType, { icon: React.ElementType; label: string;
   voicemail: { icon: Voicemail, label: "Voicemail", color: "text-warning", bgColor: "bg-warning/10" },
 }
 
-function AudioPlayer({ callId }: { callId: string }) {
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [currentTime, setCurrentTime] = useState(0)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const fakeDuration = 30 + (parseInt(callId) * 7) % 60 // deterministic fake duration
+function formatPhoneDisplay(phone: string | undefined | null): string {
+  const v = String(phone || "")
+  if (!v) return "Unknown"
+  const digits = v.replace(/\D/g, "")
+  const d = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+  return v
+}
 
-  const stopPlayback = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current)
-    setIsPlaying(false)
-  }, [])
+function getDateLabel(d: Date): string {
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startThatDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diffDays = Math.floor((startToday - startThatDay) / 86_400_000)
+  if (diffDays === 0) return "Today"
+  if (diffDays === 1) return "Yesterday"
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
 
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [])
-
-  function togglePlay() {
-    if (isPlaying) {
-      stopPlayback()
-    } else {
-      setIsPlaying(true)
-      intervalRef.current = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            stopPlayback()
-            return 0
-          }
-          const next = prev + (100 / (fakeDuration * 10))
-          setCurrentTime(Math.floor((next / 100) * fakeDuration))
-          return next
-        })
-      }, 100)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg bg-secondary/50 px-3 py-2.5">
-      <button
-        onClick={togglePlay}
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all",
-          isPlaying
-            ? "bg-primary text-primary-foreground"
-            : "bg-primary/20 text-primary hover:bg-primary/30"
-        )}
-        aria-label={isPlaying ? "Pause recording" : "Play recording"}
-      >
-        {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
-      </button>
-      <div className="flex flex-1 flex-col gap-1.5">
-        <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-border">
-          <div
-            className="absolute left-0 top-0 h-full rounded-full bg-primary transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <div className="flex justify-between">
-          <span className="text-[10px] tabular-nums text-muted-foreground">
-            {Math.floor(currentTime / 60)}:{(currentTime % 60).toString().padStart(2, "0")}
-          </span>
-          <span className="text-[10px] tabular-nums text-muted-foreground">
-            {Math.floor(fakeDuration / 60)}:{(fakeDuration % 60).toString().padStart(2, "0")}
-          </span>
-        </div>
-      </div>
-      <button
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
-        aria-label="Download recording"
-      >
-        <Download className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  )
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+  return (parts[0] || "NA").slice(0, 2).toUpperCase()
 }
 
 export function ActivityPage() {
   const [filter, setFilter] = useState<FilterType>("all")
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [calls, setCalls] = useState<CallRecord[]>([])
+  const [quality, setQuality] = useState<VoiceQualitySummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const filters: { id: FilterType; label: string }[] = [
     { id: "all", label: "All" },
@@ -202,33 +112,101 @@ export function ActivityPage() {
     { id: "voicemail", label: "Voicemail" },
   ]
 
-  const filtered = callRecords.filter((c) => {
-    if (filter !== "all" && c.type !== filter) return false
-    if (search) {
-      const q = search.toLowerCase()
-      return (
-        c.callerName.toLowerCase().includes(q) ||
-        c.callerNumber.includes(q) ||
-        c.routedTo.toLowerCase().includes(q)
-      )
+  useEffect(() => {
+    let mounted = true
+
+    async function loadData() {
+      setLoading(true)
+      setLoadError(null)
+      try {
+        const [callsRes, qualityRes] = await Promise.all([
+          fetch("/api/calls?limit=100", { credentials: "include" }),
+          fetch("/api/voice/quality?days=7", { credentials: "include" }),
+        ])
+
+        if (!callsRes.ok) throw new Error("Failed to load calls")
+        const callsData = await callsRes.json()
+        const normalizedCalls: CallRecord[] = Array.isArray(callsData.calls)
+          ? callsData.calls.map((c: Record<string, unknown>) => {
+            const type = String(c.call_type || "incoming") as CallType
+            const createdAtRaw = String(c.created_at || "")
+            const createdAt = createdAtRaw ? new Date(createdAtRaw) : new Date()
+            const routedTo = String(c.routed_to_name || c.routed_to_receptionist_id || "Owner")
+            return {
+              id: String(c.id || c.twilio_call_sid || crypto.randomUUID()),
+              type: type === "incoming" || type === "outgoing" || type === "missed" || type === "voicemail" ? type : "incoming",
+              callerName: String(c.caller_name || "Unknown Caller"),
+              callerNumber: formatPhoneDisplay(String(c.from_number || "")),
+              routedTo,
+              routedInitials: initialsFromName(routedTo),
+              routedColor: "bg-primary",
+              date: getDateLabel(createdAt),
+              time: createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+              durationSeconds: Number(c.duration_seconds || 0),
+              hasRecording: Boolean(c.has_recording),
+              recordingUrl: c.recording_url ? String(c.recording_url) : null,
+            }
+          })
+          : []
+
+        let qualitySummary: VoiceQualitySummary | null = null
+        if (qualityRes.ok) {
+          const q = await qualityRes.json()
+          if (q?.summary) qualitySummary = q.summary as VoiceQualitySummary
+        }
+
+        if (!mounted) return
+        setCalls(normalizedCalls)
+        setQuality(qualitySummary)
+      } catch (e) {
+        if (!mounted) return
+        setLoadError(e instanceof Error ? e.message : "Failed to load activity")
+      } finally {
+        if (mounted) setLoading(false)
+      }
     }
-    return true
-  })
 
-  const totalCalls = callRecords.length
-  const totalDuration = callRecords.reduce((sum, c) => sum + c.durationSeconds, 0)
-  const recordingsCount = callRecords.filter((c) => c.hasRecording).length
+    void loadData()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
-  // Group by date
-  const grouped: Record<string, CallRecord[]> = {}
-  for (const call of filtered) {
-    if (!grouped[call.date]) grouped[call.date] = []
-    grouped[call.date].push(call)
-  }
+  const filtered = useMemo(() => {
+    return calls.filter((c) => {
+      if (filter !== "all" && c.type !== filter) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return (
+          c.callerName.toLowerCase().includes(q) ||
+          c.callerNumber.includes(q) ||
+          c.routedTo.toLowerCase().includes(q)
+        )
+      }
+      return true
+    })
+  }, [calls, filter, search])
+
+  const totalCalls = calls.length
+  const totalDuration = calls.reduce((sum, c) => sum + c.durationSeconds, 0)
+  const recordingsCount = calls.filter((c) => c.hasRecording).length
+
+  const grouped = useMemo(() => {
+    const bucket: Record<string, CallRecord[]> = {}
+    for (const call of filtered) {
+      if (!bucket[call.date]) bucket[call.date] = []
+      bucket[call.date].push(call)
+    }
+    return bucket
+  }, [filtered])
+
+  const answerRate = quality?.answer_rate_percent ?? 0
+  const avgSetup = quality?.avg_setup_ms ?? null
+  const p95Setup = quality?.p95_setup_ms ?? null
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
-      {/* Header Stats */}
+      {/* Core KPI Cards */}
       <div className="grid grid-cols-3 gap-2">
         <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
           <Phone className="mb-1 h-4 w-4 text-primary" />
@@ -243,9 +221,32 @@ export function ActivityPage() {
           <span className="text-[10px] text-muted-foreground">Talk Time</span>
         </div>
         <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
-          <Play className="mb-1 h-4 w-4 text-success" />
+          <Download className="mb-1 h-4 w-4 text-success" />
           <span className="text-lg font-bold text-foreground">{recordingsCount}</span>
           <span className="text-[10px] text-muted-foreground">Recordings</span>
+        </div>
+      </div>
+
+      {/* Quality KPI Cards */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+          <CheckCircle2 className="mb-1 h-4 w-4 text-success" />
+          <span className="text-lg font-bold text-foreground">{answerRate.toFixed(1)}%</span>
+          <span className="text-[10px] text-muted-foreground">Answer Rate</span>
+        </div>
+        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+          <Gauge className="mb-1 h-4 w-4 text-warning" />
+          <span className="text-lg font-bold text-foreground">
+            {avgSetup == null ? "--" : `${Math.round(avgSetup)}ms`}
+          </span>
+          <span className="text-[10px] text-muted-foreground">Avg Setup</span>
+        </div>
+        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
+          <Timer className="mb-1 h-4 w-4 text-primary" />
+          <span className="text-lg font-bold text-foreground">
+            {p95Setup == null ? "--" : `${Math.round(p95Setup)}ms`}
+          </span>
+          <span className="text-[10px] text-muted-foreground">P95 Setup</span>
         </div>
       </div>
 
@@ -282,6 +283,17 @@ export function ActivityPage() {
       </div>
 
       {/* Call Records by Date */}
+      {loading && (
+        <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          Loading call activity...
+        </div>
+      )}
+      {loadError && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
+
       {Object.entries(grouped).map(([date, calls]) => (
         <section key={date}>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -356,7 +368,22 @@ export function ActivityPage() {
                           <span className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted-foreground">
                             Recording
                           </span>
-                          <AudioPlayer callId={call.id} />
+                          {call.recordingUrl ? (
+                            <a
+                              href={call.recordingUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-2 rounded-lg bg-secondary/50 px-3 py-2.5 text-xs text-foreground hover:bg-secondary"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Open recording
+                            </a>
+                          ) : (
+                            <div className="flex items-center gap-2 rounded-lg bg-secondary/50 px-3 py-2.5">
+                              <Voicemail className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">Recording not available yet</span>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 rounded-lg bg-secondary/50 px-3 py-2.5">

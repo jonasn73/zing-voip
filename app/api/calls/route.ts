@@ -5,18 +5,25 @@
 // Supports filtering by type and pagination.
 
 import { NextRequest, NextResponse } from "next/server"
+import { getUserIdFromRequest } from "@/lib/auth"
 import { getCallLogs } from "@/lib/db"
 
-const DEMO_USER_ID = "demo-user-id"
+export const runtime = "nodejs"
+export const preferredRegion = "iad1"
 
 export async function GET(req: NextRequest) {
   try {
+    const userId = getUserIdFromRequest(req.headers.get("cookie"))
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const { searchParams } = req.nextUrl
     const limit = parseInt(searchParams.get("limit") || "50", 10)
     const offset = parseInt(searchParams.get("offset") || "0", 10)
     const type = searchParams.get("type") || undefined // incoming, outgoing, missed, voicemail
 
-    const calls = await getCallLogs(DEMO_USER_ID, { limit, offset, type })
+    const calls = await getCallLogs(userId, { limit, offset, type })
 
     return NextResponse.json({ calls })
   } catch (error) {

@@ -252,6 +252,7 @@ export function SettingsPage() {
   const [aiSaving, setAiSaving] = useState(false)
   const [aiSavedAt, setAiSavedAt] = useState<number | null>(null)
   const [aiPreset, setAiPreset] = useState<AiPresetId>("general")
+  const [autoApplyPresetToLive, setAutoApplyPresetToLive] = useState(true)
   const [customAiPresets, setCustomAiPresets] = useState<CustomAiPreset[]>([])
   const [selectedCustomPresetId, setSelectedCustomPresetId] = useState<string>("")
   const [customPresetName, setCustomPresetName] = useState("")
@@ -685,18 +686,62 @@ export function SettingsPage() {
     }
   }
 
+  async function maybeApplyToLive(config: AiAssistantConfig, sourceLabel: string) {
+    if (!autoApplyPresetToLive || !hasAiAssistant) return
+    try {
+      const res = await fetch("/api/ai-assistant", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          greeting: config.firstMessage,
+          businessName: user?.name || user?.email || "My Business",
+          voiceId: config.voiceId,
+          temperature: config.temperature,
+          businessHours: config.businessHours,
+          customInstructions: config.customInstructions,
+          endCallMessage: config.endCallMessage,
+          maxDurationSeconds: config.maxDurationSeconds,
+          silenceTimeoutSeconds: config.silenceTimeoutSeconds,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          title: "Live apply failed",
+          description: data.error || "Preset loaded locally but could not update live assistant.",
+          variant: "destructive",
+        })
+        return
+      }
+      setAiSavedAt(Date.now())
+      toast({
+        title: "Applied to live assistant",
+        description: `${sourceLabel} is now active in Vapi.`,
+      })
+    } catch {
+      toast({
+        title: "Live apply failed",
+        description: "Preset loaded locally but could not update live assistant.",
+        variant: "destructive",
+      })
+    }
+  }
+
   function applyAiPreset(presetId: AiPresetId) {
     setAiPreset(presetId)
     const preset = AI_PRESETS[presetId]
     if (!preset) return
-    setAiConfig((prev) => ({
-      ...prev,
+    const nextConfig = {
+      ...aiConfig,
       ...preset.config,
-    }))
+    }
+    setAiConfig(nextConfig)
     toast({
       title: "Preset applied",
       description: `${preset.label} template loaded. You can still edit everything.`,
     })
+    void maybeApplyToLive(nextConfig, preset.label)
   }
 
   async function saveCurrentAsCustomPreset() {
@@ -759,6 +804,7 @@ export function SettingsPage() {
       title: "Custom preset applied",
       description: `${preset.label} has been loaded.`,
     })
+    void maybeApplyToLive({ ...preset.config }, preset.label)
   }
 
   async function deleteCustomPresetById(presetId: string) {
@@ -928,6 +974,7 @@ export function SettingsPage() {
         title: "Preset imported",
         description: `${created.label} was added to your cloud presets.`,
       })
+      void maybeApplyToLive(created.config, created.label)
     } catch {
       toast({
         title: "Import failed",
@@ -1307,6 +1354,20 @@ export function SettingsPage() {
                     Customize voice, greeting, and call behavior for fallback calls.
                   </p>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Auto-apply presets to live assistant</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    When on, applying/importing a preset immediately updates Vapi.
+                  </p>
+                </div>
+                <Switch
+                  checked={autoApplyPresetToLive}
+                  onCheckedChange={setAutoApplyPresetToLive}
+                  aria-label="Auto apply presets to live assistant"
+                />
               </div>
 
               <div className="space-y-1.5">

@@ -1612,7 +1612,11 @@ export function SettingsPage() {
                       disabled={!voicePreviewPlaying && !voicePreviewLoading}
                       className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
                     >
-                      Stop
+                      {voicePreviewPlaying ? (
+                        <span className="max-w-[11rem] truncate">Stop {previewVoiceLabel}</span>
+                      ) : (
+                        "Stop"
+                      )}
                     </button>
                   </div>
                   <input

@@ -793,6 +793,150 @@ export function SettingsPage() {
     }
   }
 
+  async function renameSelectedCustomPreset() {
+    if (!selectedCustomPresetId) return
+    const current = customAiPresets.find((p) => p.id === selectedCustomPresetId)
+    if (!current) return
+    const nextLabel = window.prompt("Rename preset", current.label)?.trim()
+    if (!nextLabel || nextLabel === current.label) return
+    try {
+      const res = await fetch("/api/ai-assistant/presets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: current.id,
+          label: nextLabel,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          title: "Rename failed",
+          description: data.error || "Could not rename preset.",
+          variant: "destructive",
+        })
+        return
+      }
+      setCustomAiPresets((prev) =>
+        prev.map((p) => (p.id === current.id ? { ...p, label: nextLabel } : p))
+      )
+      toast({
+        title: "Preset renamed",
+        description: `Updated to "${nextLabel}".`,
+      })
+    } catch {
+      toast({
+        title: "Rename failed",
+        description: "Could not rename preset.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  async function updateSelectedCustomPresetFromCurrent() {
+    if (!selectedCustomPresetId) return
+    const current = customAiPresets.find((p) => p.id === selectedCustomPresetId)
+    if (!current) return
+    try {
+      const res = await fetch("/api/ai-assistant/presets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: current.id,
+          config: aiConfig,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          title: "Update failed",
+          description: data.error || "Could not update preset.",
+          variant: "destructive",
+        })
+        return
+      }
+      setCustomAiPresets((prev) =>
+        prev.map((p) => (p.id === current.id ? { ...p, config: { ...aiConfig } } : p))
+      )
+      toast({
+        title: "Preset updated",
+        description: `${current.label} now matches your current AI settings.`,
+      })
+    } catch {
+      toast({
+        title: "Update failed",
+        description: "Could not update preset.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  async function shareSelectedPresetCode() {
+    if (!selectedCustomPresetId) return
+    const current = customAiPresets.find((p) => p.id === selectedCustomPresetId)
+    if (!current) return
+    const payload = {
+      version: 1,
+      label: current.label,
+      config: current.config,
+    }
+    try {
+      const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+      await navigator.clipboard.writeText(code)
+      toast({
+        title: "Share code copied",
+        description: "Send this code to a teammate so they can import the preset.",
+      })
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Could not copy share code.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  async function importPresetFromCode() {
+    const raw = window.prompt("Paste preset share code")
+    if (!raw) return
+    try {
+      const json = decodeURIComponent(escape(atob(raw.trim())))
+      const parsed = JSON.parse(json) as { label?: string; config?: AiAssistantConfig }
+      const label = String(parsed.label || "Imported Preset").trim()
+      const config = (parsed.config || aiConfig) as AiAssistantConfig
+      const res = await fetch("/api/ai-assistant/presets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ label, config }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          title: "Import failed",
+          description: data.error || "Could not import preset.",
+          variant: "destructive",
+        })
+        return
+      }
+      const created = data.preset as { id: string; label: string; config: AiAssistantConfig }
+      setCustomAiPresets((prev) => [{ id: created.id, label: created.label, config: created.config }, ...prev])
+      setSelectedCustomPresetId(created.id)
+      toast({
+        title: "Preset imported",
+        description: `${created.label} was added to your cloud presets.`,
+      })
+    } catch {
+      toast({
+        title: "Import failed",
+        description: "Invalid share code.",
+        variant: "destructive",
+      })
+    }
+  }
+
   async function handleSaveAiAssistant() {
     if (!hasAiAssistant) return
     setAiSaving(true)
@@ -1215,6 +1359,39 @@ export function SettingsPage() {
                     className="zing-btn-sm border border-destructive/30 text-destructive hover:bg-destructive/10 disabled:opacity-40"
                   >
                     Delete
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={!selectedCustomPresetId}
+                    onClick={renameSelectedCustomPreset}
+                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedCustomPresetId}
+                    onClick={updateSelectedCustomPresetFromCurrent}
+                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
+                  >
+                    Update from current
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedCustomPresetId}
+                    onClick={shareSelectedPresetCode}
+                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
+                  >
+                    Copy share code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={importPresetFromCode}
+                    className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
+                  >
+                    Import code
                   </button>
                 </div>
                 <div className="flex items-center gap-2">

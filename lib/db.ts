@@ -858,6 +858,38 @@ export async function deleteAiAssistantPreset(userId: string, presetId: string):
   `
 }
 
+export async function updateAiAssistantPreset(params: {
+  user_id: string
+  id: string
+  label?: string
+  config?: Record<string, unknown>
+}): Promise<{ id: string; label: string; config: Record<string, unknown> } | null> {
+  const sql = getSql()
+  const existing = await sql`
+    SELECT id, label, config
+    FROM ai_assistant_presets
+    WHERE id = ${params.id} AND user_id = ${params.user_id}
+    LIMIT 1
+  `
+  if (!existing[0]) return null
+
+  const label = params.label !== undefined ? params.label : String(existing[0].label)
+  const config = params.config !== undefined ? params.config : ((existing[0].config as Record<string, unknown>) || {})
+
+  const rows = await sql`
+    UPDATE ai_assistant_presets
+    SET label = ${label}, config = ${JSON.stringify(config)}, updated_at = now()
+    WHERE id = ${params.id} AND user_id = ${params.user_id}
+    RETURNING id, label, config
+  `
+  if (!rows[0]) return null
+  return {
+    id: String(rows[0].id),
+    label: String(rows[0].label),
+    config: (rows[0].config as Record<string, unknown>) || {},
+  }
+}
+
 // Get talk time analytics for a date range
 export async function getAgentTalkTime(
   userId: string,

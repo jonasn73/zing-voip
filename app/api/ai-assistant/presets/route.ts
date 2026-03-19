@@ -4,6 +4,7 @@ import {
   deleteAiAssistantPreset,
   getAiAssistantPresets,
   insertAiAssistantPreset,
+  updateAiAssistantPreset,
 } from "@/lib/db"
 
 export async function GET(req: NextRequest) {
@@ -54,5 +55,33 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     console.error("[Zing] Failed to delete AI preset:", error)
     return NextResponse.json({ error: "Failed to delete preset" }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  const userId = getUserIdFromRequest(req.headers.get("cookie"))
+  if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+
+  try {
+    const body = await req.json()
+    const id = String(body?.id || "").trim()
+    const label = body?.label !== undefined ? String(body.label).trim() : undefined
+    const config = body?.config !== undefined ? (body.config as Record<string, unknown>) : undefined
+    if (!id) return NextResponse.json({ error: "Preset id is required" }, { status: 400 })
+    if (label !== undefined && !label) {
+      return NextResponse.json({ error: "Preset label cannot be empty" }, { status: 400 })
+    }
+
+    const preset = await updateAiAssistantPreset({
+      user_id: userId,
+      id,
+      label,
+      config,
+    })
+    if (!preset) return NextResponse.json({ error: "Preset not found" }, { status: 404 })
+    return NextResponse.json({ preset })
+  } catch (error) {
+    console.error("[Zing] Failed to update AI preset:", error)
+    return NextResponse.json({ error: "Failed to update preset" }, { status: 500 })
   }
 }

@@ -67,6 +67,16 @@ export async function POST(req: NextRequest) {
     return res
   } catch (error) {
     console.error("[Zing] Login error:", error)
+    const msg = error instanceof Error ? error.message : String(error)
+    if (msg.includes("SESSION_SECRET")) {
+      return NextResponse.json(
+        {
+          error:
+            "Server misconfiguration: SESSION_SECRET must be set in production. Add it in Vercel → Environment Variables.",
+        },
+        { status: 500 }
+      )
+    }
     return NextResponse.json(
       { error: "Something went wrong" },
       { status: 500 }

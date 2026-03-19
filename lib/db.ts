@@ -15,6 +15,20 @@ import type {
 } from "./types"
 import { defaultProfileFromUserIndustry } from "./business-industries"
 
+/** True when Postgres/Neon rejects SELECT/INSERT because `users.industry` was not migrated yet (011-user-industry.sql). */
+function isMissingIndustryColumnError(e: unknown): boolean {
+  const code = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : ""
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase()
+  if (code === "42703" && msg.includes("industry")) return true
+  if (!msg.includes("industry")) return false
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("undefined column") ||
+    msg.includes("42703") ||
+    (msg.includes("column") && msg.includes("users"))
+  )
+}
+
 // Lazy Neon client so we only connect when DATABASE_URL is set
 let cachedSql: ReturnType<typeof neon> | null = null
 function getSql(): ReturnType<typeof neon> {
@@ -257,15 +271,29 @@ export async function deleteReceptionist(receptionistId: string, userId: string)
 // Get user by email (for auth login; includes password_hash)
 export async function getAuthUserByEmail(email: string): Promise<(User & { password_hash: string }) | null> {
   const sql = getSql()
-  const rows = await sql`
-    SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, password_hash, created_at
-    FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
-  `
-  const row = rows[0]
-  if (!row) return null
-  return {
-    ...parseUserRow(row),
-    password_hash: String(row.password_hash),
+  try {
+    const rows = await sql`
+      SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, password_hash, created_at
+      FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+    `
+    const row = rows[0]
+    if (!row) return null
+    return {
+      ...parseUserRow(row),
+      password_hash: String(row.password_hash),
+    }
+  } catch (e) {
+    if (!isMissingIndustryColumnError(e)) throw e
+    const rows = await sql`
+      SELECT id, email, name, phone, business_name, vapi_assistant_id, password_hash, created_at
+      FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+    `
+    const row = rows[0]
+    if (!row) return null
+    return {
+      ...parseUserRow(row),
+      password_hash: String(row.password_hash),
+    }
   }
 }
 
@@ -281,10 +309,18 @@ export async function createUser(params: {
   const sql = getSql()
   const id = crypto.randomUUID()
   const industry = defaultProfileFromUserIndustry(params.industry)
-  await sql`
-    INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, created_at)
-    VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${industry}, ${params.password_hash}, now())
-  `
+  try {
+    await sql`
+      INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, created_at)
+      VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${industry}, ${params.password_hash}, now())
+    `
+  } catch (e) {
+    if (!isMissingIndustryColumnError(e)) throw e
+    await sql`
+      INSERT INTO users (id, email, name, phone, business_name, password_hash, created_at)
+      VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${params.password_hash}, now())
+    `
+  }
   await sql`
     INSERT INTO routing_config (id, user_id, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
     VALUES (${crypto.randomUUID()}, ${id}, NULL, 'owner', '', 30, now())
@@ -317,14 +353,26 @@ function parseUserRow(row: Record<string, unknown>): User {
 // Get user by phone number they own (joins phone_numbers → users)
 export async function getUserByPhoneNumber(toNumber: string): Promise<User | null> {
   const sql = getSql()
-  const rows = await sql`
-    SELECT u.id, u.email, u.name, u.phone, u.business_name, u.industry, u.vapi_assistant_id, u.created_at
-    FROM users u
-    JOIN phone_numbers pn ON pn.user_id = u.id
-    WHERE pn.number = ${toNumber} AND pn.status = 'active'
-    LIMIT 1
-  `
-  return rows[0] ? parseUserRow(rows[0]) : null
+  try {
+    const rows = await sql`
+      SELECT u.id, u.email, u.name, u.phone, u.business_name, u.industry, u.vapi_assistant_id, u.created_at
+      FROM users u
+      JOIN phone_numbers pn ON pn.user_id = u.id
+      WHERE pn.number = ${toNumber} AND pn.status = 'active'
+      LIMIT 1
+    `
+    return rows[0] ? parseUserRow(rows[0]) : null
+  } catch (e) {
+    if (!isMissingIndustryColumnError(e)) throw e
+    const rows = await sql`
+      SELECT u.id, u.email, u.name, u.phone, u.business_name, u.vapi_assistant_id, u.created_at
+      FROM users u
+      JOIN phone_numbers pn ON pn.user_id = u.id
+      WHERE pn.number = ${toNumber} AND pn.status = 'active'
+      LIMIT 1
+    `
+    return rows[0] ? parseUserRow(rows[0]) : null
+  }
 }
 
 // Fast routing lookup for incoming voice webhooks.
@@ -402,11 +450,20 @@ export async function getIncomingRoutingByNumber(toNumber: string): Promise<{
 // Get user by ID
 export async function getUser(userId: string): Promise<User | null> {
   const sql = getSql()
-  const rows = await sql`
-    SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
-    FROM users WHERE id = ${userId} LIMIT 1
-  `
-  return rows[0] ? parseUserRow(rows[0]) : null
+  try {
+    const rows = await sql`
+      SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
+      FROM users WHERE id = ${userId} LIMIT 1
+    `
+    return rows[0] ? parseUserRow(rows[0]) : null
+  } catch (e) {
+    if (!isMissingIndustryColumnError(e)) throw e
+    const rows = await sql`
+      SELECT id, email, name, phone, business_name, vapi_assistant_id, created_at
+      FROM users WHERE id = ${userId} LIMIT 1
+    `
+    return rows[0] ? parseUserRow(rows[0]) : null
+  }
 }
 
 // Update current user profile
@@ -431,7 +488,12 @@ export async function updateUser(
     await sql`UPDATE users SET business_name = ${updates.business_name} WHERE id = ${userId}`
   }
   if (updates.industry !== undefined) {
-    await sql`UPDATE users SET industry = ${updates.industry} WHERE id = ${userId}`
+    try {
+      await sql`UPDATE users SET industry = ${updates.industry} WHERE id = ${userId}`
+    } catch (e) {
+      if (!isMissingIndustryColumnError(e)) throw e
+      /* DB not migrated — ignore industry update until scripts/011-user-industry.sql is run */
+    }
   }
   if (updates.vapi_assistant_id !== undefined) {
     await sql`UPDATE users SET vapi_assistant_id = ${updates.vapi_assistant_id} WHERE id = ${userId}`
@@ -909,11 +971,20 @@ export async function updateAiAssistantPreset(params: {
 
 export async function getUserByVapiAssistantId(vapiAssistantId: string): Promise<User | null> {
   const sql = getSql()
-  const rows = await sql`
-    SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
-    FROM users WHERE vapi_assistant_id = ${vapiAssistantId} LIMIT 1
-  `
-  return rows[0] ? parseUserRow(rows[0]) : null
+  try {
+    const rows = await sql`
+      SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
+      FROM users WHERE vapi_assistant_id = ${vapiAssistantId} LIMIT 1
+    `
+    return rows[0] ? parseUserRow(rows[0]) : null
+  } catch (e) {
+    if (!isMissingIndustryColumnError(e)) throw e
+    const rows = await sql`
+      SELECT id, email, name, phone, business_name, vapi_assistant_id, created_at
+      FROM users WHERE vapi_assistant_id = ${vapiAssistantId} LIMIT 1
+    `
+    return rows[0] ? parseUserRow(rows[0]) : null
+  }
 }
 
 export async function getAiIntakeConfigRaw(userId: string): Promise<Record<string, unknown> | null> {

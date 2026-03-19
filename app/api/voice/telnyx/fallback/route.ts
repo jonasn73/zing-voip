@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
           texml.say("Please hold while we connect you.")
           const dial = texml.dial({
             callerId: calledNum || undefined,
+            // Keep ringback behavior consistent on fallback owner transfer.
+            answerOnBridge: true,
             timeout: 30,
           })
           dial.number(toE164(user.phone))

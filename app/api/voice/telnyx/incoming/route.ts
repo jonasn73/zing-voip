@@ -77,6 +77,9 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
       if (debug) console.log(`[Zing] Routing to receptionist: ${routing.receptionist_name || "Receptionist"} (${recPhone})`)
       const dial = texml.dial({
         callerId: calledNumber,
+        // Keep the caller on carrier ringback until bridge, which avoids
+        // the mid-ring tone change from early answer + handoff.
+        answerOnBridge: true,
         timeout: routing.ring_timeout_seconds || 20,
         action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}`,
         method: "POST",
@@ -87,6 +90,8 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
       if (debug) console.log(`[Zing] No receptionist assigned, routing to owner: ${ownerPhone}`)
       const dial = texml.dial({
         callerId: calledNumber,
+        // Keep ringback behavior consistent until the owner answers.
+        answerOnBridge: true,
         timeout: 30,
       })
       dial.number(ownerPhone)

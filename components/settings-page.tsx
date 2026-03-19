@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Moon,
   Bell,
@@ -268,6 +268,8 @@ export function SettingsPage() {
   const [selectedCustomPresetId, setSelectedCustomPresetId] = useState<string>("")
   const [customPresetName, setCustomPresetName] = useState("")
   const [customVoiceIdOverride, setCustomVoiceIdOverride] = useState("")
+  const [voicePreviewLoading, setVoicePreviewLoading] = useState(false)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
     voiceId: "21m00Tcm4TlvDq8ikWAM",
@@ -1041,25 +1043,62 @@ export function SettingsPage() {
     }
   }
 
-  function previewSelectedVoice() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+  async function previewSelectedVoice() {
+    const voiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
+    const text =
+      aiConfig.firstMessage?.trim() ||
+      "Hello! Thanks for calling. I can help with appointments, messages, and business information."
+    if (!voiceId) {
       toast({
-        title: "Preview unavailable",
-        description: "Voice preview is not supported on this device/browser.",
+        title: "Voice required",
+        description: "Select or enter a voice before previewing.",
         variant: "destructive",
       })
       return
     }
-    const text =
-      aiConfig.firstMessage?.trim() ||
-      "Hello! Thanks for calling. I can help with appointments, messages, and business information."
-    const utterance = new SpeechSynthesisUtterance(text)
-    const voiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
-    const maleVoiceIds = new Set(["ErXwobaYiN019PkySvjV", "pNInz6obpgDQGcFmaJgB", "TxGEqnHWrfWFTfGW9XjX", "onwK4e9ZLuTAKqWW03F9"])
-    utterance.pitch = maleVoiceIds.has(voiceId) ? 0.9 : 1.1
-    utterance.rate = 1
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
+
+    setVoicePreviewLoading(true)
+    try {
+      const res = await fetch("/api/ai-assistant/voice-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ voiceId, text }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          title: "Preview failed",
+          description: data.error || "Could not generate voice preview.",
+          variant: "destructive",
+        })
+        return
+      }
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause()
+      }
+      const audio = new Audio(objectUrl)
+      previewAudioRef.current = audio
+      audio.onended = () => URL.revokeObjectURL(objectUrl)
+      void audio.play().catch(() => {
+        URL.revokeObjectURL(objectUrl)
+        toast({
+          title: "Playback blocked",
+          description: "Tap Preview again if your browser blocked autoplay.",
+          variant: "destructive",
+        })
+      })
+    } catch {
+      toast({
+        title: "Preview failed",
+        description: "Could not generate voice preview.",
+        variant: "destructive",
+      })
+    } finally {
+      setVoicePreviewLoading(false)
+    }
   }
 
   function startEditMainLine() {
@@ -1530,9 +1569,10 @@ export function SettingsPage() {
                     <button
                       type="button"
                       onClick={previewSelectedVoice}
+                      disabled={voicePreviewLoading}
                       className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
                     >
-                      Preview
+                      {voicePreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Preview"}
                     </button>
                   </div>
                   <input

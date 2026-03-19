@@ -2,14 +2,43 @@
 // GET/POST/PATCH /api/ai-assistant
 // ============================================
 // Manages the user's Vapi AI voice assistant.
-// GET: returns current assistant status
-// POST: creates a new Vapi assistant for this user
-// PATCH: updates the assistant (greeting, business name)
+// GET: status + Vapi fields + saved intake config
+// POST: create assistant (merges intake + passes prompt)
+// PATCH: update assistant; optional `intake` object updates user_ai_intake and rebuilds prompt
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { getUser, getRoutingConfig, updateUser } from "@/lib/db"
+import {
+  getUser,
+  getRoutingConfig,
+  updateUser,
+  getAiIntakeConfigRaw,
+  upsertAiIntakeConfig,
+} from "@/lib/db"
 import { createVapiAssistant, getVapiAssistant, updateVapiAssistant } from "@/lib/vapi"
+import { normalizeIntakeConfig, type AiIntakeConfig } from "@/lib/ai-intake-defaults"
+import { isAiIntakeProfileId } from "@/lib/business-industries"
+
+/** Merge JSON intake config with previous row and optional greeting copy. */
+function mergeIntakeConfig(
+  prev: Record<string, unknown> | null,
+  incoming: Record<string, unknown> | undefined,
+  greeting: string | undefined
+): Record<string, unknown> {
+  const base = { ...(prev || {}), ...(incoming || {}) }
+  const g = greeting?.trim()
+  if (g && !(typeof base.busyGreeting === "string" && base.busyGreeting.trim())) {
+    base.busyGreeting = g
+  }
+  if (incoming?.followIndustryForAi === true) {
+    delete base.profileId
+  }
+  delete base.followIndustryForAi
+  if (typeof base.profileId === "string" && !isAiIntakeProfileId(base.profileId)) {
+    delete base.profileId
+  }
+  return base
+}
 
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -17,6 +46,9 @@ export async function GET(req: NextRequest) {
 
   const user = await getUser(userId)
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
+
+  const intakeRaw = await getAiIntakeConfigRaw(userId)
+  const intakeConfig: AiIntakeConfig = normalizeIntakeConfig(intakeRaw, { userIndustry: user.industry })
 
   let assistantConfig: Record<string, unknown> | null = null
   if (user.vapi_assistant_id) {
@@ -47,6 +79,8 @@ export async function GET(req: NextRequest) {
     hasAssistant: !!user.vapi_assistant_id,
     assistantId: user.vapi_assistant_id,
     assistantConfig,
+    intakeConfig,
+    intakeStored: intakeRaw,
   })
 }
 
@@ -66,6 +100,7 @@ export async function POST(req: NextRequest) {
       endCallMessage,
       maxDurationSeconds,
       silenceTimeoutSeconds,
+      intake: intakeBody,
     } = body as {
       greeting?: string
       businessName?: string
@@ -76,6 +111,7 @@ export async function POST(req: NextRequest) {
       endCallMessage?: string
       maxDurationSeconds?: number
       silenceTimeoutSeconds?: number
+      intake?: Record<string, unknown>
     }
 
     const user = await getUser(userId)
@@ -89,14 +125,24 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const prevIntake = await getAiIntakeConfigRaw(userId)
+    const merged = mergeIntakeConfig(prevIntake, intakeBody, requestedGreeting)
+    await upsertAiIntakeConfig(userId, merged)
+    const intakeConfig = normalizeIntakeConfig(await getAiIntakeConfigRaw(userId), {
+      userIndustry: user.industry,
+    })
+
     const config = await getRoutingConfig(userId)
     const greeting =
       requestedGreeting ||
       config?.ai_greeting ||
       `Thank you for calling ${user.business_name}. No one is available right now, but I'd be happy to help. How can I assist you?`
 
+    const businessName =
+      requestedBusinessName?.trim() || user.business_name?.trim() || user.name?.trim() || "My Business"
+
     const assistant = await createVapiAssistant({
-      businessName: requestedBusinessName || user.business_name || "the business",
+      businessName,
       greeting,
       ownerPhone: user.phone,
       voiceId,
@@ -106,6 +152,8 @@ export async function POST(req: NextRequest) {
       endCallMessage,
       maxDurationSeconds,
       silenceTimeoutSeconds,
+      intakeConfig,
+      userIndustry: user.industry,
     })
 
     await updateUser(userId, { vapi_assistant_id: assistant.id })
@@ -145,6 +193,7 @@ export async function PATCH(req: NextRequest) {
       endCallMessage,
       maxDurationSeconds,
       silenceTimeoutSeconds,
+      intake: intakeBody,
     } = body as {
       greeting?: string
       businessName?: string
@@ -155,19 +204,45 @@ export async function PATCH(req: NextRequest) {
       endCallMessage?: string
       maxDurationSeconds?: number
       silenceTimeoutSeconds?: number
+      intake?: Record<string, unknown>
     }
+
+    const prevIntake = await getAiIntakeConfigRaw(userId)
+    const merged = mergeIntakeConfig(prevIntake, intakeBody, greeting)
+    await upsertAiIntakeConfig(userId, merged)
+    const intakeConfig = normalizeIntakeConfig(await getAiIntakeConfigRaw(userId), {
+      userIndustry: user.industry,
+    })
+
+    let assistantTemperature = 0.7
+    try {
+      const current = await getVapiAssistant(user.vapi_assistant_id)
+      if (typeof current?.model?.temperature === "number") {
+        assistantTemperature = current.model.temperature
+      }
+    } catch {
+      /* keep default */
+    }
+
+    const resolvedTemp = typeof temperature === "number" ? temperature : assistantTemperature
+    const resolvedBusinessName =
+      businessName?.trim() || user.business_name?.trim() || user.name?.trim() || "My Business"
 
     await updateVapiAssistant(user.vapi_assistant_id, {
       greeting,
-      businessName: businessName || user.business_name,
-      ownerPhone: user.phone,
       voiceId,
-      temperature,
-      businessHours,
-      customInstructions,
       endCallMessage,
       maxDurationSeconds,
       silenceTimeoutSeconds,
+      promptBundle: {
+        businessName: resolvedBusinessName,
+        ownerPhone: user.phone,
+        businessHours,
+        customInstructions,
+        intakeConfig,
+        temperature: resolvedTemp,
+        userIndustry: user.industry,
+      },
     })
 
     return NextResponse.json({ success: true })

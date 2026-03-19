@@ -13,6 +13,7 @@ import type {
   CallLog,
   PhoneNumber,
 } from "./types"
+import { defaultProfileFromUserIndustry } from "./business-industries"
 
 // Lazy Neon client so we only connect when DATABASE_URL is set
 let cachedSql: ReturnType<typeof neon> | null = null
@@ -257,7 +258,7 @@ export async function deleteReceptionist(receptionistId: string, userId: string)
 export async function getAuthUserByEmail(email: string): Promise<(User & { password_hash: string }) | null> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, email, name, phone, business_name, vapi_assistant_id, password_hash, created_at
+    SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, password_hash, created_at
     FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
   `
   const row = rows[0]
@@ -274,13 +275,15 @@ export async function createUser(params: {
   name: string
   phone: string
   business_name: string
+  industry?: string
   password_hash: string
 }): Promise<User> {
   const sql = getSql()
   const id = crypto.randomUUID()
+  const industry = defaultProfileFromUserIndustry(params.industry)
   await sql`
-    INSERT INTO users (id, email, name, phone, business_name, password_hash, created_at)
-    VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${params.password_hash}, now())
+    INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, created_at)
+    VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${industry}, ${params.password_hash}, now())
   `
   await sql`
     INSERT INTO routing_config (id, user_id, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
@@ -292,6 +295,8 @@ export async function createUser(params: {
     name: params.name,
     phone: params.phone,
     business_name: params.business_name,
+    industry,
+    vapi_assistant_id: null,
     created_at: new Date().toISOString(),
   }
 }
@@ -303,6 +308,7 @@ function parseUserRow(row: Record<string, unknown>): User {
     name: String(row.name),
     phone: String(row.phone),
     business_name: String(row.business_name ?? "My Business"),
+    industry: row.industry != null ? String(row.industry) : "generic",
     vapi_assistant_id: row.vapi_assistant_id ? String(row.vapi_assistant_id) : null,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
@@ -312,7 +318,7 @@ function parseUserRow(row: Record<string, unknown>): User {
 export async function getUserByPhoneNumber(toNumber: string): Promise<User | null> {
   const sql = getSql()
   const rows = await sql`
-    SELECT u.id, u.email, u.name, u.phone, u.business_name, u.vapi_assistant_id, u.created_at
+    SELECT u.id, u.email, u.name, u.phone, u.business_name, u.industry, u.vapi_assistant_id, u.created_at
     FROM users u
     JOIN phone_numbers pn ON pn.user_id = u.id
     WHERE pn.number = ${toNumber} AND pn.status = 'active'
@@ -397,7 +403,7 @@ export async function getIncomingRoutingByNumber(toNumber: string): Promise<{
 export async function getUser(userId: string): Promise<User | null> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, email, name, phone, business_name, vapi_assistant_id, created_at
+    SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
     FROM users WHERE id = ${userId} LIMIT 1
   `
   return rows[0] ? parseUserRow(rows[0]) : null
@@ -406,7 +412,13 @@ export async function getUser(userId: string): Promise<User | null> {
 // Update current user profile
 export async function updateUser(
   userId: string,
-  updates: { phone?: string; name?: string; business_name?: string; vapi_assistant_id?: string | null }
+  updates: {
+    phone?: string
+    name?: string
+    business_name?: string
+    industry?: string
+    vapi_assistant_id?: string | null
+  }
 ): Promise<void> {
   const sql = getSql()
   if (updates.phone !== undefined) {
@@ -417,6 +429,9 @@ export async function updateUser(
   }
   if (updates.business_name !== undefined) {
     await sql`UPDATE users SET business_name = ${updates.business_name} WHERE id = ${userId}`
+  }
+  if (updates.industry !== undefined) {
+    await sql`UPDATE users SET industry = ${updates.industry} WHERE id = ${userId}`
   }
   if (updates.vapi_assistant_id !== undefined) {
     await sql`UPDATE users SET vapi_assistant_id = ${updates.vapi_assistant_id} WHERE id = ${userId}`
@@ -888,6 +903,104 @@ export async function updateAiAssistantPreset(params: {
     label: String(rows[0].label),
     config: (rows[0].config as Record<string, unknown>) || {},
   }
+}
+
+// --- AI intake config (per user) + leads from Vapi tool ---
+
+export async function getUserByVapiAssistantId(vapiAssistantId: string): Promise<User | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
+    FROM users WHERE vapi_assistant_id = ${vapiAssistantId} LIMIT 1
+  `
+  return rows[0] ? parseUserRow(rows[0]) : null
+}
+
+export async function getAiIntakeConfigRaw(userId: string): Promise<Record<string, unknown> | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT config FROM user_ai_intake WHERE user_id = ${userId} LIMIT 1
+  `
+  const c = rows[0]?.config
+  if (!c || typeof c !== "object") return null
+  return c as Record<string, unknown>
+}
+
+export async function upsertAiIntakeConfig(userId: string, config: Record<string, unknown>): Promise<void> {
+  const sql = getSql()
+  const json = JSON.stringify(config)
+  await sql`
+    INSERT INTO user_ai_intake (user_id, config, updated_at)
+    VALUES (${userId}, ${json}::jsonb, now())
+    ON CONFLICT (user_id) DO UPDATE SET
+      config = EXCLUDED.config,
+      updated_at = now()
+  `
+}
+
+export async function insertAiLead(params: {
+  user_id: string
+  caller_e164: string | null
+  intent_slug: string | null
+  collected: Record<string, unknown>
+  summary: string | null
+  sms_sent: boolean
+  sms_error: string | null
+  vapi_call_id: string | null
+}): Promise<string> {
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  const collectedJson = JSON.stringify(params.collected)
+  await sql`
+    INSERT INTO ai_leads (
+      id, user_id, caller_e164, intent_slug, collected, summary, sms_sent, sms_error, vapi_call_id, created_at
+    ) VALUES (
+      ${id},
+      ${params.user_id},
+      ${params.caller_e164},
+      ${params.intent_slug},
+      ${collectedJson}::jsonb,
+      ${params.summary},
+      ${params.sms_sent},
+      ${params.sms_error},
+      ${params.vapi_call_id},
+      now()
+    )
+  `
+  return id
+}
+
+export async function listAiLeadsForUser(userId: string, limit = 50): Promise<
+  {
+    id: string
+    caller_e164: string | null
+    intent_slug: string | null
+    collected: Record<string, unknown>
+    summary: string | null
+    sms_sent: boolean
+    sms_error: string | null
+    created_at: string
+  }[]
+> {
+  const sql = getSql()
+  const lim = Math.min(Math.max(limit, 1), 100)
+  const rows = await sql`
+    SELECT id, caller_e164, intent_slug, collected, summary, sms_sent, sms_error, created_at
+    FROM ai_leads
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT ${lim}
+  `
+  return rows.map((r: Record<string, unknown>) => ({
+    id: String(r.id),
+    caller_e164: r.caller_e164 != null ? String(r.caller_e164) : null,
+    intent_slug: r.intent_slug != null ? String(r.intent_slug) : null,
+    collected: (r.collected as Record<string, unknown>) || {},
+    summary: r.summary != null ? String(r.summary) : null,
+    sms_sent: Boolean(r.sms_sent),
+    sms_error: r.sms_error != null ? String(r.sms_error) : null,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }))
 }
 
 // Get talk time analytics for a date range

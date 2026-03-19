@@ -31,6 +31,15 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { AI_VOICE_FALLBACK_OPTIONS, type AiVoiceOption } from "@/lib/ai-voice-catalog"
+import { DEFAULT_BUSY_GREETING_LOCKSMITH } from "@/lib/ai-intake-defaults"
+import {
+  type AiIntakeProfileId,
+  AI_INTAKE_PROFILE_IDS,
+  INDUSTRY_CATALOG,
+  isAiIntakeProfileId,
+  industryLabel,
+  SIGNUP_INDUSTRY_OPTIONS,
+} from "@/lib/business-industries"
 
 interface SettingToggle {
   id: string
@@ -167,7 +176,12 @@ function extractBusinessHoursFromPrompt(prompt: string): string {
 
 export function SettingsPage() {
   const { toast } = useToast()
-  const [user, setUser] = useState<{ name: string; email: string; phone: string } | null>(null)
+  const [user, setUser] = useState<{
+    name: string
+    email: string
+    phone: string
+    industry: string
+  } | null>(null)
   const [settings, setSettings] = useState<SettingToggle[]>([
     {
       id: "dnd",
@@ -241,6 +255,9 @@ export function SettingsPage() {
   const [mainLineSaveLoading, setMainLineSaveLoading] = useState(false)
   const [mainLineError, setMainLineError] = useState<string | null>(null)
   const [mainLineSavedAt, setMainLineSavedAt] = useState<number | null>(null)
+  const [industryDraft, setIndustryDraft] = useState("generic")
+  const [industrySaving, setIndustrySaving] = useState(false)
+  const [industrySavedAt, setIndustrySavedAt] = useState<number | null>(null)
 
   // Per-number routing state
   const [receptionistsList, setReceptionistsList] = useState<ReceptionistInfo[]>([])
@@ -273,6 +290,29 @@ export function SettingsPage() {
     businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
     customInstructions: "",
   })
+  /** Extra fields saved to user_ai_intake (car/lockout notes apply to locksmith script only) */
+  const [aiIntake, setAiIntake] = useState({
+    busyGreeting: "",
+    carKeyNotes: "",
+    lockoutNotes: "",
+    otherNotes: "",
+    smsNotify: true,
+  })
+  /** auto = follow users.industry; else fixed AI playbook */
+  const [aiScriptChoice, setAiScriptChoice] = useState<"auto" | AiIntakeProfileId>("auto")
+
+  function buildIntakeBody() {
+    return {
+      ...(aiScriptChoice === "auto"
+        ? { followIndustryForAi: true }
+        : { profileId: aiScriptChoice }),
+      busyGreeting: aiIntake.busyGreeting,
+      carKeyNotes: aiIntake.carKeyNotes,
+      lockoutNotes: aiIntake.lockoutNotes,
+      otherNotes: aiIntake.otherNotes,
+      smsNotify: aiIntake.smsNotify,
+    }
+  }
   const previewVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
   const previewVoiceLabel =
     aiVoiceOptions.find((voice) => voice.id === previewVoiceId)?.label ||
@@ -289,7 +329,9 @@ export function SettingsPage() {
             name: data.data.user.name ?? "My Business",
             email: data.data.user.email ?? "",
             phone: data.data.user.phone ?? "",
+            industry: data.data.user.industry ?? "generic",
           })
+          setIndustryDraft(data.data.user.industry ?? "generic")
         }
       })
       .catch(() => {})
@@ -427,6 +469,33 @@ export function SettingsPage() {
           if (loadedVoiceId && !AI_VOICE_FALLBACK_OPTIONS.some((x) => x.id === loadedVoiceId)) {
             setCustomVoiceIdOverride(loadedVoiceId)
           }
+        }
+        const stored = data.intakeStored as Record<string, unknown> | null | undefined
+        const storedPid = stored && typeof stored.profileId === "string" ? stored.profileId : ""
+        if (storedPid && isAiIntakeProfileId(storedPid)) setAiScriptChoice(storedPid)
+        else setAiScriptChoice("auto")
+
+        const ic = data.intakeConfig as
+          | {
+              profileId?: string
+              busyGreeting?: string
+              carKeyNotes?: string
+              lockoutNotes?: string
+              otherNotes?: string
+              smsNotify?: boolean
+            }
+          | undefined
+        const cfgFirst = config ? String(config.firstMessage || "") : ""
+        if (ic) {
+          setAiIntake({
+            busyGreeting: (ic.busyGreeting && ic.busyGreeting.trim()) || cfgFirst || "",
+            carKeyNotes: ic.carKeyNotes || "",
+            lockoutNotes: ic.lockoutNotes || "",
+            otherNotes: ic.otherNotes || "",
+            smsNotify: ic.smsNotify !== false,
+          })
+        } else if (cfgFirst) {
+          setAiIntake((prev) => ({ ...prev, busyGreeting: cfgFirst || prev.busyGreeting }))
         }
       })
       .catch(() => {})
@@ -705,6 +774,7 @@ export function SettingsPage() {
           endCallMessage: aiConfig.endCallMessage,
           maxDurationSeconds: aiConfig.maxDurationSeconds,
           silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
+          intake: buildIntakeBody(),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -745,6 +815,7 @@ export function SettingsPage() {
           endCallMessage: config.endCallMessage,
           maxDurationSeconds: config.maxDurationSeconds,
           silenceTimeoutSeconds: config.silenceTimeoutSeconds,
+          intake: buildIntakeBody(),
         }),
       })
       if (!res.ok) {
@@ -1045,6 +1116,7 @@ export function SettingsPage() {
           endCallMessage: aiConfig.endCallMessage,
           maxDurationSeconds: aiConfig.maxDurationSeconds,
           silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
+          intake: buildIntakeBody(),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -1164,6 +1236,40 @@ export function SettingsPage() {
     setMainLineError(null)
   }
 
+  async function saveIndustry() {
+    setIndustrySaving(true)
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ industry: industryDraft }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({
+          title: "Could not save industry",
+          description: data.error || "Try again.",
+          variant: "destructive",
+        })
+        return
+      }
+      setUser((prev) => (prev ? { ...prev, industry: industryDraft } : prev))
+      setIndustrySavedAt(Date.now())
+      toast({
+        title: "Industry updated",
+        description:
+          aiScriptChoice === "auto"
+            ? "Your AI fallback script will follow this industry after you Save the AI receptionist."
+            : "Saved. Change AI script to “Auto” if you want calls to follow this industry.",
+      })
+    } catch {
+      toast({ title: "Error", description: "Could not save industry.", variant: "destructive" })
+    } finally {
+      setIndustrySaving(false)
+    }
+  }
+
   async function saveMainLine() {
     if (!mainLineEdit.trim()) return
     setMainLineError(null)
@@ -1191,6 +1297,7 @@ export function SettingsPage() {
             name: sessionData.data.user.name ?? "My Business",
             email: sessionData.data.user.email ?? "",
             phone: sessionData.data.user.phone ?? "",
+            industry: sessionData.data.user.industry ?? "generic",
           })
           toast({
             title: "Main line updated",
@@ -1265,6 +1372,39 @@ export function SettingsPage() {
               </button>
             </p>
           )}
+          <div className="mt-3 space-y-1.5 rounded-xl border border-border/60 bg-secondary/20 p-3">
+            <label className="text-[11px] font-semibold text-muted-foreground">
+              Industry (signup) — default AI phone script
+            </label>
+            <p className="text-[11px] text-muted-foreground">
+              When AI fallback is set to <span className="font-medium text-foreground">Auto</span>, callers get questions
+              tailored to this trade. You can override the script below.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={industryDraft}
+                onChange={(e) => setIndustryDraft(e.target.value)}
+                className="min-w-[12rem] flex-1 rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              >
+                {SIGNUP_INDUSTRY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={saveIndustry}
+                disabled={industrySaving || industryDraft === (user?.industry ?? "")}
+                className="zing-btn-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {industrySaving ? "Saving…" : "Save industry"}
+              </button>
+            </div>
+            {industrySavedAt ? (
+              <p className="text-[11px] text-success">Industry saved — tap Save on AI receptionist if you use Auto script.</p>
+            ) : null}
+          </div>
           <Badge variant="secondary" className="mt-1 text-[10px]">
             Pro Plan
           </Badge>
@@ -1814,6 +1954,95 @@ export function SettingsPage() {
                   />
                 </div>
               </div>
+              </div>
+
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  6 · Fallback intake
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Used when the AI answers after a human does not pick up. Leave the busy line blank to use your{" "}
+                  <span className="font-medium text-foreground">First greeting</span> (section 4).
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">AI script (playbook)</label>
+                  <select
+                    value={aiScriptChoice}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setAiScriptChoice(v === "auto" ? "auto" : (v as AiIntakeProfileId))
+                    }}
+                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="auto">
+                      Auto — match my industry ({industryLabel(user?.industry)})
+                    </option>
+                    {AI_INTAKE_PROFILE_IDS.map((id) => (
+                      <option key={id} value={id}>
+                        {INDUSTRY_CATALOG.find((r) => r.id === id)?.label ?? id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">
+                    Busy opening line (optional override)
+                  </label>
+                  <textarea
+                    value={aiIntake.busyGreeting}
+                    onChange={(e) => setAiIntake((p) => ({ ...p, busyGreeting: e.target.value }))}
+                    rows={3}
+                    placeholder={DEFAULT_BUSY_GREETING_LOCKSMITH}
+                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">
+                    Extra notes — car keys (locksmith script only)
+                  </label>
+                  <textarea
+                    value={aiIntake.carKeyNotes}
+                    onChange={(e) => setAiIntake((p) => ({ ...p, carKeyNotes: e.target.value }))}
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                    placeholder="Anything special you want the AI to ask or say for car-key jobs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">
+                    Extra notes — lockouts (locksmith script only)
+                  </label>
+                  <textarea
+                    value={aiIntake.lockoutNotes}
+                    onChange={(e) => setAiIntake((p) => ({ ...p, lockoutNotes: e.target.value }))}
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                    placeholder="e.g. mention ID at the door, gate codes, etc."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground">Extra notes — other requests</label>
+                  <textarea
+                    value={aiIntake.otherNotes}
+                    onChange={(e) => setAiIntake((p) => ({ ...p, otherNotes: e.target.value }))}
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Text me new leads</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Sends an SMS to your main line when a lead is saved. Needs{" "}
+                      <code className="rounded bg-secondary px-1">TELNYX_MESSAGING_FROM_E164</code> in server env.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={aiIntake.smsNotify}
+                    onCheckedChange={(v) => setAiIntake((p) => ({ ...p, smsNotify: v }))}
+                    aria-label="SMS lead notifications"
+                  />
+                </div>
               </div>
 
               {aiAssistantId ? (

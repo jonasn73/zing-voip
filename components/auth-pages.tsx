@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { SIGNUP_INDUSTRY_OPTIONS } from "@/lib/business-industries"
 import { Phone, Eye, EyeOff, Loader2 } from "lucide-react"
 
 interface AuthPageProps {
@@ -16,6 +17,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
   const [businessName, setBusinessName] = useState("")
   const [ownerName, setOwnerName] = useState("")
   const [ownerPhone, setOwnerPhone] = useState("")
+  const [industry, setIndustry] = useState("generic")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -37,6 +39,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
             name: ownerName,
             phone: ownerPhone,
             business_name: businessName || "My Business",
+            industry,
           }),
         })
         const data = await res.json()
@@ -139,6 +142,27 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
                   />
                   <p className="text-[11px] text-muted-foreground">
                     Calls will ring here by default. Add a business number (buy or port) in Settings after signup.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="industry" className="text-xs font-semibold text-muted-foreground">
+                    Industry
+                  </label>
+                  <select
+                    id="industry"
+                    value={industry}
+                    onChange={(e) => setIndustry(e.target.value)}
+                    required
+                    className="rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    {SIGNUP_INDUSTRY_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Used to tailor your AI phone assistant when nobody answers (questions match your trade).
                   </p>
                 </div>
               </>

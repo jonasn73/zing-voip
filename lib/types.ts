@@ -9,6 +9,8 @@ export interface User {
   name: string
   phone: string // owner's personal cell
   business_name: string
+  /** Signup industry — default AI fallback playbook when intake has no profileId override */
+  industry: string
   vapi_assistant_id: string | null // Vapi AI voice agent for this business
   created_at: string
 }
@@ -55,6 +57,18 @@ export interface PhoneNumber {
 
 // --- Call Logs ---
 export type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
+
+/** Row from ai_leads — captured when Vapi calls submit_zing_lead. */
+export interface AiLead {
+  id: string
+  user_id: string
+  caller_e164: string | null
+  intent_slug: string | null
+  collected: Record<string, unknown>
+  summary: string | null
+  sms_sent: boolean
+  created_at: string
+}
 
 export interface CallLog {
   id: string

@@ -9,7 +9,7 @@ import { ContactsPage } from "@/components/contacts-page"
 import { AnalyticsPage } from "@/components/analytics-page"
 import { SettingsPage } from "@/components/settings-page"
 
-const VALID_PAGES: PageId[] = ["dashboard", "activity", "contacts", "analytics", "settings"]
+const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "contacts", "analytics", "settings"]
 
 function getActivePage(pathname: string): PageId {
   const segment = pathname.replace(/^\/dashboard\/?/, "").trim() || "dashboard"

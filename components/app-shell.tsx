@@ -8,12 +8,14 @@ import {
   Settings,
   Zap,
   ClipboardList,
+  Inbox,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { id: "dashboard", label: "Routing", icon: Zap },
   { id: "activity", label: "Activity", icon: ClipboardList },
+  { id: "leads", label: "Leads", icon: Inbox },
   { id: "contacts", label: "Team", icon: Users },
   { id: "analytics", label: "Pay", icon: BarChart3 },
   { id: "settings", label: "Settings", icon: Settings },

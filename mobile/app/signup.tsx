@@ -9,10 +9,12 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Pressable,
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter } from "expo-router"
 import { apiMutate } from "../lib/api"
+import { SIGNUP_INDUSTRY_OPTIONS } from "../../lib/business-industries"
 
 export default function SignupScreen() {
   const router = useRouter()
@@ -22,6 +24,7 @@ export default function SignupScreen() {
   const [businessName, setBusinessName] = useState("")
   const [ownerName, setOwnerName] = useState("")
   const [ownerPhone, setOwnerPhone] = useState("")
+  const [industry, setIndustry] = useState("generic")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -37,6 +40,7 @@ export default function SignupScreen() {
           name: ownerName.trim(),
           phone: ownerPhone.trim(),
           business_name: businessName.trim() || "My Business",
+          industry,
         },
       })
       router.replace("/onboarding")
@@ -90,6 +94,20 @@ export default function SignupScreen() {
           onChangeText={setOwnerPhone}
           keyboardType="phone-pad"
         />
+
+        <Text style={styles.label}>Industry (AI phone assistant)</Text>
+        <View style={styles.chipRow}>
+          {SIGNUP_INDUSTRY_OPTIONS.map((chip) => (
+            <Pressable
+              key={chip.value}
+              onPress={() => setIndustry(chip.value)}
+              style={[styles.chip, industry === chip.value && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, industry === chip.value && styles.chipTextActive]}>{chip.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.hint}>Used when nobody answers — questions match your trade.</Text>
 
         <Text style={styles.label}>Email</Text>
         <TextInput
@@ -161,4 +179,17 @@ const styles = StyleSheet.create({
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   link: { marginTop: 24, alignItems: "center", minHeight: 44, justifyContent: "center" },
   linkText: { color: "#6366f1", fontSize: 14, fontWeight: "500" },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#1e293b",
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  chipActive: { borderColor: "#6366f1", backgroundColor: "rgba(99,102,241,0.2)" },
+  chipText: { fontSize: 13, color: "#94a3b8", fontWeight: "500" },
+  chipTextActive: { color: "#e0e7ff" },
+  hint: { fontSize: 12, color: "#64748b", marginBottom: 16 },
 })

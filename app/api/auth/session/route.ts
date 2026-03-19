@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
             name: "Dev User",
             phone: "+15551234567",
             business_name: "My Business",
+            industry: "generic",
             created_at: new Date().toISOString(),
           },
         },

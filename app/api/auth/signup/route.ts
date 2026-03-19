@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { createUser } from "@/lib/db"
+import { defaultProfileFromUserIndustry } from "@/lib/business-industries"
 import {
   createSessionCookie,
   getSessionCookieName,
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
     const name = String(body?.name ?? "").trim()
     const phone = String(body?.phone ?? "").trim()
     const business_name = String(body?.business_name ?? "").trim()
+    const industry = defaultProfileFromUserIndustry(body?.industry)
 
     if (!email || !password || !name || !phone) {
       return NextResponse.json(
@@ -40,6 +42,7 @@ export async function POST(req: NextRequest) {
       name,
       phone: normalizePhone(phone),
       business_name: business_name || "My Business",
+      industry,
       password_hash,
     })
 
@@ -62,9 +65,18 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       )
     }
-    if (msg.includes("does not exist") || msg.includes("relation") && msg.includes("users")) {
+    if (msg.includes("does not exist") || (msg.includes("relation") && msg.includes("users"))) {
       return NextResponse.json(
         { error: "Database schema missing. In Neon SQL Editor run: 001-create-schema.sql then 002-add-password-hash.sql" },
+        { status: 500 }
+      )
+    }
+    if (msg.includes("industry") && (msg.includes("column") || msg.includes("does not exist"))) {
+      return NextResponse.json(
+        {
+          error:
+            "Database needs migration: in Neon SQL Editor run scripts/011-user-industry.sql (adds industry for AI scripts).",
+        },
         { status: 500 }
       )
     }

@@ -2,25 +2,31 @@
 // Zing - Vapi AI Voice Agent Integration
 // ============================================
 // Creates and manages Vapi voice assistants for each business.
-// When a call goes to AI fallback, we transfer to the Vapi agent
-// which handles natural conversation, message-taking, etc.
+// When a call goes to AI fallback, we transfer to the Vapi agent.
 //
 // Required env vars:
 //   VAPI_API_KEY     - your Vapi private API key
 //   VAPI_PHONE_ID    - (optional) Vapi phone number ID for outbound
 //
-// Optional (platform / operator only — customers never set these):
-//   ZING_AI_LLM_MODEL - OpenAI model id for the assistant (default: gpt-4o for quality)
+// Optional:
+//   ZING_AI_LLM_MODEL - OpenAI model id (default: gpt-4o)
+//   VAPI_WEBHOOK_SECRET - query param on server URL for tool webhooks
+//   NEXT_PUBLIC_APP_URL - base URL for assistant server webhook
+
+import { getAppUrl } from "./telnyx"
+import {
+  buildIntakeSystemExtension,
+  normalizeIntakeConfig,
+  type AiIntakeConfig,
+} from "./ai-intake-defaults"
 
 const VAPI_BASE = "https://api.vapi.ai"
 
-/** LLM for spoken receptionist; gpt-4o default for natural reasoning; override to gpt-4o-mini to save cost. */
 function getAssistantLlmModel(): string {
   const m = process.env.ZING_AI_LLM_MODEL?.trim()
   return m || "gpt-4o"
 }
 
-/** ElevenLabs voice block tuned for natural phone speech (Vapi forwards these to 11labs). */
 function buildVapiElevenLabsVoice(voiceId: string) {
   return {
     provider: "11labs",
@@ -36,7 +42,6 @@ function getVapiKey(): string {
   return key
 }
 
-// Generic Vapi API helper
 async function vapiFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(`${VAPI_BASE}${path}`, {
     ...options,
@@ -54,7 +59,99 @@ async function vapiFetch(path: string, options: RequestInit = {}) {
   return body
 }
 
-// Create a Vapi assistant configured for a specific business
+/** Vapi model.functions entry — saves leads via Zing webhook. */
+const SUBMIT_ZING_LEAD_FUNCTION = {
+  name: "submit_zing_lead",
+  description:
+    "Save this caller as a lead and notify the business. Call ONCE after you have collected the required details for their situation. Required before ending the call if you took their information.",
+  parameters: {
+    type: "object",
+    properties: {
+      intent_slug: {
+        type: "string",
+        description:
+          "Use the intent_slug values defined in your system instructions for this business (varies by trade). Always include callback_number and issue_summary.",
+      },
+      caller_name: { type: "string", description: "Caller's name if known" },
+      callback_number: { type: "string", description: "Best phone number to reach them" },
+      vehicle_make: { type: "string" },
+      vehicle_model: { type: "string" },
+      vehicle_year: { type: "string" },
+      service_address: { type: "string", description: "Service location or full address" },
+      issue_summary: { type: "string", description: "One short sentence describing what they need" },
+    },
+    required: ["intent_slug", "callback_number", "issue_summary"],
+  },
+}
+
+function vapiWebhookServerUrl(): string | null {
+  try {
+    const base = getAppUrl().replace(/\/$/, "")
+    if (!base) return null
+    const secret = process.env.VAPI_WEBHOOK_SECRET?.trim()
+    const path = "/api/webhooks/vapi"
+    return secret ? `${base}${path}?s=${encodeURIComponent(secret)}` : `${base}${path}`
+  } catch {
+    return null
+  }
+}
+
+function composeAssistantSystemPrompt(params: {
+  businessName: string
+  ownerPhone: string
+  businessHours?: string
+  customInstructions?: string
+  intakeConfig?: AiIntakeConfig | null
+  /** From users.industry when intake has no profileId override */
+  userIndustry?: string | null
+}): string {
+  const cfg = normalizeIntakeConfig(params.intakeConfig ?? {}, {
+    userIndustry: params.userIndustry,
+  })
+  const hours = (params.businessHours || "Monday through Friday, 9 AM to 5 PM. Closed weekends.").trim()
+  let core = buildIntakeSystemExtension(
+    params.businessName,
+    params.ownerPhone,
+    hours,
+    cfg
+  )
+  const custom = (params.customInstructions || "").trim()
+  if (custom) {
+    core += `\n\n## Additional business-specific instructions from the owner\n${custom}`
+  }
+  return core
+}
+
+function buildModelBlock(args: {
+  businessName: string
+  ownerPhone: string
+  businessHours?: string
+  customInstructions?: string
+  intakeConfig?: AiIntakeConfig | null
+  userIndustry?: string | null
+  temperature: number
+}) {
+  return {
+    provider: "openai",
+    model: getAssistantLlmModel(),
+    messages: [
+      {
+        role: "system",
+        content: composeAssistantSystemPrompt({
+          businessName: args.businessName,
+          ownerPhone: args.ownerPhone,
+          businessHours: args.businessHours,
+          customInstructions: args.customInstructions,
+          intakeConfig: args.intakeConfig,
+          userIndustry: args.userIndustry,
+        }),
+      },
+    ],
+    temperature: args.temperature,
+    functions: [SUBMIT_ZING_LEAD_FUNCTION],
+  }
+}
+
 export async function createVapiAssistant(params: {
   businessName: string
   greeting: string
@@ -66,6 +163,8 @@ export async function createVapiAssistant(params: {
   endCallMessage?: string
   maxDurationSeconds?: number
   silenceTimeoutSeconds?: number
+  intakeConfig?: AiIntakeConfig | null
+  userIndustry?: string | null
 }): Promise<{ id: string; phoneNumber?: string }> {
   const {
     businessName,
@@ -78,59 +177,69 @@ export async function createVapiAssistant(params: {
     endCallMessage,
     maxDurationSeconds,
     silenceTimeoutSeconds,
+    intakeConfig,
+    userIndustry,
   } = params
+
+  const serverUrl = vapiWebhookServerUrl()
+  const body: Record<string, unknown> = {
+    name: `Zing - ${businessName}`,
+    model: buildModelBlock({
+      businessName,
+      ownerPhone,
+      businessHours,
+      customInstructions,
+      intakeConfig: intakeConfig ?? normalizeIntakeConfig({}, { userIndustry }),
+      userIndustry,
+      temperature: typeof temperature === "number" ? temperature : 0.7,
+    }),
+    voice: buildVapiElevenLabsVoice(voiceId || "21m00Tcm4TlvDq8ikWAM"),
+    firstMessage:
+      greeting ||
+      `Thank you for calling ${businessName}. No one is available right now, but I'd be happy to help. How can I assist you?`,
+    endCallMessage: endCallMessage || "Thank you for calling. Have a great day!",
+    transcriber: {
+      provider: "deepgram",
+      model: "nova-2",
+      language: "en",
+    },
+    silenceTimeoutSeconds: typeof silenceTimeoutSeconds === "number" ? silenceTimeoutSeconds : 30,
+    maxDurationSeconds: typeof maxDurationSeconds === "number" ? maxDurationSeconds : 300,
+    endCallFunctionEnabled: true,
+  }
+  if (serverUrl) {
+    body.server = { url: serverUrl }
+  }
 
   const assistant = await vapiFetch("/assistant", {
     method: "POST",
-    body: JSON.stringify({
-      name: `Zing - ${businessName}`,
-      model: {
-        provider: "openai",
-        model: getAssistantLlmModel(),
-        messages: [
-          {
-            role: "system",
-            content: buildSystemPrompt({
-              businessName,
-              ownerPhone,
-              businessHours,
-              customInstructions,
-            }),
-          },
-        ],
-        temperature: typeof temperature === "number" ? temperature : 0.7,
-      },
-      voice: buildVapiElevenLabsVoice(voiceId || "21m00Tcm4TlvDq8ikWAM"),
-      firstMessage: greeting || `Thank you for calling ${businessName}. No one is available right now, but I'd be happy to help. How can I assist you?`,
-      endCallMessage: endCallMessage || "Thank you for calling. Have a great day!",
-      transcriber: {
-        provider: "deepgram",
-        model: "nova-2",
-        language: "en",
-      },
-      silenceTimeoutSeconds: typeof silenceTimeoutSeconds === "number" ? silenceTimeoutSeconds : 30,
-      maxDurationSeconds: typeof maxDurationSeconds === "number" ? maxDurationSeconds : 300,
-      endCallFunctionEnabled: true,
-    }),
+    body: JSON.stringify(body),
   })
 
   return { id: assistant.id }
 }
 
-// Update an existing Vapi assistant (e.g. when user changes greeting or business name)
 export async function updateVapiAssistant(
   assistantId: string,
   params: {
-    businessName?: string
     greeting?: string
-    ownerPhone?: string
     voiceId?: string
-    businessHours?: string
-    customInstructions?: string
-    temperature?: number
     endCallMessage?: string
     maxDurationSeconds?: number
     silenceTimeoutSeconds?: number
+    /**
+     * When provided, replaces model (system prompt + tools + temperature) in one shot.
+     * Always pass full business context from the API route — do not send partial prompt updates.
+     */
+    promptBundle?: {
+      businessName: string
+      ownerPhone: string
+      businessHours?: string
+      customInstructions?: string
+      intakeConfig: AiIntakeConfig | null
+      temperature: number
+      userIndustry?: string | null
+    }
   }
 ): Promise<void> {
   const updates: Record<string, unknown> = {}
@@ -139,28 +248,20 @@ export async function updateVapiAssistant(
     updates.firstMessage = params.greeting
   }
 
-  if (
-    params.businessName ||
-    params.ownerPhone ||
-    params.businessHours ||
-    params.customInstructions ||
-    typeof params.temperature === "number"
-  ) {
-    updates.model = {
-      provider: "openai",
-      model: getAssistantLlmModel(),
-      messages: [
-        {
-          role: "system",
-          content: buildSystemPrompt({
-            businessName: params.businessName || "the business",
-            ownerPhone: params.ownerPhone || "",
-            businessHours: params.businessHours,
-            customInstructions: params.customInstructions,
-          }),
-        },
-      ],
-      temperature: typeof params.temperature === "number" ? params.temperature : 0.7,
+  if (params.promptBundle) {
+    const b = params.promptBundle
+    updates.model = buildModelBlock({
+      businessName: b.businessName,
+      ownerPhone: b.ownerPhone,
+      businessHours: b.businessHours,
+      customInstructions: b.customInstructions,
+      intakeConfig: b.intakeConfig ?? normalizeIntakeConfig({}, { userIndustry: b.userIndustry }),
+      userIndustry: b.userIndustry,
+      temperature: b.temperature,
+    })
+    const serverUrl = vapiWebhookServerUrl()
+    if (serverUrl) {
+      updates.server = { url: serverUrl }
     }
   }
 
@@ -188,8 +289,6 @@ export async function updateVapiAssistant(
   }
 }
 
-// Create a Vapi phone call (transfer an active call to Vapi)
-// Returns a phone number to transfer/dial into
 export async function createVapiCall(params: {
   assistantId: string
   customerNumber: string
@@ -207,47 +306,10 @@ export async function createVapiCall(params: {
   return { callId: call.id, status: call.status }
 }
 
-// Get a Vapi assistant by ID
 export async function getVapiAssistant(assistantId: string) {
   return vapiFetch(`/assistant/${assistantId}`)
 }
 
-// Delete a Vapi assistant
 export async function deleteVapiAssistant(assistantId: string): Promise<void> {
   await vapiFetch(`/assistant/${assistantId}`, { method: "DELETE" })
-}
-
-// Build the system prompt for the AI receptionist
-function buildSystemPrompt(params: {
-  businessName: string
-  ownerPhone: string
-  businessHours?: string
-  customInstructions?: string
-}): string {
-  const { businessName, ownerPhone, businessHours, customInstructions } = params
-  const hours = (businessHours || "Monday through Friday, 9 AM to 5 PM. Closed weekends.").trim()
-  const custom = (customInstructions || "").trim()
-
-  return `You are a friendly and professional AI phone receptionist for ${businessName}.
-You are answering a call that came in when no one at the business was available to pick up.
-
-Your personality:
-- Warm, helpful, and professional
-- Speak naturally like a real receptionist, not robotic
-- Keep responses concise (1-2 sentences) since they're spoken aloud
-- Don't say "as an AI" or mention being artificial — just be a helpful receptionist
-- Confirm important details (names, times, phone numbers) by repeating them clearly
-
-Your capabilities:
-1. TAKE MESSAGES: Ask for their name, phone number, and message. For phone numbers, repeat digits back in small groups so the caller can confirm.
-2. SHARE BUSINESS HOURS: ${hours}
-3. BOOK APPOINTMENTS: Collect their preferred date, time, name, and callback number.
-4. ANSWER COMMON QUESTIONS: Be helpful but honest — if you don't know specific details about ${businessName}, say "I'll have someone from the team get back to you with that information."
-5. TRANSFER: If they urgently need to reach someone, let them know you'll try to connect them.
-
-${ownerPhone ? `The business owner's number is ${ownerPhone} for urgent transfers.` : ""}
-${custom ? `\nAdditional business rules:\n${custom}\n` : ""}
-
-Always end by asking "Is there anything else I can help you with?" before saying goodbye.
-If the caller is done, say a brief, warm farewell.`
 }

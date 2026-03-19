@@ -120,9 +120,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (callSid && dialStatus !== "completed") {
-      await updateCallLog(callSid, {
+      // Fire-and-forget: don't delay TeXML response while updating call logs.
+      void updateCallLog(callSid, {
         call_type: fallbackType === "voicemail" ? "voicemail" : "incoming",
         status: dialStatus,
+      }).catch((logErr) => {
+        console.error("[Zing] Call log update failed (continuing):", logErr)
       })
     }
   } catch (error) {

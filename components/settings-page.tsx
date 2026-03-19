@@ -271,10 +271,6 @@ export function SettingsPage() {
   const [voicePreviewLoading, setVoicePreviewLoading] = useState(false)
   const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
-  const previewVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
-  const previewVoiceLabel =
-    AI_VOICE_OPTIONS.find((voice) => voice.id === previewVoiceId)?.label ||
-    (customVoiceIdOverride.trim() ? "Custom voice" : "Selected voice")
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
     voiceId: "21m00Tcm4TlvDq8ikWAM",
@@ -285,6 +281,10 @@ export function SettingsPage() {
     businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
     customInstructions: "",
   })
+  const previewVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
+  const previewVoiceLabel =
+    AI_VOICE_OPTIONS.find((voice) => voice.id === previewVoiceId)?.label ||
+    (customVoiceIdOverride.trim() ? "Custom voice" : "Selected voice")
 
   // Load current user so we can show main line (cell) in profile
   useEffect(() => {

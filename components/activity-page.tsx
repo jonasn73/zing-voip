@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState } from "react"
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -17,33 +17,12 @@ import {
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { useOperationsData, type UiCallRecord } from "@/lib/hooks/use-operations-data"
 
 type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
 type FilterType = "all" | CallType
 
-interface CallRecord {
-  id: string
-  type: CallType
-  callerName: string
-  callerNumber: string
-  routedTo: string
-  routedInitials: string
-  routedColor: string
-  date: string
-  time: string
-  durationSeconds: number
-  hasRecording: boolean
-  recordingUrl: string | null
-}
-
-interface VoiceQualitySummary {
-  total_calls: number
-  answered_calls: number
-  answer_rate_percent: number
-  avg_setup_ms: number | null
-  p95_setup_ms: number | null
-  avg_post_dial_delay_ms: number | null
-}
+type CallRecord = UiCallRecord
 
 function formatDuration(seconds: number): string {
   if (seconds === 0) return "--"
@@ -63,6 +42,11 @@ function formatDurationLong(seconds: number): string {
   return `${s} seconds`
 }
 
+function formatMs(ms: number | null): string {
+  if (ms == null) return "--"
+  return `${Math.round(ms)}ms`
+}
+
 const callTypeConfig: Record<CallType, { icon: React.ElementType; label: string; color: string; bgColor: string }> = {
   incoming: { icon: ArrowDownLeft, label: "Incoming", color: "text-success", bgColor: "bg-success/10" },
   outgoing: { icon: ArrowUpRight, label: "Outgoing", color: "text-primary", bgColor: "bg-primary/10" },
@@ -79,30 +63,11 @@ function formatPhoneDisplay(phone: string | undefined | null): string {
   return v
 }
 
-function getDateLabel(d: Date): string {
-  const now = new Date()
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const startThatDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  const diffDays = Math.floor((startToday - startThatDay) / 86_400_000)
-  if (diffDays === 0) return "Today"
-  if (diffDays === 1) return "Yesterday"
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-}
-
-function initialsFromName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-  return (parts[0] || "NA").slice(0, 2).toUpperCase()
-}
-
 export function ActivityPage() {
   const [filter, setFilter] = useState<FilterType>("all")
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [calls, setCalls] = useState<CallRecord[]>([])
-  const [quality, setQuality] = useState<VoiceQualitySummary | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const { calls, quality, insights, loading, loadError } = useOperationsData()
 
   const filters: { id: FilterType; label: string }[] = [
     { id: "all", label: "All" },
@@ -112,68 +77,8 @@ export function ActivityPage() {
     { id: "voicemail", label: "Voicemail" },
   ]
 
-  useEffect(() => {
-    let mounted = true
-
-    async function loadData() {
-      setLoading(true)
-      setLoadError(null)
-      try {
-        const [callsRes, qualityRes] = await Promise.all([
-          fetch("/api/calls?limit=100", { credentials: "include" }),
-          fetch("/api/voice/quality?days=7", { credentials: "include" }),
-        ])
-
-        if (!callsRes.ok) throw new Error("Failed to load calls")
-        const callsData = await callsRes.json()
-        const normalizedCalls: CallRecord[] = Array.isArray(callsData.calls)
-          ? callsData.calls.map((c: Record<string, unknown>) => {
-            const type = String(c.call_type || "incoming") as CallType
-            const createdAtRaw = String(c.created_at || "")
-            const createdAt = createdAtRaw ? new Date(createdAtRaw) : new Date()
-            const routedTo = String(c.routed_to_name || c.routed_to_receptionist_id || "Owner")
-            return {
-              id: String(c.id || c.twilio_call_sid || crypto.randomUUID()),
-              type: type === "incoming" || type === "outgoing" || type === "missed" || type === "voicemail" ? type : "incoming",
-              callerName: String(c.caller_name || "Unknown Caller"),
-              callerNumber: formatPhoneDisplay(String(c.from_number || "")),
-              routedTo,
-              routedInitials: initialsFromName(routedTo),
-              routedColor: "bg-primary",
-              date: getDateLabel(createdAt),
-              time: createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
-              durationSeconds: Number(c.duration_seconds || 0),
-              hasRecording: Boolean(c.has_recording),
-              recordingUrl: c.recording_url ? String(c.recording_url) : null,
-            }
-          })
-          : []
-
-        let qualitySummary: VoiceQualitySummary | null = null
-        if (qualityRes.ok) {
-          const q = await qualityRes.json()
-          if (q?.summary) qualitySummary = q.summary as VoiceQualitySummary
-        }
-
-        if (!mounted) return
-        setCalls(normalizedCalls)
-        setQuality(qualitySummary)
-      } catch (e) {
-        if (!mounted) return
-        setLoadError(e instanceof Error ? e.message : "Failed to load activity")
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    }
-
-    void loadData()
-    return () => {
-      mounted = false
-    }
-  }, [])
-
   const filtered = useMemo(() => {
-    return calls.filter((c) => {
+    return calls.filter((c: UiCallRecord) => {
       if (filter !== "all" && c.type !== filter) return false
       if (search) {
         const q = search.toLowerCase()
@@ -203,9 +108,18 @@ export function ActivityPage() {
   const answerRate = quality?.answer_rate_percent ?? 0
   const avgSetup = quality?.avg_setup_ms ?? null
   const p95Setup = quality?.p95_setup_ms ?? null
+  const trend = insights?.daily_quality ?? []
+  const numberQuality = insights?.number_quality ?? []
+  const topMissedCallers = insights?.top_missed_callers ?? []
+  const maxTrendSetup = Math.max(...trend.map((d) => d.avg_setup_ms ?? 0), 1)
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
+      <div>
+        <h2 className="text-xl font-semibold text-foreground">Operations</h2>
+        <p className="text-sm text-muted-foreground">Live quality KPIs and call activity</p>
+      </div>
+
       {/* Core KPI Cards */}
       <div className="grid grid-cols-3 gap-2">
         <div className="flex flex-col items-center rounded-xl border border-border bg-card p-3">
@@ -281,6 +195,80 @@ export function ActivityPage() {
           </button>
         ))}
       </div>
+
+      {/* 7-Day Setup Trend */}
+      <section className="rounded-xl border border-border bg-card p-3.5">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-sm font-medium text-foreground">7-day setup latency trend</p>
+          <span className="text-xs text-muted-foreground">Goal: &lt; 1000ms</span>
+        </div>
+        {trend.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No trend data yet.</p>
+        ) : (
+          <div className="flex items-end gap-1.5">
+            {trend.map((d) => (
+              <div key={d.day} className="flex flex-1 flex-col items-center gap-1">
+                <span className="text-[10px] text-muted-foreground">{d.avg_setup_ms == null ? "--" : Math.round(d.avg_setup_ms)}</span>
+                <div
+                  className="w-full rounded-t bg-primary/70"
+                  style={{ height: `${Math.max(6, ((d.avg_setup_ms ?? 0) / maxTrendSetup) * 60)}px` }}
+                  title={`${d.day}: ${formatMs(d.avg_setup_ms)}`}
+                />
+                <span className="text-[10px] text-muted-foreground">
+                  {new Date(`${d.day}T00:00:00`).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Per-number quality */}
+      <section className="rounded-xl border border-border bg-card p-3.5">
+        <p className="mb-2 text-sm font-medium text-foreground">Per-number quality</p>
+        {numberQuality.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No per-number data yet.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {numberQuality.map((n) => (
+              <div key={n.number} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(n.number)}</p>
+                  <p className="text-[11px] text-muted-foreground">{n.total_calls} calls</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-medium text-foreground">{n.answer_rate_percent.toFixed(1)}% answer</p>
+                  <p className="text-[11px] text-muted-foreground">{formatMs(n.avg_setup_ms)} avg setup</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Top missed callers */}
+      <section className="rounded-xl border border-border bg-card p-3.5">
+        <p className="mb-2 text-sm font-medium text-foreground">Top missed callers</p>
+        {topMissedCallers.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No missed callers in selected window.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {topMissedCallers.map((m) => (
+              <div key={m.caller_number} className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{formatPhoneDisplay(m.caller_number)}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Last missed {new Date(m.last_missed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+                <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                  {m.missed_calls} missed
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Call Records by Date */}
       {loading && (

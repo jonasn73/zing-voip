@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { getCallQualitySummary } from "@/lib/db"
+import { getCallQualitySummary, getVoiceOperationsInsights } from "@/lib/db"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -13,8 +13,11 @@ export async function GET(req: NextRequest) {
   const days = Math.max(1, Math.min(90, Number(daysParam || 7) || 7))
 
   try {
-    const summary = await getCallQualitySummary(userId, days)
-    return NextResponse.json({ days, summary })
+    const [summary, insights] = await Promise.all([
+      getCallQualitySummary(userId, days),
+      getVoiceOperationsInsights(userId, days),
+    ])
+    return NextResponse.json({ days, summary, insights })
   } catch (error) {
     console.error("[VoiceQuality] Failed to load summary:", error)
     return NextResponse.json({ error: "Failed to load call quality summary" }, { status: 500 })

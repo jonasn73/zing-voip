@@ -572,6 +572,101 @@ export async function getCallQualitySummary(userId: string, days = 7): Promise<{
   }
 }
 
+export async function getVoiceOperationsInsights(userId: string, days = 7): Promise<{
+  daily_quality: {
+    day: string
+    total_calls: number
+    answered_calls: number
+    answer_rate_percent: number
+    avg_setup_ms: number | null
+  }[]
+  number_quality: {
+    number: string
+    total_calls: number
+    answered_calls: number
+    answer_rate_percent: number
+    avg_setup_ms: number | null
+  }[]
+  top_missed_callers: {
+    caller_number: string
+    missed_calls: number
+    last_missed_at: string
+  }[]
+}> {
+  const sql = getSql()
+
+  const dailyRows = await sql`
+    SELECT
+      to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+      COUNT(*)::int AS total_calls,
+      COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+      CASE
+        WHEN COUNT(*) = 0 THEN 0
+        ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
+      END AS answer_rate_percent,
+      AVG(setup_duration_ms)::float8 AS avg_setup_ms
+    FROM call_logs
+    WHERE user_id = ${userId}
+      AND created_at >= now() - (${days}::int || ' days')::interval
+    GROUP BY date_trunc('day', created_at)
+    ORDER BY date_trunc('day', created_at) ASC
+  `
+
+  const numberRows = await sql`
+    SELECT
+      to_number AS number,
+      COUNT(*)::int AS total_calls,
+      COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+      CASE
+        WHEN COUNT(*) = 0 THEN 0
+        ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
+      END AS answer_rate_percent,
+      AVG(setup_duration_ms)::float8 AS avg_setup_ms
+    FROM call_logs
+    WHERE user_id = ${userId}
+      AND created_at >= now() - (${days}::int || ' days')::interval
+    GROUP BY to_number
+    ORDER BY COUNT(*) DESC
+    LIMIT 8
+  `
+
+  const missedRows = await sql`
+    SELECT
+      from_number AS caller_number,
+      COUNT(*)::int AS missed_calls,
+      MAX(created_at) AS last_missed_at
+    FROM call_logs
+    WHERE user_id = ${userId}
+      AND created_at >= now() - (${days}::int || ' days')::interval
+      AND status IN ('no-answer', 'busy', 'failed', 'canceled')
+    GROUP BY from_number
+    ORDER BY COUNT(*) DESC, MAX(created_at) DESC
+    LIMIT 5
+  `
+
+  return {
+    daily_quality: dailyRows.map((r) => ({
+      day: String(r.day),
+      total_calls: Number(r.total_calls ?? 0),
+      answered_calls: Number(r.answered_calls ?? 0),
+      answer_rate_percent: Number(r.answer_rate_percent ?? 0),
+      avg_setup_ms: r.avg_setup_ms == null ? null : Number(r.avg_setup_ms),
+    })),
+    number_quality: numberRows.map((r) => ({
+      number: String(r.number ?? ""),
+      total_calls: Number(r.total_calls ?? 0),
+      answered_calls: Number(r.answered_calls ?? 0),
+      answer_rate_percent: Number(r.answer_rate_percent ?? 0),
+      avg_setup_ms: r.avg_setup_ms == null ? null : Number(r.avg_setup_ms),
+    })),
+    top_missed_callers: missedRows.map((r) => ({
+      caller_number: String(r.caller_number ?? ""),
+      missed_calls: Number(r.missed_calls ?? 0),
+      last_missed_at: r.last_missed_at instanceof Date ? r.last_missed_at.toISOString() : String(r.last_missed_at),
+    })),
+  }
+}
+
 // Get call logs for a user (paginated)
 export async function getCallLogs(
   userId: string,

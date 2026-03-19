@@ -13,9 +13,9 @@ import { cn } from "@/lib/utils"
 
 const navItems = [
   { id: "dashboard", label: "Routing", icon: Zap },
-  { id: "activity", label: "Activity", icon: ClipboardList },
-  { id: "contacts", label: "Contacts", icon: Users },
-  { id: "analytics", label: "Pay", icon: BarChart3 },
+  { id: "activity", label: "Ops", icon: ClipboardList },
+  { id: "contacts", label: "Team", icon: Users },
+  { id: "analytics", label: "Payroll", icon: BarChart3 },
   { id: "settings", label: "Settings", icon: Settings },
 ] as const
 

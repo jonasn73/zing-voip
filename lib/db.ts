@@ -428,11 +428,11 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
   const sql = getSql()
   await sql`
     INSERT INTO call_logs (
-      user_id, twilio_call_sid, from_number, to_number, caller_name,
+      user_id, provider_call_sid, from_number, to_number, caller_name,
       call_type, status, duration_seconds, routed_to_receptionist_id,
       routed_to_name, has_recording, recording_url, recording_duration_seconds, first_ring_at
     ) VALUES (
-      ${log.user_id}, ${log.twilio_call_sid}, ${log.from_number}, ${log.to_number}, ${log.caller_name},
+      ${log.user_id}, ${log.provider_call_sid}, ${log.from_number}, ${log.to_number}, ${log.caller_name},
       ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
       ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}, now()
     )
@@ -441,39 +441,39 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
 
 // Update a call log (e.g., when status callback arrives)
 export async function updateCallLog(
-  twilioCallSid: string,
+  providerCallSid: string,
   updates: Partial<Pick<CallLog, "status" | "duration_seconds" | "call_type" | "has_recording" | "recording_url" | "recording_duration_seconds" | "answered_at" | "ended_at" | "setup_duration_ms" | "post_dial_delay_ms">>
 ): Promise<void> {
   const sql = getSql()
   if (updates.status !== undefined) {
-    await sql`UPDATE call_logs SET status = ${updates.status} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET status = ${updates.status} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.duration_seconds !== undefined) {
-    await sql`UPDATE call_logs SET duration_seconds = ${updates.duration_seconds} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET duration_seconds = ${updates.duration_seconds} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.call_type !== undefined) {
-    await sql`UPDATE call_logs SET call_type = ${updates.call_type} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET call_type = ${updates.call_type} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.has_recording !== undefined) {
-    await sql`UPDATE call_logs SET has_recording = ${updates.has_recording}, recording_url = ${updates.recording_url ?? null}, recording_duration_seconds = ${updates.recording_duration_seconds ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET has_recording = ${updates.has_recording}, recording_url = ${updates.recording_url ?? null}, recording_duration_seconds = ${updates.recording_duration_seconds ?? null} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.answered_at !== undefined) {
-    await sql`UPDATE call_logs SET answered_at = ${updates.answered_at ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET answered_at = ${updates.answered_at ?? null} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.ended_at !== undefined) {
-    await sql`UPDATE call_logs SET ended_at = ${updates.ended_at ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET ended_at = ${updates.ended_at ?? null} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.setup_duration_ms !== undefined) {
-    await sql`UPDATE call_logs SET setup_duration_ms = ${updates.setup_duration_ms ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET setup_duration_ms = ${updates.setup_duration_ms ?? null} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.post_dial_delay_ms !== undefined) {
-    await sql`UPDATE call_logs SET post_dial_delay_ms = ${updates.post_dial_delay_ms ?? null} WHERE twilio_call_sid = ${twilioCallSid}`
+    await sql`UPDATE call_logs SET post_dial_delay_ms = ${updates.post_dial_delay_ms ?? null} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
 }
 
 // Record a provider status event and derive setup timing metrics.
 export async function recordCallStatusEvent(
-  twilioCallSid: string,
+  providerCallSid: string,
   callStatus: string,
   durationSeconds: number,
   occurredAtIso?: string
@@ -503,7 +503,7 @@ export async function recordCallStatusEvent(
           EXTRACT(EPOCH FROM (${occurredAt} - first_ring_at))::int * 1000
         ELSE post_dial_delay_ms
       END
-    WHERE twilio_call_sid = ${twilioCallSid}
+    WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}
   `
 }
 
@@ -694,7 +694,7 @@ export async function getCallLogs(
   return rows.map((row) => ({
     id: String(row.id),
     user_id: String(row.user_id),
-    twilio_call_sid: String(row.twilio_call_sid),
+    provider_call_sid: String(row.provider_call_sid ?? row.twilio_call_sid ?? ""),
     from_number: String(row.from_number),
     to_number: String(row.to_number),
     caller_name: row.caller_name ? String(row.caller_name) : null,
@@ -719,7 +719,7 @@ function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {
   return {
     id: String(row.id),
     user_id: String(row.user_id),
-    twilio_sid: String(row.twilio_sid ?? ""),
+    provider_number_sid: String(row.provider_number_sid ?? row.twilio_sid ?? ""),
     number: String(row.number),
     friendly_name: String(row.friendly_name ?? ""),
     label: String(row.label ?? "Business Line"),
@@ -733,7 +733,7 @@ function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {
 export async function getPhoneNumbers(userId: string): Promise<PhoneNumber[]> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, user_id, twilio_sid, number, friendly_name, label, type, status, created_at
+    SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at
     FROM phone_numbers WHERE user_id = ${userId} ORDER BY created_at ASC
   `
   return rows.map(parsePhoneNumberRow)
@@ -747,16 +747,17 @@ export async function insertPhoneNumber(params: {
   label?: string
   type?: "local" | "toll-free"
   status?: "active" | "pending" | "porting"
-  twilio_sid?: string
+  provider_number_sid?: string
 }): Promise<PhoneNumber> {
   const sql = getSql()
   const id = crypto.randomUUID()
   await sql`
-    INSERT INTO phone_numbers (id, user_id, twilio_sid, number, friendly_name, label, type, status, created_at)
+    INSERT INTO phone_numbers (id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at)
     VALUES (
       ${id},
       ${params.user_id},
-      ${params.twilio_sid || ""},
+      ${params.provider_number_sid || ""},
+      ${params.provider_number_sid || ""},
       ${params.number},
       ${params.friendly_name},
       ${params.label || "Business Line"},
@@ -768,7 +769,7 @@ export async function insertPhoneNumber(params: {
   return {
     id,
     user_id: params.user_id,
-    twilio_sid: params.twilio_sid || "",
+    provider_number_sid: params.provider_number_sid || "",
     number: params.number,
     friendly_name: params.friendly_name,
     label: params.label || "Business Line",
@@ -785,7 +786,7 @@ export async function getPhoneNumberByNumberAndStatus(
 ): Promise<PhoneNumber | null> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, user_id, twilio_sid, number, friendly_name, label, type, status, created_at
+    SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at
     FROM phone_numbers WHERE number = ${number} AND status = ${status} LIMIT 1
   `
   return rows[0] ? parsePhoneNumberRow(rows[0]) : null
@@ -795,11 +796,11 @@ export async function getPhoneNumberByNumberAndStatus(
 export async function updatePhoneNumber(
   phoneNumberId: string,
   userId: string,
-  updates: Partial<Pick<PhoneNumber, "twilio_sid" | "status">>
+  updates: Partial<Pick<PhoneNumber, "provider_number_sid" | "status">>
 ): Promise<void> {
   const sql = getSql()
-  if (updates.twilio_sid !== undefined) {
-    await sql`UPDATE phone_numbers SET twilio_sid = ${updates.twilio_sid} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
+  if (updates.provider_number_sid !== undefined) {
+    await sql`UPDATE phone_numbers SET provider_number_sid = ${updates.provider_number_sid}, twilio_sid = ${updates.provider_number_sid} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
   }
   if (updates.status !== undefined) {
     await sql`UPDATE phone_numbers SET status = ${updates.status} WHERE id = ${phoneNumberId} AND user_id = ${userId}`

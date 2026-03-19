@@ -44,7 +44,7 @@ export interface RoutingConfig {
 export interface PhoneNumber {
   id: string
   user_id: string
-  twilio_sid: string
+  provider_number_sid: string
   number: string // e.g. "+15551234567"
   friendly_name: string // e.g. "(555) 123-4567"
   label: string // e.g. "Main Line"
@@ -59,12 +59,12 @@ export type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
 export interface CallLog {
   id: string
   user_id: string
-  twilio_call_sid: string
+  provider_call_sid: string
   from_number: string
   to_number: string
   caller_name: string | null
   call_type: CallType
-  status: string // twilio status: completed, no-answer, busy, etc.
+  status: string // provider status: completed, no-answer, busy, etc.
   duration_seconds: number
   routed_to_receptionist_id: string | null
   routed_to_name: string | null

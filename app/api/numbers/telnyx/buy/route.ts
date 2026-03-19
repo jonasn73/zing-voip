@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       label: "Business Line",
       type: "local",
       status: "active",
-      twilio_sid: orderId,
+      provider_number_sid: orderId,
     })
 
     console.log(`[Zing] Number ${boughtNumber} purchased, configured, and saved (order: ${orderId}, db: ${saved.id})`)

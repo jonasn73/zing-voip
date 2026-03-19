@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     })
 
     await updatePhoneNumber(row.id, row.user_id, {
-      twilio_sid: twilioNumber.sid,
+      provider_number_sid: twilioNumber.sid,
       status: "active",
     })
 

@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
             label: "Business Line",
             type: "local",
             status: "active",
-            twilio_sid: tn.id,
+            provider_number_sid: tn.id,
           })
           results.push({ number: tn.phone_number, action: "added to database" })
         }

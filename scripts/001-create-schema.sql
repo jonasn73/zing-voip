@@ -39,11 +39,11 @@ CREATE TABLE IF NOT EXISTS routing_config (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Phone numbers (purchased or ported via Twilio)
+-- Phone numbers (purchased or ported via provider API)
 CREATE TABLE IF NOT EXISTS phone_numbers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  twilio_sid TEXT NOT NULL DEFAULT '',
+  provider_number_sid TEXT NOT NULL DEFAULT '',
   number TEXT NOT NULL,
   friendly_name TEXT NOT NULL DEFAULT '',
   label TEXT NOT NULL DEFAULT 'Main Line',
@@ -58,7 +58,7 @@ CREATE INDEX idx_phone_numbers_user ON phone_numbers(user_id);
 CREATE TABLE IF NOT EXISTS call_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  twilio_call_sid TEXT NOT NULL DEFAULT '',
+  provider_call_sid TEXT NOT NULL DEFAULT '',
   from_number TEXT NOT NULL,
   to_number TEXT NOT NULL,
   caller_name TEXT,

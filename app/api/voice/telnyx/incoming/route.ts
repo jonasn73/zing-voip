@@ -54,7 +54,7 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       void insertCallLog({
         user_id: routing.user_id,
-        twilio_call_sid: callSid,
+        provider_call_sid: callSid,
         from_number: callerNumber,
         to_number: calledNumber,
         caller_name: callerName,

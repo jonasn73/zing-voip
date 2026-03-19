@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
                 label: "Ported Line",
                 type: "local",
                 status: "active",
-                twilio_sid: entry.id,
+                provider_number_sid: entry.id,
               })
               console.log(`[Zing] Ported number ${entry.number} added to database for user ${refUserId}`)
             }

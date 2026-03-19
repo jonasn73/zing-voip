@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       number: {
-        twilio_sid: purchased.sid,
+        provider_number_sid: purchased.sid,
         number: purchased.phoneNumber,
         friendly_name: purchased.friendlyName,
       },

@@ -108,7 +108,7 @@ export function useOperationsData() {
             const createdAt = createdAtRaw ? new Date(createdAtRaw) : new Date()
             const routedTo = String(c.routed_to_name || c.routed_to_receptionist_id || "Owner")
             return {
-              id: String(c.id || c.twilio_call_sid || crypto.randomUUID()),
+              id: String(c.id || c.provider_call_sid || c.twilio_call_sid || crypto.randomUUID()),
               type: normalizeCallType(c.call_type),
               callerName: String(c.caller_name || "Unknown Caller"),
               callerNumber: formatPhoneDisplay(String(c.from_number || "")),

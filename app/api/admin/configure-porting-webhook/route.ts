@@ -5,8 +5,8 @@
 // Call once per environment after deploy. Protected by PORTING_WEBHOOK_SECRET.
 
 import { NextRequest, NextResponse } from "next/server"
-import { getAppUrl } from "@/lib/twilio"
-import { configurePortingWebhook } from "@/lib/twilio-porting"
+import { getLegacyAppUrl } from "@/lib/legacy-voice-provider"
+import { configureLegacyPortingWebhook } from "@/lib/legacy-porting-provider"
 
 const SECRET = process.env.PORTING_WEBHOOK_SECRET
 
@@ -25,9 +25,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const appUrl = getAppUrl()
+    const appUrl = getLegacyAppUrl()
     const webhookUrl = `${appUrl.replace(/\/$/, "")}/api/numbers/porting-webhook`
-    await configurePortingWebhook(webhookUrl)
+    await configureLegacyPortingWebhook(webhookUrl)
     return NextResponse.json({
       success: true,
       message: "Porting webhook configured.",

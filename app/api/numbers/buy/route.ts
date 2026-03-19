@@ -5,7 +5,7 @@
 // Primary purchase flow uses /api/numbers/telnyx/buy.
 
 import { NextRequest, NextResponse } from "next/server"
-import { getTwilioClient, getAppUrl } from "@/lib/twilio"
+import { getLegacyProviderClient, getLegacyAppUrl } from "@/lib/legacy-voice-provider"
 
 const DEMO_USER_ID = "demo-user-id"
 
@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { phone_number } = body as { phone_number: string }
 
-    const client = getTwilioClient()
-    const appUrl = getAppUrl()
+    const client = getLegacyProviderClient()
+    const appUrl = getLegacyAppUrl()
 
     // Purchase the number
     const purchased = await client.incomingPhoneNumbers.create({

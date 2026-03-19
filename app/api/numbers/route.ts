@@ -6,7 +6,7 @@
 // Primary number search/buy flow uses /api/numbers/telnyx and /api/numbers/telnyx/buy.
 
 import { NextRequest, NextResponse } from "next/server"
-import { getTwilioClient } from "@/lib/twilio"
+import { getLegacyProviderClient } from "@/lib/legacy-voice-provider"
 import { getPhoneNumbers } from "@/lib/db"
 import type { BuyNumberRequest } from "@/lib/types"
 
@@ -28,7 +28,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body: BuyNumberRequest = await req.json()
-    const client = getTwilioClient()
+    const client = getLegacyProviderClient()
 
     // Search for available numbers
     const available = await client.availablePhoneNumbers("US")

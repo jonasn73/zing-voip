@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { uploadUtilityBill } from "@/lib/twilio-porting"
+import { uploadLegacyUtilityBill } from "@/lib/legacy-porting-provider"
 
 export async function POST(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const mimeType = file.type || "application/pdf"
     const filename = file.name || "utility-bill.pdf"
 
-    const documentSid = await uploadUtilityBill(buffer, filename, mimeType)
+    const documentSid = await uploadLegacyUtilityBill(buffer, filename, mimeType)
     return NextResponse.json({ document_sid: documentSid })
   } catch (error) {
     console.error("[Zing] Upload port document error:", error)

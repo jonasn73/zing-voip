@@ -5,7 +5,7 @@
 // When a number is completed we set its voice URL and mark it active in our DB.
 
 import { NextRequest, NextResponse } from "next/server"
-import { getTwilioClient, getAppUrl } from "@/lib/twilio"
+import { getLegacyProviderClient, getLegacyAppUrl } from "@/lib/legacy-voice-provider"
 import {
   getPhoneNumberByNumberAndStatus,
   updatePhoneNumber,
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true })
     }
 
-    const client = getTwilioClient()
+    const client = getLegacyProviderClient()
     const list = await client.incomingPhoneNumbers.list({
       phoneNumber: number,
     })
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     const providerNumber = list[0]
-    const appUrl = getAppUrl()
+    const appUrl = getLegacyAppUrl()
 
     await client.incomingPhoneNumbers(providerNumber.sid).update({
       voiceUrl: `${appUrl}/api/voice/incoming`,

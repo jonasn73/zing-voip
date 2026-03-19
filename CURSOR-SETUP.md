@@ -5,9 +5,9 @@
 ### 1. Install Dependencies
 ```bash
 pnpm install
-pnpm add twilio @neondatabase/serverless ai @ai-sdk/openai
+pnpm add telnyx twilio @neondatabase/serverless ai @ai-sdk/openai
 # OR for Supabase:
-pnpm add twilio @supabase/supabase-js ai @ai-sdk/openai
+pnpm add telnyx twilio @supabase/supabase-js ai @ai-sdk/openai
 ```
 
 ### 2. Create Database
@@ -19,9 +19,9 @@ Create `.env.local`:
 # Database
 DATABASE_URL=postgresql://...
 
-# Twilio
-TWILIO_ACCOUNT_SID=AC...
-TWILIO_AUTH_TOKEN=...
+# Telnyx
+TELNYX_API_KEY=KEY...
+TELNYX_PUBLIC_KEY=PK... # optional webhook signature validation
 NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
 
 # AI (optional - for AI receptionist)
@@ -31,11 +31,11 @@ OPENAI_API_KEY=sk-...
 ### 4. Implement Database Functions
 Open `lib/db.ts` -- every function has the correct type signature and a TODO comment with the example query. Replace the `throw` statements with real queries.
 
-### 5. Configure Twilio
-1. Create a Twilio account at twilio.com
-2. Buy a phone number from the Twilio console (or use the app's Buy Number UI once wired)
-3. Set the Voice webhook on that number to: `https://your-app.vercel.app/api/voice/incoming` (HTTP POST)
-4. Set the Status Callback URL to: `https://your-app.vercel.app/api/voice/status` (HTTP POST)
+### 5. Configure Telnyx
+1. Create a Telnyx account.
+2. Buy a number in Telnyx (or use the app's Buy Number UI).
+3. Point voice routing to your Zing TeXML webhook: `https://your-app.vercel.app/api/voice/telnyx/incoming`.
+4. Ensure fallback/status callbacks resolve under `/api/voice/telnyx/*`.
 
 ### 6. Wire Up the Frontend
 The UI components use `useState` with mock data. To connect to real data:
@@ -62,7 +62,7 @@ zing/
 ├── app/
 │   ├── api/
 │   │   ├── voice/
-│   │   │   ├── incoming/route.ts      ← Twilio calls this when phone rings
+│   │   │   ├── incoming/route.ts      ← Telnyx calls this when phone rings
 │   │   │   ├── fallback/route.ts      ← Handles no-answer (owner/AI/voicemail)
 │   │   │   ├── ai-assistant/route.ts  ← AI converses with caller
 │   │   │   ├── status/route.ts        ← Logs call completion
@@ -88,7 +88,7 @@ zing/
 ├── lib/
 │   ├── types.ts                       ← All TypeScript interfaces
 │   ├── db.ts                          ← Database query functions (implement these)
-│   ├── twilio.ts                      ← Twilio client + TwiML helpers
+│   ├── telnyx.ts                      ← Telnyx client + TeXML helpers
 │   └── utils.ts                       ← cn() utility
 ├── scripts/
 │   └── 001-create-schema.sql          ← Postgres schema
@@ -103,7 +103,7 @@ Incoming Call
     ▼
 POST /api/voice/incoming
     │
-    ├── Look up user by Twilio number (getUserByPhoneNumber)
+    ├── Look up user by business number (getUserByPhoneNumber)
     ├── Get routing config (getRoutingConfig)
     ├── Log the call (insertCallLog)
     │
@@ -150,8 +150,8 @@ Paste these into Cursor one at a time:
 ### Prompt 4: Wire All Screens
 > "Connect activity-page.tsx, contacts-page.tsx, analytics-page.tsx, and settings-page.tsx to real API data. Replace all mock data with SWR hooks. Wire up form submissions to POST/PUT endpoints."
 
-### Prompt 5: Twilio Setup
-> "I have a Twilio account. Help me configure the webhook URLs on my Twilio phone number to point to my deployed app's /api/voice/incoming endpoint. Then test a call end-to-end."
+### Prompt 5: Telnyx Setup
+> "I have a Telnyx account. Help me configure voice routing so my number points to my deployed app's /api/voice/telnyx/incoming endpoint. Then test a call end-to-end."
 
 ### Prompt 6: AI Assistant
 > "Complete the AI receptionist in /api/voice/ai-assistant/route.ts. Use the Vercel AI SDK to generate conversational responses based on the ai_greeting from routing_config. The AI should be able to take messages, share business hours, and help direct callers."

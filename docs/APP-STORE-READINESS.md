@@ -9,7 +9,7 @@ Checklist to get Zing approved on the **Apple App Store** and **Google Play**. U
 ### 1. Privacy policy URL
 - **Required by both stores.** You must provide a live, public URL in App Store Connect and Play Console.
 - **In-app:** Set `NEXT_PUBLIC_PRIVACY_POLICY_URL` (web) and `EXPO_PUBLIC_PRIVACY_POLICY_URL` (mobile). The Settings screen shows a “Security & Privacy” / “Privacy Policy” link that opens this URL when set.
-- **Content:** Describe what data you collect (email, name, phone, business name, call logs, recordings), how you use it, and how users can request deletion. Mention Twilio and your hosting (e.g. Vercel, Neon).
+- **Content:** Describe what data you collect (email, name, phone, business name, call logs, recordings), how you use it, and how users can request deletion. Mention Telnyx/carrier providers and your hosting (e.g. Vercel, Neon).
 
 ### 2. App icon and splash (mobile)
 - **Location:** `mobile/assets/` (see `mobile/assets/README.md` for sizes).

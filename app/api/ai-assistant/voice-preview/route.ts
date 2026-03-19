@@ -35,12 +35,11 @@ function getElevenLabsKey(): string | null {
   return key?.trim() ? key.trim() : null
 }
 
-/** ElevenLabs model IDs to try — some library voices only work with turbo/flash/multilingual. */
+/** Current ElevenLabs models only — v1 models are deprecated and blocked on free tier (see ElevenLabs notice). */
 const ELEVENLABS_PREVIEW_MODELS = [
   "eleven_multilingual_v2",
   "eleven_turbo_v2_5",
   "eleven_flash_v2_5",
-  "eleven_monolingual_v1",
 ] as const
 
 async function callElevenLabsPreviewOnce(

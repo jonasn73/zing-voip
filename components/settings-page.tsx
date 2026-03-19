@@ -271,6 +271,10 @@ export function SettingsPage() {
   const [voicePreviewLoading, setVoicePreviewLoading] = useState(false)
   const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+  const previewVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
+  const previewVoiceLabel =
+    AI_VOICE_OPTIONS.find((voice) => voice.id === previewVoiceId)?.label ||
+    (customVoiceIdOverride.trim() ? "Custom voice" : "Selected voice")
   const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
     firstMessage: "",
     voiceId: "21m00Tcm4TlvDq8ikWAM",
@@ -1593,7 +1597,14 @@ export function SettingsPage() {
                       disabled={voicePreviewLoading}
                       className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
                     >
-                      {voicePreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Preview"}
+                      {voicePreviewLoading ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="max-w-[11rem] truncate">Previewing {previewVoiceLabel}</span>
+                        </span>
+                      ) : (
+                        "Preview"
+                      )}
                     </button>
                     <button
                       type="button"

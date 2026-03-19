@@ -777,13 +777,13 @@ export function SettingsPage() {
             onClick={() => setShowNumberModal(false)}
             aria-hidden="true"
           />
-          <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200">
+          <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200 [-webkit-overflow-scrolling:touch]">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
               <h3 className="text-sm font-semibold text-foreground">Get a Number</h3>
               <button
                 onClick={() => setShowNumberModal(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -1079,16 +1079,16 @@ export function SettingsPage() {
             onClick={() => setRoutingModalNumber(null)}
             aria-hidden="true"
           />
-          <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200">
+          <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200 [-webkit-overflow-scrolling:touch]">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Route Calls</h3>
                 <p className="text-xs text-muted-foreground">{formatPhoneDisplay(routingModalNumber)}</p>
               </div>
               <button
                 onClick={() => setRoutingModalNumber(null)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />

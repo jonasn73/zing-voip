@@ -465,14 +465,14 @@ export function DashboardPage() {
                     onClick={() => setShowSwitcher(false)}
                     aria-hidden="true"
                   />
-                  <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-2xl">
-                    <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                  <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]">
+                    <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-2.5">
                       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Route calls to
                       </span>
                       <button
                         onClick={() => setShowSwitcher(false)}
-                        className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
                         aria-label="Close"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -569,8 +569,8 @@ export function DashboardPage() {
                   onClick={() => { setShowFallbackSettings(false); setEditingGreeting(false) }}
                   aria-hidden="true"
                 />
-                <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-2xl">
-                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]">
+                  <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Fallback Settings</h3>
                       <p className="text-[11px] text-muted-foreground">
@@ -579,7 +579,7 @@ export function DashboardPage() {
                     </div>
                     <button
                       onClick={() => { setShowFallbackSettings(false); setEditingGreeting(false) }}
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
                       aria-label="Close fallback settings"
                     >
                       <X className="h-4 w-4" />

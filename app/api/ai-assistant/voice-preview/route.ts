@@ -30,6 +30,32 @@ function asAbsoluteUrl(url: string): string {
   return `${VAPI_BASE}/${url}`
 }
 
+function getElevenLabsKey(): string | null {
+  const key = process.env.ELEVENLABS_API_KEY
+  return key?.trim() ? key.trim() : null
+}
+
+async function callElevenLabsPreview(voiceId: string, text: string): Promise<Response> {
+  const key = getElevenLabsKey()
+  if (!key) return new Response(null, { status: 400 })
+  return fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "xi-api-key": key,
+      Accept: "audio/mpeg",
+    },
+    body: JSON.stringify({
+      text,
+      model_id: "eleven_multilingual_v2",
+      voice_settings: {
+        stability: 0.45,
+        similarity_boost: 0.8,
+      },
+    }),
+  })
+}
+
 export async function POST(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -102,8 +128,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const elevenRes = await callElevenLabsPreview(voiceId, text)
+    if (elevenRes.ok) {
+      const audioBuffer = await elevenRes.arrayBuffer()
+      return new NextResponse(audioBuffer, {
+        headers: {
+          "Content-Type": elevenRes.headers.get("content-type") || "audio/mpeg",
+          "Cache-Control": "no-store",
+          "X-Preview-Source": "elevenlabs-fallback",
+        },
+      })
+    }
+
     return NextResponse.json(
-      { error: "Vapi voice preview endpoint unavailable for this account/voice." },
+      {
+        error:
+          "Preview unavailable from Vapi for this voice, and no provider fallback is configured.",
+      },
       { status: 502 }
     )
   } catch (error) {

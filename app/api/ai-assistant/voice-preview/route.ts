@@ -35,7 +35,19 @@ function getElevenLabsKey(): string | null {
   return key?.trim() ? key.trim() : null
 }
 
-async function callElevenLabsPreview(voiceId: string, text: string): Promise<Response> {
+/** ElevenLabs model IDs to try — some library voices only work with turbo/flash/multilingual. */
+const ELEVENLABS_PREVIEW_MODELS = [
+  "eleven_multilingual_v2",
+  "eleven_turbo_v2_5",
+  "eleven_flash_v2_5",
+  "eleven_monolingual_v1",
+] as const
+
+async function callElevenLabsPreviewOnce(
+  voiceId: string,
+  text: string,
+  modelId: string
+): Promise<Response> {
   const key = getElevenLabsKey()
   if (!key) return new Response(null, { status: 400 })
   return fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
@@ -47,13 +59,41 @@ async function callElevenLabsPreview(voiceId: string, text: string): Promise<Res
     },
     body: JSON.stringify({
       text,
-      model_id: "eleven_multilingual_v2",
+      model_id: modelId,
       voice_settings: {
         stability: 0.45,
         similarity_boost: 0.8,
       },
     }),
   })
+}
+
+/** Try several models; return first OK response or last error body for diagnostics. */
+async function callElevenLabsPreviewBestEffort(
+  voiceId: string,
+  text: string
+): Promise<{ ok: true; res: Response } | { ok: false; status: number; detail: string }> {
+  if (!getElevenLabsKey()) {
+    return { ok: false, status: 400, detail: "ELEVENLABS_API_KEY not set." }
+  }
+  let lastDetail = ""
+  let lastStatus = 502
+  for (const modelId of ELEVENLABS_PREVIEW_MODELS) {
+    const res = await callElevenLabsPreviewOnce(voiceId, text, modelId)
+    if (res.ok) return { ok: true, res }
+    lastStatus = res.status
+    const errText = await res.text().catch(() => "")
+    try {
+      const j = JSON.parse(errText) as { detail?: unknown; message?: string }
+      if (typeof j?.detail === "string") lastDetail = j.detail
+      else if (j?.detail && typeof (j.detail as { message?: string }).message === "string")
+        lastDetail = (j.detail as { message: string }).message
+      else lastDetail = j?.message || errText.slice(0, 200)
+    } catch {
+      lastDetail = errText.slice(0, 200) || `HTTP ${res.status}`
+    }
+  }
+  return { ok: false, status: lastStatus, detail: lastDetail }
 }
 
 export async function POST(req: NextRequest) {
@@ -131,8 +171,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const elevenRes = await callElevenLabsPreview(voiceId, text)
-    if (elevenRes.ok) {
+    const elevenResult = await callElevenLabsPreviewBestEffort(voiceId, text)
+    if (elevenResult.ok) {
+      const elevenRes = elevenResult.res
       const audioBuffer = await elevenRes.arrayBuffer()
       return new NextResponse(audioBuffer, {
         headers: {
@@ -143,15 +184,20 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const is404ish = elevenResult.status === 404 || /voice not found|invalid voice/i.test(elevenResult.detail)
+    const hint = is404ish
+      ? "This ID may be from another provider (not ElevenLabs). Use a preset from the list, paste an ElevenLabs voice ID from your ElevenLabs account, or save and test with a real call."
+      : elevenResult.detail || "Try another voice or save and test on a call."
+
     return NextResponse.json(
       {
         error: !vapiKey && !getElevenLabsKey()
           ? "Missing VAPI_API_KEY and ELEVENLABS_API_KEY for voice preview."
           : !vapiKey
-            ? "VAPI_API_KEY missing, and provider fallback failed for this voice."
+            ? `VAPI_API_KEY missing. ElevenLabs fallback failed: ${hint}`
             : !getElevenLabsKey()
               ? "Vapi preview unavailable for this voice and ELEVENLABS_API_KEY is not set."
-              : "Preview unavailable from Vapi and provider fallback for this voice.",
+              : `Preview unavailable for this voice. ${hint}`,
       },
       { status: 502 }
     )

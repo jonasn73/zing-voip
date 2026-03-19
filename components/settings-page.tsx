@@ -1627,7 +1627,9 @@ export function SettingsPage() {
                     className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Want more voices? Paste any voice ID above to use your full voice library.
+                    Want more voices? Paste an ID above to use it live. Preview only works for preset voices and
+                    ElevenLabs voice IDs tied to your account—other providers’ IDs still work on real calls after you
+                    save.
                   </p>
                 </div>
                 <div className="space-y-1.5">

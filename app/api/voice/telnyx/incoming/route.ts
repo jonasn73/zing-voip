@@ -15,6 +15,9 @@ import {
   insertCallLog,
 } from "@/lib/db"
 
+export const runtime = "nodejs"
+export const preferredRegion = "iad1"
+
 // Normalize a US phone number to E.164 (+1XXXXXXXXXX)
 function toE164(phone: string): string {
   const digits = phone.replace(/\D/g, "")
@@ -107,11 +110,12 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
 }
 
 export async function POST(req: NextRequest) {
-  // Log all form fields to diagnose what Telnyx sends
   const formData = await req.formData()
-  const allFields: Record<string, string> = {}
-  formData.forEach((value, key) => { allFields[key] = String(value) })
-  if (process.env.NODE_ENV !== "production") console.log("[Zing] Telnyx webhook fields:", JSON.stringify(allFields))
+  if (process.env.NODE_ENV !== "production") {
+    const allFields: Record<string, string> = {}
+    formData.forEach((value, key) => { allFields[key] = String(value) })
+    console.log("[Zing] Telnyx webhook fields:", JSON.stringify(allFields))
+  }
 
   const calledNumber = (formData.get("To") as string) || ""
   const callerNumber = (formData.get("From") as string) || ""

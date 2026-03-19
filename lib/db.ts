@@ -15,10 +15,13 @@ import type {
 } from "./types"
 
 // Lazy Neon client so we only connect when DATABASE_URL is set
+let cachedSql: ReturnType<typeof neon> | null = null
 function getSql(): ReturnType<typeof neon> {
+  if (cachedSql) return cachedSql
   const url = process.env.DATABASE_URL
   if (!url) throw new Error("DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables (and in .env.local for local dev).")
-  return neon(url)
+  cachedSql = neon(url)
+  return cachedSql
 }
 
 // --- Query functions ---

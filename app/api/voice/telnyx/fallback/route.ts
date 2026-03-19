@@ -8,6 +8,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { getRoutingConfig, getUser, updateCallLog } from "@/lib/db"
 
+export const runtime = "nodejs"
+export const preferredRegion = "iad1"
+
 function toE164(phone: string): string {
   const digits = phone.replace(/\D/g, "")
   if (digits.length === 10) return `+1${digits}`
@@ -37,15 +40,13 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const config = await getRoutingConfig(userId)
-    const user = await getUser(userId)
+    const [config, user] = await Promise.all([getRoutingConfig(userId), getUser(userId)])
     const fallbackType = config?.fallback_type || "owner"
 
     switch (fallbackType) {
       case "owner": {
         if (user) {
           const calledNum = (formData.get("To") as string) || ""
-          texml.say("Please hold while we connect you.")
           const dial = texml.dial({
             callerId: calledNum || undefined,
             // Keep ringback behavior consistent on fallback owner transfer.

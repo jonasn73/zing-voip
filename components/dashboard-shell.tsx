@@ -45,16 +45,18 @@ export function DashboardShell({
       .catch(() => router.replace("/login"))
   }, [router])
 
-  // Before mount: match the server (middleware header + RSC) so hydration matches.
-  // After mount: trust the real browser URL — usePathname() can lag one frame after
-  // refresh/navigation, which used to highlight "Routing" and reset scroll while the
-  // document was actually /dashboard/ai-flow (etc.).
+  // Before mount: middleware `x-zing-pathname` matches the real URL on first paint (good for refresh).
+  // After mount: use Next’s `usePathname()` — it updates with the App Router as soon as the route
+  // commits. `window.location.pathname` often updates *later* on client navigations, so preferring
+  // it made the highlight stay on the old tab while the new page was already showing.
   const pathname =
     !mounted && pathnameFromRequest != null && pathnameFromRequest.startsWith("/dashboard")
       ? pathnameFromRequest
-      : typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard")
-        ? window.location.pathname
-        : clientPathname
+      : clientPathname.startsWith("/dashboard")
+        ? clientPathname
+        : pathnameFromRequest && pathnameFromRequest.startsWith("/dashboard")
+          ? pathnameFromRequest
+          : "/dashboard"
 
   const activePage = getActivePage(pathname)
 

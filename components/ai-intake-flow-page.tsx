@@ -47,6 +47,7 @@ function buildIntakeBody(
 export function AiIntakeFlowPage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true) // true until first GET /api/ai-assistant finishes
+  const [loadError, setLoadError] = useState<string | null>(null) // shown if /api/ai-assistant fails (still allow editing)
   const [saving, setSaving] = useState(false) // true while PATCH runs
   const [activating, setActivating] = useState(false) // true while POST create assistant runs
   const [hasAssistant, setHasAssistant] = useState(false) // whether Vapi assistant id exists
@@ -77,7 +78,12 @@ export function AiIntakeFlowPage() {
       fetch("/api/ai-assistant", { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
     ])
       .then(([sessionData, aiData]) => {
-        if (cancelled || !aiData) return
+        if (cancelled) return
+        if (!aiData) {
+          setLoadError("Could not load saved settings. You can still edit below; try Save again in a moment.")
+          return
+        }
+        setLoadError(null)
         const ind = sessionData?.data?.user?.industry
         if (typeof ind === "string") setUserIndustry(ind)
 
@@ -183,6 +189,11 @@ export function AiIntakeFlowPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-5 px-4 py-6 pb-28">
+      {loadError && (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-foreground">
+          {loadError}
+        </div>
+      )}
       {/* Page title */}
       <div>
         <div className="flex items-center gap-2">

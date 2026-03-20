@@ -1,0 +1,19 @@
+---
+description: After code changes, commit and push to GitHub (origin/main)
+alwaysApply: true
+---
+
+# Git — always push changes
+
+When a task **changes, adds, or deletes** files in this project (not trivial one-line typo fixes the user might want to undo), **finish by pushing**:
+
+1. From the project root (`zing`): `git status`
+2. If there are changes: `git add` the relevant paths (or `git add -A` when appropriate)
+3. `git commit -m "Short imperative description of what changed"`
+4. `git push origin main`
+
+**Do not** leave committed work unpushed unless the user explicitly asks to wait or skip push.
+
+If push fails (auth, network), give the user the **exact commands** to run in Terminal.
+
+If there is **nothing to commit**, say so briefly — no empty commit.

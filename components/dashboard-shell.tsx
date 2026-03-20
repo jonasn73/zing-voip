@@ -3,11 +3,11 @@
 // ============================================
 // Client chrome for /dashboard/* (nav + session check).
 // ============================================
-// Kept separate from app/dashboard/layout.tsx so the layout can stay a Server
-// Component — avoids an extra client boundary wrapping the whole segment tree
-// (reduces wrong-route / loading flashes on refresh).
+// `pathnameFromRequest` comes from middleware (x-zing-pathname) via the server
+// layout. Until the client has mounted, we use that for the active tab + Link
+// context so the shell never briefly disagrees with the real URL during hydration.
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShell, type PageId } from "@/components/app-shell"
 
@@ -18,9 +18,21 @@ function getActivePage(pathname: string): PageId {
   return VALID_PAGES.includes(segment as PageId) ? (segment as PageId) : "dashboard"
 }
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
+export function DashboardShell({
+  children,
+  pathnameFromRequest,
+}: {
+  children: React.ReactNode
+  /** Set from middleware request header — authoritative on first paint */
+  pathnameFromRequest: string | null
+}) {
+  const clientPathname = usePathname()
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     fetch("/api/auth/session", { credentials: "include" })
@@ -31,6 +43,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       })
       .catch(() => router.replace("/login"))
   }, [router])
+
+  const pathname =
+    !mounted && pathnameFromRequest != null && pathnameFromRequest.startsWith("/dashboard")
+      ? pathnameFromRequest
+      : clientPathname
 
   const activePage = getActivePage(pathname)
 

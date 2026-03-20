@@ -13,8 +13,17 @@ const ZING_SESSION = "zing_session"
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Forward real URL into the request so the dashboard layout + shell can match
+  // the active tab to the same route as `children` on first paint (avoids a
+  // one-frame wrong highlight / “wrong page” flash from usePathname during hydration).
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set("x-zing-pathname", pathname)
+
   if (!pathname.startsWith("/dashboard")) {
-    return NextResponse.next()
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
   }
   const raw = request.cookies.get(ZING_SESSION)?.value
   if (!raw || !raw.includes(".")) {
@@ -22,7 +31,9 @@ export function middleware(request: NextRequest) {
     login.searchParams.set("next", pathname)
     return NextResponse.redirect(login)
   }
-  return NextResponse.next()
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  })
 }
 
 export const config = {

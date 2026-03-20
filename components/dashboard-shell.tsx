@@ -44,10 +44,16 @@ export function DashboardShell({
       .catch(() => router.replace("/login"))
   }, [router])
 
+  // Before mount: match the server (middleware header + RSC) so hydration matches.
+  // After mount: trust the real browser URL — usePathname() can lag one frame after
+  // refresh/navigation, which used to highlight "Routing" and reset scroll while the
+  // document was actually /dashboard/ai-flow (etc.).
   const pathname =
     !mounted && pathnameFromRequest != null && pathnameFromRequest.startsWith("/dashboard")
       ? pathnameFromRequest
-      : clientPathname
+      : typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard")
+        ? window.location.pathname
+        : clientPathname
 
   const activePage = getActivePage(pathname)
 

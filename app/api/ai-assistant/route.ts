@@ -48,41 +48,56 @@ export async function GET(req: NextRequest) {
   const user = await getUser(userId)
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
 
-  const intakeRaw = await getAiIntakeConfigRaw(userId)
-  const intakeConfig: AiIntakeConfig = normalizeIntakeConfig(intakeRaw, { userIndustry: user.industry })
+  try {
+    const intakeRaw = await getAiIntakeConfigRaw(userId)
+    const intakeConfig: AiIntakeConfig = normalizeIntakeConfig(intakeRaw, { userIndustry: user.industry })
 
-  let assistantConfig: Record<string, unknown> | null = null
-  if (user.vapi_assistant_id) {
-    try {
-      const assistant = await getVapiAssistant(user.vapi_assistant_id)
-      assistantConfig = {
-        firstMessage: assistant?.firstMessage || "",
-        voiceId: assistant?.voice?.voiceId || "",
-        temperature: assistant?.model?.temperature ?? 0.7,
-        endCallMessage: assistant?.endCallMessage || "",
-        maxDurationSeconds: assistant?.maxDurationSeconds ?? 300,
-        silenceTimeoutSeconds: assistant?.silenceTimeoutSeconds ?? 30,
-        systemPrompt:
-          Array.isArray(assistant?.model?.messages)
-            ? String(
-                assistant.model.messages.find(
-                  (m: Record<string, unknown>) => m?.role === "system"
-                )?.content || ""
-              )
-            : "",
+    let assistantConfig: Record<string, unknown> | null = null
+    if (user.vapi_assistant_id) {
+      try {
+        const assistant = await getVapiAssistant(user.vapi_assistant_id)
+        assistantConfig = {
+          firstMessage: assistant?.firstMessage || "",
+          voiceId: assistant?.voice?.voiceId || "",
+          temperature: assistant?.model?.temperature ?? 0.7,
+          endCallMessage: assistant?.endCallMessage || "",
+          maxDurationSeconds: assistant?.maxDurationSeconds ?? 300,
+          silenceTimeoutSeconds: assistant?.silenceTimeoutSeconds ?? 30,
+          systemPrompt:
+            Array.isArray(assistant?.model?.messages)
+              ? String(
+                  assistant.model.messages.find(
+                    (m: Record<string, unknown>) => m?.role === "system"
+                  )?.content || ""
+                )
+              : "",
+        }
+      } catch {
+        assistantConfig = null
       }
-    } catch {
-      assistantConfig = null
     }
-  }
 
-  return NextResponse.json({
-    hasAssistant: !!user.vapi_assistant_id,
-    assistantId: user.vapi_assistant_id,
-    assistantConfig,
-    intakeConfig,
-    intakeStored: intakeRaw,
-  })
+    return NextResponse.json({
+      hasAssistant: !!user.vapi_assistant_id,
+      assistantId: user.vapi_assistant_id,
+      assistantConfig,
+      intakeConfig,
+      intakeStored: intakeRaw,
+    })
+  } catch (e) {
+    console.error("[GET /api/ai-assistant] failed:", e)
+    const intakeConfig: AiIntakeConfig = normalizeIntakeConfig(null, { userIndustry: user.industry })
+    return NextResponse.json({
+      hasAssistant: !!user.vapi_assistant_id,
+      assistantId: user.vapi_assistant_id,
+      assistantConfig: null,
+      intakeConfig,
+      intakeStored: null,
+      degraded: true,
+      warning:
+        "AI assistant data could not be loaded fully. Check server logs and that Neon has scripts/010-ai-leads-intake.sql applied.",
+    })
+  }
 }
 
 export async function POST(req: NextRequest) {

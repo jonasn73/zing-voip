@@ -29,6 +29,16 @@ function isMissingIndustryColumnError(e: unknown): boolean {
   )
 }
 
+/** True when Postgres reports a missing table/view (42P01), e.g. before scripts/010-ai-leads-intake.sql is run in Neon. */
+function isUndefinedRelationError(e: unknown, relationName?: string): boolean {
+  const code = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : ""
+  if (code !== "42P01") return false
+  if (!relationName) return true
+  const hint = relationName.toLowerCase()
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase()
+  return msg.includes(hint)
+}
+
 // Lazy Neon client so we only connect when DATABASE_URL is set
 let cachedSql: ReturnType<typeof neon> | null = null
 function getSql(): ReturnType<typeof neon> {
@@ -989,12 +999,22 @@ export async function getUserByVapiAssistantId(vapiAssistantId: string): Promise
 
 export async function getAiIntakeConfigRaw(userId: string): Promise<Record<string, unknown> | null> {
   const sql = getSql()
-  const rows = await sql`
-    SELECT config FROM user_ai_intake WHERE user_id = ${userId} LIMIT 1
-  `
-  const c = rows[0]?.config
-  if (!c || typeof c !== "object") return null
-  return c as Record<string, unknown>
+  try {
+    const rows = await sql`
+      SELECT config FROM user_ai_intake WHERE user_id = ${userId} LIMIT 1
+    `
+    const c = rows[0]?.config
+    if (!c || typeof c !== "object") return null
+    return c as Record<string, unknown>
+  } catch (e) {
+    if (isUndefinedRelationError(e, "user_ai_intake")) {
+      console.warn(
+        "[db] Table user_ai_intake is missing. Run scripts/010-ai-leads-intake.sql in the Neon SQL Editor."
+      )
+      return null
+    }
+    throw e
+  }
 }
 
 export async function upsertAiIntakeConfig(userId: string, config: Record<string, unknown>): Promise<void> {
@@ -1055,23 +1075,33 @@ export async function listAiLeadsForUser(userId: string, limit = 50): Promise<
 > {
   const sql = getSql()
   const lim = Math.min(Math.max(limit, 1), 100)
-  const rows = await sql`
-    SELECT id, caller_e164, intent_slug, collected, summary, sms_sent, sms_error, created_at
-    FROM ai_leads
-    WHERE user_id = ${userId}
-    ORDER BY created_at DESC
-    LIMIT ${lim}
-  `
-  return rows.map((r: Record<string, unknown>) => ({
-    id: String(r.id),
-    caller_e164: r.caller_e164 != null ? String(r.caller_e164) : null,
-    intent_slug: r.intent_slug != null ? String(r.intent_slug) : null,
-    collected: (r.collected as Record<string, unknown>) || {},
-    summary: r.summary != null ? String(r.summary) : null,
-    sms_sent: Boolean(r.sms_sent),
-    sms_error: r.sms_error != null ? String(r.sms_error) : null,
-    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
-  }))
+  try {
+    const rows = await sql`
+      SELECT id, caller_e164, intent_slug, collected, summary, sms_sent, sms_error, created_at
+      FROM ai_leads
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT ${lim}
+    `
+    return rows.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      caller_e164: r.caller_e164 != null ? String(r.caller_e164) : null,
+      intent_slug: r.intent_slug != null ? String(r.intent_slug) : null,
+      collected: (r.collected as Record<string, unknown>) || {},
+      summary: r.summary != null ? String(r.summary) : null,
+      sms_sent: Boolean(r.sms_sent),
+      sms_error: r.sms_error != null ? String(r.sms_error) : null,
+      created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    }))
+  } catch (e) {
+    if (isUndefinedRelationError(e, "ai_leads")) {
+      console.warn(
+        "[db] Table ai_leads is missing. Run scripts/010-ai-leads-intake.sql in the Neon SQL Editor."
+      )
+      return []
+    }
+    throw e
+  }
 }
 
 // Get talk time analytics for a date range

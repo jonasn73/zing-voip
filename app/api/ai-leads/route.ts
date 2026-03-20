@@ -12,7 +12,15 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 
   const lim = Number(req.nextUrl.searchParams.get("limit") || "50")
-  const leads = await listAiLeadsForUser(userId, Number.isFinite(lim) ? lim : 50)
-
-  return NextResponse.json({ leads })
+  try {
+    const leads = await listAiLeadsForUser(userId, Number.isFinite(lim) ? lim : 50)
+    return NextResponse.json({ leads })
+  } catch (e) {
+    console.error("[GET /api/ai-leads] failed:", e)
+    return NextResponse.json({
+      leads: [],
+      degraded: true,
+      warning: "Could not load leads. Check server logs and Neon migration scripts/010-ai-leads-intake.sql.",
+    })
+  }
 }

@@ -14,6 +14,7 @@ import {
   Gauge,
   CheckCircle2,
   Timer,
+  Loader2,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -70,7 +71,7 @@ export function ActivityPage() {
   const [filter, setFilter] = useState<FilterType>("all")
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const { calls, quality, insights, loading, loadError } = useOperationsData()
+  const { calls, quality, insights, loading, loadError, refreshing } = useOperationsData()
 
   const filters: { id: FilterType; label: string }[] = [
     { id: "all", label: "All" },
@@ -148,6 +149,16 @@ export function ActivityPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-8">
+      {refreshing && (
+        <div
+          className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-hidden />
+          <span>Refreshing activity…</span>
+        </div>
+      )}
       <div>
         <h2 className="text-2xl font-semibold tracking-tight text-foreground">Operations</h2>
         <p className="text-sm text-muted-foreground">Live quality KPIs and call activity</p>

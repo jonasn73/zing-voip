@@ -1,5 +1,6 @@
 export {
   useOperationsData,
+  clearOperationsDataCache,
   type UiCallType,
   type UiCallRecord,
   type VoiceQualitySummary,

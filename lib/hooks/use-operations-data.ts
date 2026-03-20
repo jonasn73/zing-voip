@@ -50,6 +50,29 @@ export interface VoiceOperationsInsights {
   }[]
 }
 
+// --- In-memory cache (same browser tab) ---------------------------------------
+// Activity remounts on every tab visit; without this we always set loading=true
+// and flash the full-page skeleton until /api/calls + /api/voice/quality return.
+const CACHE_TTL_MS = 45_000
+
+type OperationsCache = {
+  calls: UiCallRecord[]
+  quality: VoiceQualitySummary | null
+  insights: VoiceOperationsInsights | null
+  fetchedAt: number
+}
+
+let operationsCache: OperationsCache | null = null
+
+function cacheIsFresh(c: OperationsCache) {
+  return Date.now() - c.fetchedAt < CACHE_TTL_MS
+}
+
+/** Clears cached calls/quality (e.g. after sign-out) so another account never sees stale rows. */
+export function clearOperationsDataCache() {
+  operationsCache = null
+}
+
 function formatPhoneDisplay(phone: string | undefined | null): string {
   const v = String(phone || "")
   if (!v) return "Unknown"
@@ -82,18 +105,37 @@ function normalizeCallType(value: unknown): UiCallType {
 }
 
 export function useOperationsData() {
-  const [calls, setCalls] = useState<UiCallRecord[]>([])
-  const [quality, setQuality] = useState<VoiceQualitySummary | null>(null)
-  const [insights, setInsights] = useState<VoiceOperationsInsights | null>(null)
-  const [loading, setLoading] = useState(true)
+  const seed = operationsCache
+  const [calls, setCalls] = useState<UiCallRecord[]>(() => seed?.calls ?? [])
+  const [quality, setQuality] = useState<VoiceQualitySummary | null>(() => seed?.quality ?? null)
+  const [insights, setInsights] = useState<VoiceOperationsInsights | null>(() => seed?.insights ?? null)
+  // Full-page skeleton only when we have never loaded successfully in this tab.
+  const [loading, setLoading] = useState(() => operationsCache === null)
+  const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
 
     async function loadData() {
-      setLoading(true)
-      setLoadError(null)
+      const cached = operationsCache
+      if (cached && cacheIsFresh(cached)) {
+        if (!mounted) return
+        setCalls(cached.calls)
+        setQuality(cached.quality)
+        setInsights(cached.insights)
+        setLoading(false)
+        setLoadError(null)
+        return
+      }
+
+      if (!cached) {
+        setLoading(true)
+        setLoadError(null)
+      } else {
+        setRefreshing(true)
+      }
+
       try {
         const [callsRes, qualityRes] = await Promise.all([
           fetch("/api/calls?limit=100", { credentials: "include" }),
@@ -136,11 +178,23 @@ export function useOperationsData() {
         setCalls(normalizedCalls)
         setQuality(qualitySummary)
         setInsights(qualityInsights)
+        operationsCache = {
+          calls: normalizedCalls,
+          quality: qualitySummary,
+          insights: qualityInsights,
+          fetchedAt: Date.now(),
+        }
+        setLoadError(null)
       } catch (e) {
         if (!mounted) return
-        setLoadError(e instanceof Error ? e.message : "Failed to load operations data")
+        if (!operationsCache) {
+          setLoadError(e instanceof Error ? e.message : "Failed to load operations data")
+        }
       } finally {
-        if (mounted) setLoading(false)
+        if (mounted) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     }
 
@@ -150,5 +204,5 @@ export function useOperationsData() {
     }
   }, [])
 
-  return { calls, quality, insights, loading, loadError }
+  return { calls, quality, insights, loading, loadError, refreshing }
 }

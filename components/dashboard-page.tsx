@@ -144,6 +144,14 @@ export function DashboardPage() {
   // Business numbers for showing which number routing applies to
   const [businessNumbers, setBusinessNumbers] = useState<{ number: string; status: string }[]>([])
 
+  // Wait until these complete before showing “Quick setup” — otherwise empty initial state looks
+  // like an incomplete setup and the banner flashes away when APIs return (confusing on refresh).
+  const [sessionFetchDone, setSessionFetchDone] = useState(false)
+  const [receptionistsFetchDone, setReceptionistsFetchDone] = useState(false)
+  const [numbersRoutingFetchDone, setNumbersRoutingFetchDone] = useState(false)
+  const quickSetupDecided =
+    sessionFetchDone && receptionistsFetchDone && numbersRoutingFetchDone
+
   // Load user session
   useEffect(() => {
     fetch("/api/auth/session", { credentials: "include" })
@@ -152,6 +160,7 @@ export function DashboardPage() {
         if (data?.data?.user?.phone) setMainLinePhone(data.data.user.phone)
       })
       .catch(() => {})
+      .finally(() => setSessionFetchDone(true))
   }, [])
 
   // Load real receptionists from API
@@ -170,6 +179,7 @@ export function DashboardPage() {
         }
       })
       .catch(() => {})
+      .finally(() => setReceptionistsFetchDone(true))
   }, [])
 
   // Load business numbers, then routing + AI assistant together (live Vapi greeting wins over stale routing ai_greeting)
@@ -177,7 +187,9 @@ export function DashboardPage() {
     fetch("/api/numbers/mine", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : { numbers: [] }))
       .then((data) => {
-        if (!Array.isArray(data.numbers)) return
+        if (!Array.isArray(data.numbers)) {
+          return Promise.resolve()
+        }
         const active = data.numbers.filter((n: Record<string, string>) => n.status === "active").map((n: Record<string, string>) => ({
           number: n.number,
           status: n.status,
@@ -189,7 +201,7 @@ export function DashboardPage() {
           ? `/api/routing?number=${encodeURIComponent(primaryNumber)}`
           : "/api/routing"
 
-        Promise.all([
+        return Promise.all([
           fetch(routingUrl, { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
           fetch("/api/ai-assistant", { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
         ])
@@ -212,6 +224,7 @@ export function DashboardPage() {
           .catch(() => {})
       })
       .catch(() => {})
+      .finally(() => setNumbersRoutingFetchDone(true))
   }, [])
 
   const ownerPhoneDisplay = formatPhoneDisplay(mainLinePhone)
@@ -346,8 +359,8 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-5 p-4 pb-8">
-      {!isSetupComplete && (
-        <section className="rounded-2xl border border-primary/25 bg-primary/8 p-4 shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-200">
+      {quickSetupDecided && !isSetupComplete && (
+        <section className="rounded-2xl border border-primary/25 bg-primary/8 p-4 shadow-sm">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15">
               <Check className="h-4 w-4 text-primary" />

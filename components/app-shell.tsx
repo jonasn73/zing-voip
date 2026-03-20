@@ -113,15 +113,18 @@ export function AppShell({
             const Icon = item.icon
             const isActive = activePage === item.id
             const className = cn(
-              "flex min-h-11 min-w-[58px] flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 transition-all",
-              isActive ? "bg-primary/12 text-primary" : "text-muted-foreground hover:text-foreground"
+              "flex min-h-11 min-w-[58px] flex-col items-center justify-center gap-1 rounded-xl px-3 py-2",
+              "transition-all duration-200 ease-out motion-safe:active:scale-[0.96]",
+              isActive
+                ? "bg-primary/12 text-primary shadow-[0_0_20px_-8px_var(--primary)]"
+                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
             )
             const inner = (
               <>
                 <Icon
                   className={cn(
-                    "h-5 w-5 transition-all",
-                    isActive && "drop-shadow-[0_0_5px_var(--primary)]"
+                    "h-5 w-5 transition-transform duration-200 ease-out",
+                    isActive && "scale-105 drop-shadow-[0_0_6px_var(--primary)]"
                   )}
                 />
                 <span className="text-[11px] font-medium">{item.label}</span>
@@ -132,6 +135,8 @@ export function AppShell({
                 <Link
                   key={item.id}
                   href={PAGE_HREF[item.id]}
+                  prefetch
+                  scroll={false}
                   className={className}
                   aria-current={isActive ? "page" : undefined}
                 >

@@ -152,48 +152,50 @@ export function DashboardPage() {
   const quickSetupDecided =
     sessionFetchDone && receptionistsFetchDone && numbersRoutingFetchDone
 
-  // Load user session
+  // Fire session, receptionists, and numbers in parallel (single effect = one cleanup, faster wall-clock than chaining).
   useEffect(() => {
+    let cancelled = false
+    const safeFinally = (setter: () => void) => {
+      if (!cancelled) setter()
+    }
+
     fetch("/api/auth/session", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.data?.user?.phone) setMainLinePhone(data.data.user.phone)
+        if (!cancelled && data?.data?.user?.phone) setMainLinePhone(data.data.user.phone)
       })
       .catch(() => {})
-      .finally(() => setSessionFetchDone(true))
-  }, [])
+      .finally(() => safeFinally(() => setSessionFetchDone(true)))
 
-  // Load real receptionists from API
-  useEffect(() => {
     fetch("/api/receptionists", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : { data: [] }))
       .then((data) => {
-        if (Array.isArray(data.data)) {
-          setReceptionists(data.data.map((r: Record<string, string>) => ({
+        if (cancelled || !Array.isArray(data.data)) return
+        setReceptionists(
+          data.data.map((r: Record<string, string>) => ({
             id: r.id,
             name: r.name,
             phone: r.phone,
             initials: r.initials || r.name?.slice(0, 2)?.toUpperCase() || "??",
             color: r.color || "bg-primary",
-          })))
-        }
+          }))
+        )
       })
       .catch(() => {})
-      .finally(() => setReceptionistsFetchDone(true))
-  }, [])
+      .finally(() => safeFinally(() => setReceptionistsFetchDone(true)))
 
-  // Load business numbers, then routing + AI assistant together (live Vapi greeting wins over stale routing ai_greeting)
-  useEffect(() => {
     fetch("/api/numbers/mine", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : { numbers: [] }))
       .then((data) => {
-        if (!Array.isArray(data.numbers)) {
+        if (cancelled || !Array.isArray(data.numbers)) {
           return Promise.resolve()
         }
-        const active = data.numbers.filter((n: Record<string, string>) => n.status === "active").map((n: Record<string, string>) => ({
-          number: n.number,
-          status: n.status,
-        }))
+        const active = data.numbers
+          .filter((n: Record<string, string>) => n.status === "active")
+          .map((n: Record<string, string>) => ({
+            number: n.number,
+            status: n.status,
+          }))
         setBusinessNumbers(active)
 
         const primaryNumber = active[0]?.number
@@ -206,6 +208,7 @@ export function DashboardPage() {
           fetch("/api/ai-assistant", { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
         ])
           .then(([rData, aiData]) => {
+            if (cancelled) return
             if (rData?.config) {
               setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
               setFallback(rData.config.fallback_type || "owner")
@@ -224,7 +227,11 @@ export function DashboardPage() {
           .catch(() => {})
       })
       .catch(() => {})
-      .finally(() => setNumbersRoutingFetchDone(true))
+      .finally(() => safeFinally(() => setNumbersRoutingFetchDone(true)))
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const ownerPhoneDisplay = formatPhoneDisplay(mainLinePhone)

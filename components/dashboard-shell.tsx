@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShell, type PageId } from "@/components/app-shell"
+import { DashboardPageView } from "@/components/dashboard-page-view"
 
 const VALID_PAGES: PageId[] = ["dashboard", "ai-flow", "activity", "leads", "contacts", "analytics", "settings"]
 
@@ -59,7 +60,7 @@ export function DashboardShell({
 
   return (
     <AppShell activePage={activePage} pathname={pathname}>
-      {children}
+      <DashboardPageView pathname={pathname}>{children}</DashboardPageView>
     </AppShell>
   )
 }

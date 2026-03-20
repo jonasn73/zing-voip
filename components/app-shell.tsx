@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactNode } from "react"
+import { type ReactNode, useLayoutEffect, useRef } from "react"
 import Link from "next/link"
 import {
   Phone,
@@ -51,10 +51,19 @@ export function AppShell({
   children: ReactNode
 }) {
   const useLinks = Boolean(pathname)
+  // Scroll container for dashboard pages — Next only resets `window` scroll; we must reset this on tab change.
+  const mainRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    if (!pathname) return
+    const el = mainRef.current
+    if (el) el.scrollTop = 0
+  }, [pathname])
+
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-40 flex shrink-0 items-center justify-between border-b border-border/70 bg-background/80 px-4 py-3 backdrop-blur-xl">
+    // h-dvh + overflow-hidden caps height so flex-1 main can scroll; min-h-dvh alone grows with content and breaks overflow-y-auto.
+    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-background">
+      {/* Header — mostly opaque so you do not see the previous route “through” the bar during navigation */}
+      <header className="sticky top-0 z-40 flex shrink-0 items-center justify-between border-b border-border/70 bg-background px-4 py-3">
         {useLinks ? (
           <Link
             href="/dashboard"
@@ -85,14 +94,17 @@ export function AppShell({
         </div>
       </header>
 
-      {/* No key on main — remounting here caused a flash of the previous route on refresh/navigation */}
-      <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[max(env(safe-area-inset-bottom),0px)]">
+      {/* min-h-0 is required so this flex child can shrink and show its own scrollbar */}
+      <main
+        ref={mainRef}
+        className="relative z-0 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background pb-[max(env(safe-area-inset-bottom),0px)]"
+      >
         {children}
       </main>
 
       {/* Bottom navigation */}
       <nav
-        className="sticky bottom-0 z-40 shrink-0 border-t border-border/70 bg-background/80 pb-[max(env(safe-area-inset-bottom),0px)] backdrop-blur-xl"
+        className="sticky bottom-0 z-40 shrink-0 border-t border-border/70 bg-background pb-[max(env(safe-area-inset-bottom),0px)]"
         role="navigation"
         aria-label="Main navigation"
       >

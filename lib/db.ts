@@ -39,6 +39,14 @@ function isUndefinedRelationError(e: unknown, relationName?: string): boolean {
   return msg.includes(hint)
 }
 
+/** True when call_logs is missing timing columns from scripts/007-call-quality-metrics.sql (Postgres 42703). */
+function isMissingCallQualityColumnsError(e: unknown): boolean {
+  const code = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : ""
+  if (code !== "42703") return false
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase()
+  return msg.includes("setup_duration_ms") || msg.includes("post_dial_delay_ms")
+}
+
 // Lazy Neon client so we only connect when DATABASE_URL is set
 let cachedSql: ReturnType<typeof neon> | null = null
 function getSql(): ReturnType<typeof neon> {
@@ -603,59 +611,110 @@ export async function getCallQualitySummary(userId: string, days = 7): Promise<{
   avg_post_dial_delay_ms: number | null
 }> {
   const sql = getSql()
-  const rows = await sql`
-    WITH base AS (
-      SELECT status, setup_duration_ms, post_dial_delay_ms
-      FROM call_logs
-      WHERE user_id = ${userId}
-        AND created_at >= now() - (${days}::int || ' days')::interval
-    ),
-    stats AS (
+  try {
+    const rows = await sql`
+      WITH base AS (
+        SELECT status, setup_duration_ms, post_dial_delay_ms
+        FROM call_logs
+        WHERE user_id = ${userId}
+          AND created_at >= now() - (${days}::numeric * interval '1 day')
+      ),
+      stats AS (
+        SELECT
+          COUNT(*)::int AS total_calls,
+          COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+          AVG(setup_duration_ms)::float8 AS avg_setup_ms,
+          AVG(post_dial_delay_ms)::float8 AS avg_post_dial_delay_ms
+        FROM base
+      ),
+      p95 AS (
+        SELECT
+          percentile_cont(0.95) WITHIN GROUP (ORDER BY setup_duration_ms)::float8 AS p95_setup_ms
+        FROM base
+        WHERE setup_duration_ms IS NOT NULL
+      )
       SELECT
-        COUNT(*)::int AS total_calls,
-        COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
-        AVG(setup_duration_ms)::float8 AS avg_setup_ms,
-        AVG(post_dial_delay_ms)::float8 AS avg_post_dial_delay_ms
-      FROM base
-    ),
-    p95 AS (
-      SELECT
-        percentile_cont(0.95) WITHIN GROUP (ORDER BY setup_duration_ms)::float8 AS p95_setup_ms
-      FROM base
-      WHERE setup_duration_ms IS NOT NULL
-    )
-    SELECT
-      stats.total_calls,
-      stats.answered_calls,
-      CASE
-        WHEN stats.total_calls = 0 THEN 0
-        ELSE ROUND((stats.answered_calls::numeric / stats.total_calls::numeric) * 100, 2)::float8
-      END AS answer_rate_percent,
-      stats.avg_setup_ms,
-      p95.p95_setup_ms,
-      stats.avg_post_dial_delay_ms
-    FROM stats, p95
-  `
+        stats.total_calls,
+        stats.answered_calls,
+        CASE
+          WHEN stats.total_calls = 0 THEN 0
+          ELSE ROUND((stats.answered_calls::numeric / stats.total_calls::numeric) * 100, 2)::float8
+        END AS answer_rate_percent,
+        stats.avg_setup_ms,
+        p95.p95_setup_ms,
+        stats.avg_post_dial_delay_ms
+      FROM stats, p95
+    `
 
-  const row = rows[0]
-  if (!row) {
-    return {
-      total_calls: 0,
-      answered_calls: 0,
-      answer_rate_percent: 0,
-      avg_setup_ms: null,
-      p95_setup_ms: null,
-      avg_post_dial_delay_ms: null,
+    const row = rows[0]
+    if (!row) {
+      return {
+        total_calls: 0,
+        answered_calls: 0,
+        answer_rate_percent: 0,
+        avg_setup_ms: null,
+        p95_setup_ms: null,
+        avg_post_dial_delay_ms: null,
+      }
     }
-  }
 
-  return {
-    total_calls: Number(row.total_calls ?? 0),
-    answered_calls: Number(row.answered_calls ?? 0),
-    answer_rate_percent: Number(row.answer_rate_percent ?? 0),
-    avg_setup_ms: row.avg_setup_ms == null ? null : Number(row.avg_setup_ms),
-    p95_setup_ms: row.p95_setup_ms == null ? null : Number(row.p95_setup_ms),
-    avg_post_dial_delay_ms: row.avg_post_dial_delay_ms == null ? null : Number(row.avg_post_dial_delay_ms),
+    return {
+      total_calls: Number(row.total_calls ?? 0),
+      answered_calls: Number(row.answered_calls ?? 0),
+      answer_rate_percent: Number(row.answer_rate_percent ?? 0),
+      avg_setup_ms: row.avg_setup_ms == null ? null : Number(row.avg_setup_ms),
+      p95_setup_ms: row.p95_setup_ms == null ? null : Number(row.p95_setup_ms),
+      avg_post_dial_delay_ms: row.avg_post_dial_delay_ms == null ? null : Number(row.avg_post_dial_delay_ms),
+    }
+  } catch (e) {
+    if (!isMissingCallQualityColumnsError(e)) throw e
+    console.warn(
+      "[db] call_logs is missing setup/post-dial columns. Run scripts/007-call-quality-metrics.sql in Neon for latency stats."
+    )
+    const rows = await sql`
+      WITH base AS (
+        SELECT status
+        FROM call_logs
+        WHERE user_id = ${userId}
+          AND created_at >= now() - (${days}::numeric * interval '1 day')
+      ),
+      stats AS (
+        SELECT
+          COUNT(*)::int AS total_calls,
+          COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls
+        FROM base
+      )
+      SELECT
+        stats.total_calls,
+        stats.answered_calls,
+        CASE
+          WHEN stats.total_calls = 0 THEN 0
+          ELSE ROUND((stats.answered_calls::numeric / stats.total_calls::numeric) * 100, 2)::float8
+        END AS answer_rate_percent,
+        NULL::float8 AS avg_setup_ms,
+        NULL::float8 AS p95_setup_ms,
+        NULL::float8 AS avg_post_dial_delay_ms
+      FROM stats
+    `
+    const row = rows[0]
+    if (!row) {
+      return {
+        total_calls: 0,
+        answered_calls: 0,
+        answer_rate_percent: 0,
+        avg_setup_ms: null,
+        p95_setup_ms: null,
+        avg_post_dial_delay_ms: null,
+      }
+    }
+    return {
+      total_calls: Number(row.total_calls ?? 0),
+      answered_calls: Number(row.answered_calls ?? 0),
+      answer_rate_percent: Number(row.answer_rate_percent ?? 0),
+      avg_setup_ms: row.avg_setup_ms == null ? null : Number(row.avg_setup_ms),
+      p95_setup_ms: row.p95_setup_ms == null ? null : Number(row.p95_setup_ms),
+      avg_post_dial_delay_ms: row.avg_post_dial_delay_ms == null ? null : Number(row.avg_post_dial_delay_ms),
+    }
   }
 }
 
@@ -682,54 +741,113 @@ export async function getVoiceOperationsInsights(userId: string, days = 7): Prom
 }> {
   const sql = getSql()
 
-  const dailyRows = await sql`
-    SELECT
-      to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
-      COUNT(*)::int AS total_calls,
-      COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
-      CASE
-        WHEN COUNT(*) = 0 THEN 0
-        ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
-      END AS answer_rate_percent,
-      AVG(setup_duration_ms)::float8 AS avg_setup_ms
-    FROM call_logs
-    WHERE user_id = ${userId}
-      AND created_at >= now() - (${days}::int || ' days')::interval
-    GROUP BY date_trunc('day', created_at)
-    ORDER BY date_trunc('day', created_at) ASC
-  `
+  let dailyRows: Record<string, unknown>[]
+  let numberRows: Record<string, unknown>[]
+  let missedRows: Record<string, unknown>[]
 
-  const numberRows = await sql`
-    SELECT
-      to_number AS number,
-      COUNT(*)::int AS total_calls,
-      COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
-      CASE
-        WHEN COUNT(*) = 0 THEN 0
-        ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
-      END AS answer_rate_percent,
-      AVG(setup_duration_ms)::float8 AS avg_setup_ms
-    FROM call_logs
-    WHERE user_id = ${userId}
-      AND created_at >= now() - (${days}::int || ' days')::interval
-    GROUP BY to_number
-    ORDER BY COUNT(*) DESC
-    LIMIT 8
-  `
+  try {
+    dailyRows = await sql`
+      SELECT
+        to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+        COUNT(*)::int AS total_calls,
+        COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+        CASE
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
+        END AS answer_rate_percent,
+        AVG(setup_duration_ms)::float8 AS avg_setup_ms
+      FROM call_logs
+      WHERE user_id = ${userId}
+        AND created_at >= now() - (${days}::numeric * interval '1 day')
+      GROUP BY date_trunc('day', created_at)
+      ORDER BY date_trunc('day', created_at) ASC
+    `
 
-  const missedRows = await sql`
-    SELECT
-      from_number AS caller_number,
-      COUNT(*)::int AS missed_calls,
-      MAX(created_at) AS last_missed_at
-    FROM call_logs
-    WHERE user_id = ${userId}
-      AND created_at >= now() - (${days}::int || ' days')::interval
-      AND status IN ('no-answer', 'busy', 'failed', 'canceled')
-    GROUP BY from_number
-    ORDER BY COUNT(*) DESC, MAX(created_at) DESC
-    LIMIT 5
-  `
+    numberRows = await sql`
+      SELECT
+        to_number AS number,
+        COUNT(*)::int AS total_calls,
+        COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+        CASE
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
+        END AS answer_rate_percent,
+        AVG(setup_duration_ms)::float8 AS avg_setup_ms
+      FROM call_logs
+      WHERE user_id = ${userId}
+        AND created_at >= now() - (${days}::numeric * interval '1 day')
+      GROUP BY to_number
+      ORDER BY COUNT(*) DESC
+      LIMIT 8
+    `
+
+    missedRows = await sql`
+      SELECT
+        from_number AS caller_number,
+        COUNT(*)::int AS missed_calls,
+        MAX(created_at) AS last_missed_at
+      FROM call_logs
+      WHERE user_id = ${userId}
+        AND created_at >= now() - (${days}::numeric * interval '1 day')
+        AND status IN ('no-answer', 'busy', 'failed', 'canceled')
+      GROUP BY from_number
+      ORDER BY COUNT(*) DESC, MAX(created_at) DESC
+      LIMIT 5
+    `
+  } catch (e) {
+    if (!isMissingCallQualityColumnsError(e)) throw e
+    console.warn(
+      "[db] call_logs is missing setup_duration_ms. Run scripts/007-call-quality-metrics.sql in Neon for per-day setup latency."
+    )
+    dailyRows = await sql`
+      SELECT
+        to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+        COUNT(*)::int AS total_calls,
+        COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+        CASE
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
+        END AS answer_rate_percent,
+        NULL::float8 AS avg_setup_ms
+      FROM call_logs
+      WHERE user_id = ${userId}
+        AND created_at >= now() - (${days}::numeric * interval '1 day')
+      GROUP BY date_trunc('day', created_at)
+      ORDER BY date_trunc('day', created_at) ASC
+    `
+
+    numberRows = await sql`
+      SELECT
+        to_number AS number,
+        COUNT(*)::int AS total_calls,
+        COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::int AS answered_calls,
+        CASE
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE ROUND((COUNT(*) FILTER (WHERE status IN ('answered', 'completed', 'in-progress'))::numeric / COUNT(*)::numeric) * 100, 2)::float8
+        END AS answer_rate_percent,
+        NULL::float8 AS avg_setup_ms
+      FROM call_logs
+      WHERE user_id = ${userId}
+        AND created_at >= now() - (${days}::numeric * interval '1 day')
+      GROUP BY to_number
+      ORDER BY COUNT(*) DESC
+      LIMIT 8
+    `
+
+    missedRows = await sql`
+      SELECT
+        from_number AS caller_number,
+        COUNT(*)::int AS missed_calls,
+        MAX(created_at) AS last_missed_at
+      FROM call_logs
+      WHERE user_id = ${userId}
+        AND created_at >= now() - (${days}::numeric * interval '1 day')
+        AND status IN ('no-answer', 'busy', 'failed', 'canceled')
+      GROUP BY from_number
+      ORDER BY COUNT(*) DESC, MAX(created_at) DESC
+      LIMIT 5
+    `
+  }
 
   return {
     daily_quality: dailyRows.map((r) => ({

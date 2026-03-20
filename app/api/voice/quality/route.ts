@@ -20,6 +20,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ days, summary, insights })
   } catch (error) {
     console.error("[VoiceQuality] Failed to load summary:", error)
-    return NextResponse.json({ error: "Failed to load call quality summary" }, { status: 500 })
+    return NextResponse.json(
+      {
+        days,
+        summary: {
+          total_calls: 0,
+          answered_calls: 0,
+          answer_rate_percent: 0,
+          avg_setup_ms: null,
+          p95_setup_ms: null,
+          avg_post_dial_delay_ms: null,
+        },
+        insights: {
+          daily_quality: [],
+          number_quality: [],
+          top_missed_callers: [],
+        },
+        degraded: true,
+        warning:
+          "Call quality data could not be loaded. Check Vercel logs; ensure Neon has scripts/007-call-quality-metrics.sql if you need setup-time stats.",
+      },
+      { status: 200 }
+    )
   }
 }

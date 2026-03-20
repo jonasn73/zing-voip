@@ -19,7 +19,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { useOperationsData, type UiCallRecord } from "@/lib/hooks/use-operations-data"
-import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { IconSurface } from "@/components/ui/icon-surface"
 
@@ -117,26 +116,10 @@ export function ActivityPage() {
   const topMissedCallers = insights?.top_missed_callers ?? []
   const maxTrendSetup = Math.max(...trend.map((d) => d.avg_setup_ms ?? 0), 1)
 
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-4 p-4 pb-8">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-36 rounded-lg" />
-          <Skeleton className="h-4 w-56 rounded-lg" />
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Skeleton className="h-20 rounded-2xl" />
-          <Skeleton className="h-20 rounded-2xl" />
-          <Skeleton className="h-20 rounded-2xl" />
-        </div>
-        <Skeleton className="h-12 rounded-2xl" />
-        <Skeleton className="h-36 rounded-2xl" />
-        <Skeleton className="h-36 rounded-2xl" />
-      </div>
-    )
-  }
+  // True only before we have any rows or cached KPIs — avoids swapping the whole page for a pulsing skeleton.
+  const awaitingFirstPayload = loading && calls.length === 0 && quality == null && insights == null && !loadError
 
-  if (loadError) {
+  if (loadError && calls.length === 0) {
     return (
       <div className="flex flex-col gap-4 p-4 pb-8">
         <EmptyState
@@ -168,19 +151,19 @@ export function ActivityPage() {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Phone className="mb-1 h-4 w-4 text-primary" />
-          <span className="text-lg font-bold text-foreground">{totalCalls}</span>
+          <span className="text-lg font-bold text-foreground">{awaitingFirstPayload ? "—" : totalCalls}</span>
           <span className="text-[10px] text-muted-foreground">Total Calls</span>
         </div>
         <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Clock className="mb-1 h-4 w-4 text-warning" />
           <span className="text-lg font-bold text-foreground">
-            {Math.floor(totalDuration / 60)}m
+            {awaitingFirstPayload ? "—" : `${Math.floor(totalDuration / 60)}m`}
           </span>
           <span className="text-[10px] text-muted-foreground">Talk Time</span>
         </div>
         <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <Download className="mb-1 h-4 w-4 text-success" />
-          <span className="text-lg font-bold text-foreground">{recordingsCount}</span>
+          <span className="text-lg font-bold text-foreground">{awaitingFirstPayload ? "—" : recordingsCount}</span>
           <span className="text-[10px] text-muted-foreground">Recordings</span>
         </div>
       </div>
@@ -189,7 +172,9 @@ export function ActivityPage() {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
           <CheckCircle2 className="mb-1 h-4 w-4 text-success" />
-          <span className="text-lg font-bold text-foreground">{answerRate.toFixed(1)}%</span>
+          <span className="text-lg font-bold text-foreground">
+            {awaitingFirstPayload ? "—" : `${answerRate.toFixed(1)}%`}
+          </span>
           <span className="text-[10px] text-muted-foreground">Answer Rate</span>
         </div>
         <div className="flex flex-col items-center rounded-2xl border border-border/70 bg-card/80 p-3.5 shadow-sm">
@@ -215,8 +200,9 @@ export function ActivityPage() {
           type="text"
           placeholder="Search calls, contacts..."
           value={search}
+          disabled={awaitingFirstPayload}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-2xl border border-border/70 bg-card/80 py-3 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full rounded-2xl border border-border/70 bg-card/80 py-3 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
 
@@ -225,6 +211,8 @@ export function ActivityPage() {
         {filters.map((f) => (
           <button
             key={f.id}
+            type="button"
+            disabled={awaitingFirstPayload}
             onClick={() => setFilter(f.id)}
             role="tab"
             aria-selected={filter === f.id}
@@ -232,7 +220,8 @@ export function ActivityPage() {
               "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all",
               filter === f.id
                 ? "bg-primary text-primary-foreground"
-                : "border border-border/70 bg-card text-muted-foreground hover:text-foreground"
+                : "border border-border/70 bg-card text-muted-foreground hover:text-foreground",
+              awaitingFirstPayload && "pointer-events-none opacity-50"
             )}
           >
             {f.label}
@@ -246,7 +235,9 @@ export function ActivityPage() {
           <p className="text-sm font-medium text-foreground">7-day setup latency trend</p>
           <span className="text-xs text-muted-foreground">Goal: &lt; 1000ms</span>
         </div>
-        {trend.length === 0 ? (
+        {awaitingFirstPayload ? (
+          <p className="text-xs text-muted-foreground">Loading trend data…</p>
+        ) : trend.length === 0 ? (
           <p className="text-xs text-muted-foreground">No trend data yet.</p>
         ) : (
           <div className="flex items-end gap-1.5">
@@ -270,7 +261,9 @@ export function ActivityPage() {
       {/* Per-number quality */}
       <section className="zing-card p-4">
         <p className="mb-2 text-sm font-medium text-foreground">Per-number quality</p>
-        {numberQuality.length === 0 ? (
+        {awaitingFirstPayload ? (
+          <p className="text-xs text-muted-foreground">Loading per-number quality…</p>
+        ) : numberQuality.length === 0 ? (
           <p className="text-xs text-muted-foreground">No per-number data yet.</p>
         ) : (
           <div className="flex flex-col gap-2">
@@ -293,7 +286,9 @@ export function ActivityPage() {
       {/* Top missed callers */}
       <section className="zing-card p-4">
         <p className="mb-2 text-sm font-medium text-foreground">Top missed callers</p>
-        {topMissedCallers.length === 0 ? (
+        {awaitingFirstPayload ? (
+          <p className="text-xs text-muted-foreground">Loading missed callers…</p>
+        ) : topMissedCallers.length === 0 ? (
           <p className="text-xs text-muted-foreground">No missed callers in selected window.</p>
         ) : (
           <div className="flex flex-col gap-2">
@@ -315,12 +310,12 @@ export function ActivityPage() {
       </section>
 
       {/* Call Records by Date */}
-      {loading && (
-        <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-          Loading call activity...
+      {awaitingFirstPayload && (
+        <div className="rounded-xl border border-border/60 bg-card/50 p-4 text-sm text-muted-foreground">
+          Loading call list…
         </div>
       )}
-      {loadError && (
+      {loadError && calls.length > 0 && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {loadError}
         </div>
@@ -432,7 +427,7 @@ export function ActivityPage() {
         </section>
       ))}
 
-      {filtered.length === 0 && (
+      {!awaitingFirstPayload && filtered.length === 0 && (
         <div className="flex flex-col items-center gap-2 py-12">
           <Filter className="h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">No calls match your filters</p>

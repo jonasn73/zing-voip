@@ -7,7 +7,6 @@
 // `motion-reduce` users get an instant paint (no animation) for accessibility.
 
 import { type ReactNode } from "react"
-import { cn } from "@/lib/utils"
 
 export function DashboardPageView({
   pathname,
@@ -17,14 +16,7 @@ export function DashboardPageView({
   children: ReactNode
 }) {
   return (
-    <div
-      key={pathname}
-      className={cn(
-        "min-h-full bg-background",
-        // Enter: fade + slight rise + soft zoom (tw-animate-css utilities)
-        "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-3 motion-safe:duration-300 motion-safe:ease-out"
-      )}
-    >
+    <div key={pathname} className="min-h-full bg-background">
       {children}
     </div>
   )

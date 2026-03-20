@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useState } from "react"
 
 export type UiCallType = "incoming" | "outgoing" | "missed" | "voicemail"
 
@@ -68,9 +68,52 @@ function cacheIsFresh(c: OperationsCache) {
   return Date.now() - c.fetchedAt < CACHE_TTL_MS
 }
 
+const SESSION_STORAGE_KEY = "zing_operations_v1"
+/** Keep JSON small for sessionStorage quota (~5MB). */
+const SESSION_MAX_CALLS = 80
+/** Drop storage older than this so we do not show very stale KPIs forever without refetch. */
+const SESSION_MAX_AGE_MS = 24 * 60 * 60_000
+
+function readSessionOperationsCache(): OperationsCache | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY)
+    if (!raw) return null
+    const p = JSON.parse(raw) as OperationsCache
+    if (!p || typeof p.fetchedAt !== "number" || !Array.isArray(p.calls)) return null
+    if (Date.now() - p.fetchedAt > SESSION_MAX_AGE_MS) {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY)
+      return null
+    }
+    return p
+  } catch {
+    return null
+  }
+}
+
+function writeSessionOperationsCache(c: OperationsCache) {
+  if (typeof window === "undefined") return
+  try {
+    const trimmed: OperationsCache = {
+      ...c,
+      calls: c.calls.slice(0, SESSION_MAX_CALLS),
+    }
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(trimmed))
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 /** Clears cached calls/quality (e.g. after sign-out) so another account never sees stale rows. */
 export function clearOperationsDataCache() {
   operationsCache = null
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function formatPhoneDisplay(phone: string | undefined | null): string {
@@ -113,6 +156,18 @@ export function useOperationsData() {
   const [loading, setLoading] = useState(() => operationsCache === null)
   const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  // Restore last successful payload before paint so refresh / Activity tab does not flash a loading shell.
+  useLayoutEffect(() => {
+    if (operationsCache && cacheIsFresh(operationsCache)) return
+    const stored = readSessionOperationsCache()
+    if (!stored) return
+    operationsCache = stored
+    setCalls(stored.calls)
+    setQuality(stored.quality)
+    setInsights(stored.insights)
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -184,6 +239,7 @@ export function useOperationsData() {
           insights: qualityInsights,
           fetchedAt: Date.now(),
         }
+        writeSessionOperationsCache(operationsCache)
         setLoadError(null)
       } catch (e) {
         if (!mounted) return

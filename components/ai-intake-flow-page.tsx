@@ -6,8 +6,7 @@
 // ============================================
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
-import { Bot, ChevronRight, Loader2, Save, Sparkles } from "lucide-react"
+import { Bot, Loader2, Save, Sparkles } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { Switch } from "@/components/ui/switch"
@@ -22,6 +21,7 @@ import {
   isAiIntakeProfileId,
 } from "@/lib/business-industries"
 import { DEFAULT_BUSY_GREETING_LOCKSMITH } from "@/lib/ai-intake-defaults"
+import { AiVoiceAdvancedPanel } from "@/components/ai-voice-advanced-panel"
 
 /** Build the JSON object PATCH /api/ai-assistant expects for intake (same shape as Settings). */
 function buildIntakeBody(
@@ -341,14 +341,8 @@ export function AiIntakeFlowPage() {
         </div>
       </section>
 
-      {/* Link to full voice settings */}
-      <Link
-        href="/dashboard/settings"
-        className="flex items-center justify-between rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary/60"
-      >
-        <span>Voice, limits, presets</span>
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-      </Link>
+      {/* Voice picker, Vapi greeting line, limits — only place for these (not duplicated in Settings). */}
+      <AiVoiceAdvancedPanel assistantActive={hasAssistant} />
 
       {/* Sticky save */}
       <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-md">

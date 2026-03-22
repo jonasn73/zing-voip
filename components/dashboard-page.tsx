@@ -928,7 +928,7 @@ export function DashboardPage() {
               <div className="flex-1">
                 <p className="text-sm font-medium text-foreground">AI Receptionist Active</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Voice AI when nobody picks up — industry intake, lead capture, optional SMS. Tune in Settings.
+                  Voice AI when nobody picks up — industry intake, lead capture, optional SMS. Tune in AI call flow.
                 </p>
               </div>
               <span className="rounded-full bg-chart-4/10 px-2 py-0.5 text-[10px] font-semibold text-chart-4">

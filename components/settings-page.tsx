@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import {
   Moon,
   Bell,
@@ -16,8 +16,6 @@ import {
   Phone,
   PhoneForwarded,
   ArrowRightLeft,
-  Bot,
-  Sparkles,
   Plus,
   Hash,
   X,
@@ -30,7 +28,6 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
-import { AI_VOICE_FALLBACK_OPTIONS, type AiVoiceOption } from "@/lib/ai-voice-catalog"
 import { SIGNUP_INDUSTRY_OPTIONS } from "@/lib/business-industries"
 
 interface SettingToggle {
@@ -57,17 +54,6 @@ interface NumberRouting {
   selected_receptionist_id: string | null
 }
 
-interface AiAssistantConfig {
-  firstMessage: string
-  voiceId: string
-  temperature: number
-  endCallMessage: string
-  maxDurationSeconds: number
-  silenceTimeoutSeconds: number
-  businessHours: string
-  customInstructions: string
-}
-
 // Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567. Safe for null/undefined or non-string (e.g. from API).
 function formatPhoneDisplay(phone: string | undefined | null): string {
   if (phone == null || typeof phone !== "string") return "your cell"
@@ -75,15 +61,6 @@ function formatPhoneDisplay(phone: string | undefined | null): string {
   if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
   if (digits.length === 11 && digits.startsWith("1")) return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
   return phone
-}
-
-function extractBusinessHoursFromPrompt(prompt: string): string {
-  const marker = "2. SHARE BUSINESS HOURS:"
-  const idx = prompt.indexOf(marker)
-  if (idx === -1) return ""
-  const rest = prompt.slice(idx + marker.length).trim()
-  const endIdx = rest.indexOf("\n")
-  return (endIdx === -1 ? rest : rest.slice(0, endIdx)).trim()
 }
 
 export function SettingsPage() {
@@ -176,31 +153,6 @@ export function SettingsPage() {
   const [numberRoutings, setNumberRoutings] = useState<NumberRouting[]>([])
   const [routingModalNumber, setRoutingModalNumber] = useState<string | null>(null) // E.164 number being configured, or null if closed
   const [routingSaving, setRoutingSaving] = useState(false)
-  const [hasAiAssistant, setHasAiAssistant] = useState(false)
-  const [aiAssistantId, setAiAssistantId] = useState<string | null>(null)
-  const [aiConfigLoading, setAiConfigLoading] = useState(false)
-  const [aiSaving, setAiSaving] = useState(false)
-  const [aiSavedAt, setAiSavedAt] = useState<number | null>(null)
-  const [customVoiceIdOverride, setCustomVoiceIdOverride] = useState("")
-  const [voicePreviewLoading, setVoicePreviewLoading] = useState(false)
-  const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false)
-  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
-  const [aiVoiceOptions, setAiVoiceOptions] = useState<AiVoiceOption[]>(AI_VOICE_FALLBACK_OPTIONS)
-  const [aiVoicesReady, setAiVoicesReady] = useState(false)
-  const [aiConfig, setAiConfig] = useState<AiAssistantConfig>({
-    firstMessage: "",
-    voiceId: "21m00Tcm4TlvDq8ikWAM",
-    temperature: 0.7,
-    endCallMessage: "Thank you for calling. Have a great day!",
-    maxDurationSeconds: 300,
-    silenceTimeoutSeconds: 30,
-    businessHours: "Monday through Friday, 9 AM to 5 PM. Closed weekends.",
-    customInstructions: "",
-  })
-  const previewVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
-  const previewVoiceLabel =
-    aiVoiceOptions.find((voice) => voice.id === previewVoiceId)?.label ||
-    (customVoiceIdOverride.trim() ? "Custom voice" : "Selected voice")
 
   // Load current user so we can show main line (cell) in profile
   useEffect(() => {
@@ -221,32 +173,6 @@ export function SettingsPage() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
-
-  // Load voice catalog from Zing (ElevenLabs premades via platform key) so dropdown IDs match live TTS + preview.
-  useEffect(() => {
-    let cancelled = false
-    fetch("/api/ai-assistant/voices", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.voices || !Array.isArray(data.voices)) return
-        setAiVoiceOptions(data.voices as AiVoiceOption[])
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setAiVoicesReady(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // When full catalog loads, clear custom ID field only if it was only holding the same voice as the assistant (now in list).
-  useEffect(() => {
-    if (!aiVoicesReady || aiConfigLoading) return
-    const v = aiConfig.voiceId
-    if (!v || !aiVoiceOptions.some((o) => o.id === v)) return
-    setCustomVoiceIdOverride((prev) => (prev === v ? "" : prev))
-  }, [aiVoicesReady, aiVoiceOptions, aiConfig.voiceId, aiConfigLoading])
 
   // Load receptionists for per-number routing picker
   useEffect(() => {
@@ -283,51 +209,6 @@ export function SettingsPage() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [])
-
-  // Load AI assistant status + existing config from Vapi
-  useEffect(() => {
-    let cancelled = false
-    setAiConfigLoading(true)
-    fetch("/api/ai-assistant", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return
-        setHasAiAssistant(Boolean(data.hasAssistant))
-        setAiAssistantId(data.assistantId || null)
-        const config = data.assistantConfig as Record<string, unknown> | null
-        if (config) {
-          const systemPrompt = String(config.systemPrompt || "")
-          setAiConfig((prev) => ({
-            ...prev,
-            firstMessage: String(config.firstMessage || prev.firstMessage),
-            voiceId: String(config.voiceId || prev.voiceId),
-            temperature:
-              typeof config.temperature === "number" ? Number(config.temperature) : prev.temperature,
-            endCallMessage: String(config.endCallMessage || prev.endCallMessage),
-            maxDurationSeconds:
-              typeof config.maxDurationSeconds === "number"
-                ? Number(config.maxDurationSeconds)
-                : prev.maxDurationSeconds,
-            silenceTimeoutSeconds:
-              typeof config.silenceTimeoutSeconds === "number"
-                ? Number(config.silenceTimeoutSeconds)
-                : prev.silenceTimeoutSeconds,
-            businessHours: extractBusinessHoursFromPrompt(systemPrompt) || prev.businessHours,
-          }))
-          const loadedVoiceId = String(config.voiceId || "")
-          if (loadedVoiceId && !AI_VOICE_FALLBACK_OPTIONS.some((x) => x.id === loadedVoiceId)) {
-            setCustomVoiceIdOverride(loadedVoiceId)
-          }
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setAiConfigLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
   }, [])
 
   // Load porting orders so dashboard shows progress
@@ -578,173 +459,6 @@ export function SettingsPage() {
       prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s))
     )
   }
-
-  async function handleActivateAiAssistant() {
-    setAiSaving(true)
-    try {
-      const resolvedVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
-      const res = await fetch("/api/ai-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          greeting: aiConfig.firstMessage,
-          businessName: user?.name || user?.email || "My Business",
-          voiceId: resolvedVoiceId,
-          temperature: aiConfig.temperature,
-          businessHours: aiConfig.businessHours,
-          customInstructions: aiConfig.customInstructions,
-          endCallMessage: aiConfig.endCallMessage,
-          maxDurationSeconds: aiConfig.maxDurationSeconds,
-          silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: "AI setup failed",
-          description: data.error || "Could not activate voice assistant.",
-          variant: "destructive",
-        })
-        return
-      }
-      setHasAiAssistant(true)
-      setAiAssistantId(data.assistantId || null)
-      setAiSavedAt(Date.now())
-      toast({
-        title: "Voice assistant activated",
-        description: "Industry intake is configured in AI call flow — open it from the bottom nav to edit.",
-      })
-    } finally {
-      setAiSaving(false)
-    }
-  }
-
-  async function handleSaveAiAssistant() {
-    if (!hasAiAssistant) return
-    setAiSaving(true)
-    try {
-      const resolvedVoiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
-      const res = await fetch("/api/ai-assistant", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          greeting: aiConfig.firstMessage,
-          businessName: user?.name || user?.email || "My Business",
-          voiceId: resolvedVoiceId,
-          temperature: aiConfig.temperature,
-          businessHours: aiConfig.businessHours,
-          customInstructions: aiConfig.customInstructions,
-          endCallMessage: aiConfig.endCallMessage,
-          maxDurationSeconds: aiConfig.maxDurationSeconds,
-          silenceTimeoutSeconds: aiConfig.silenceTimeoutSeconds,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({
-          title: "AI update failed",
-          description: data.error || "Could not save assistant changes.",
-          variant: "destructive",
-        })
-        return
-      }
-      setAiSavedAt(Date.now())
-      toast({
-        title: "Voice settings saved",
-        description: "Playbook and intake are edited in AI call flow (bottom nav).",
-      })
-    } finally {
-      setAiSaving(false)
-    }
-  }
-
-  async function previewSelectedVoice() {
-    const voiceId = customVoiceIdOverride.trim() || aiConfig.voiceId
-    const text =
-      aiConfig.firstMessage?.trim() ||
-      "Hello! Thanks for calling. I can help with appointments, messages, and business information."
-    if (!voiceId) {
-      toast({
-        title: "Voice required",
-        description: "Select or enter a voice before previewing.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    stopVoicePreview()
-    setVoicePreviewLoading(true)
-    try {
-      const res = await fetch("/api/ai-assistant/voice-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ voiceId, text }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        const err = String(data.error || "").toLowerCase()
-        const isPlanLimit =
-          err.includes("library") ||
-          err.includes("subscription") ||
-          err.includes("free users") ||
-          err.includes("upgrade")
-        toast({
-          title: isPlanLimit ? "Preview limited" : "Preview unavailable",
-          description: isPlanLimit
-            ? "Live calls still use your saved assistant. Preview needs a supported speech plan for this voice, or try another voice in the list."
-            : data.error || "Try another voice or save and test on a quick call.",
-          variant: "destructive",
-        })
-        return
-      }
-      const blob = await res.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      const audio = new Audio(objectUrl)
-      previewAudioRef.current = audio
-      audio.onended = () => {
-        setVoicePreviewPlaying(false)
-        URL.revokeObjectURL(objectUrl)
-      }
-      audio.onpause = () => setVoicePreviewPlaying(false)
-      setVoicePreviewPlaying(true)
-      void audio.play().catch(() => {
-        setVoicePreviewPlaying(false)
-        URL.revokeObjectURL(objectUrl)
-        toast({
-          title: "Preview blocked",
-          description: "Tap Preview again if your browser blocked playback.",
-          variant: "destructive",
-        })
-      })
-    } catch {
-      toast({
-        title: "Preview failed",
-        description: "Could not generate preview. Try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setVoicePreviewLoading(false)
-    }
-  }
-
-  function stopVoicePreview() {
-    if (previewAudioRef.current) {
-      previewAudioRef.current.pause()
-      previewAudioRef.current.currentTime = 0
-      previewAudioRef.current = null
-    }
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel()
-    }
-    setVoicePreviewPlaying(false)
-  }
-
-  useEffect(() => {
-    return () => stopVoicePreview()
-  }, [])
 
   function startEditMainLine() {
     setMainLineError(null)
@@ -1109,283 +823,23 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* Voice AI: industry intake is on AI flow; here = activate + voice/greeting/limits only */}
+      {/* AI fallback — one screen only (no duplicate controls vs Settings). */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Voice AI (fallback)
-          </h3>
-          {hasAiAssistant ? (
-            <span className="rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
-              Active
-            </span>
-          ) : (
-            <span className="rounded-full bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning">
-              Not active
-            </span>
-          )}
-        </div>
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          AI fallback
+        </h3>
         <div className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
-          {aiConfigLoading ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading AI settings...
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
-                <div className="flex items-start gap-3">
-                  <IconSurface tone="primary">
-                    <Bot className="h-4 w-4" />
-                  </IconSurface>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Industry playbook & intake</p>
-                    <p className="text-xs text-muted-foreground">
-                      Branches (car key vs lockout, emergency vs routine, etc.), fields we collect, SMS leads, and your
-                      busy opening line live in{" "}
-                      <span className="font-medium text-foreground">AI flow</span> — not here.
-                    </p>
-                  </div>
-                </div>
-                <a
-                  href="/dashboard/ai-flow"
-                  className="flex items-center justify-between rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-                >
-                  Open AI call flow
-                  <ChevronRight className="h-4 w-4" />
-                </a>
-              </div>
-
-              <div className="space-y-2 rounded-xl border border-border/70 bg-secondary/25 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Live assistant
-                </p>
-                <p className="text-[11px] text-muted-foreground">
-                  Activate once. After that, use <span className="font-medium text-foreground">Save changes</span> when
-                  you adjust voice or wording below. Always save playbook edits on the AI flow page first.
-                </p>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  {!hasAiAssistant ? (
-                    <button
-                      type="button"
-                      onClick={handleActivateAiAssistant}
-                      disabled={aiSaving}
-                      className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      Activate voice assistant
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleSaveAiAssistant}
-                      disabled={aiSaving}
-                      className="zing-btn-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {aiSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                      Save changes
-                    </button>
-                  )}
-                  {aiSavedAt && <span className="text-[11px] text-success">Saved just now</span>}
-                </div>
-              </div>
-
-              <details className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                <summary className="cursor-pointer text-xs font-semibold text-foreground">
-                  Voice, greeting &amp; call limits
-                </summary>
-                <div className="mt-4 space-y-4 border-t border-border/60 pt-4">
-              <div className="space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Voice &amp; tone
-                </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">Voice</label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Curated voices — each one is tested for live calls. Preview may depend on your speech plan; real
-                    calls always use your saved assistant.
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={aiConfig.voiceId}
-                      onChange={(e) => setAiConfig((prev) => ({ ...prev, voiceId: e.target.value }))}
-                      className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                    >
-                      {aiVoiceOptions.map((voice) => (
-                        <option key={voice.id} value={voice.id}>
-                          {voice.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={previewSelectedVoice}
-                      disabled={voicePreviewLoading}
-                      className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted"
-                    >
-                      {voicePreviewLoading ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span className="max-w-[11rem] truncate">Previewing {previewVoiceLabel}</span>
-                        </span>
-                      ) : (
-                        "Preview"
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={stopVoicePreview}
-                      disabled={!voicePreviewPlaying && !voicePreviewLoading}
-                      className="zing-btn-sm border border-border/70 text-foreground hover:bg-muted disabled:opacity-40"
-                    >
-                      {voicePreviewPlaying ? (
-                        <span className="max-w-[11rem] truncate">Stop {previewVoiceLabel}</span>
-                      ) : (
-                        "Stop"
-                      )}
-                    </button>
-                  </div>
-                  <label className="text-[11px] font-semibold text-muted-foreground">Advanced (optional)</label>
-                  <input
-                    type="text"
-                    value={customVoiceIdOverride}
-                    onChange={(e) => setCustomVoiceIdOverride(e.target.value)}
-                    placeholder="Custom voice ID — only if your provider gave you one"
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Leave blank for normal setup. Custom IDs may not preview here but can still work on live calls
-                    after Save.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">
-                    Tone ({aiConfig.temperature.toFixed(1)})
-                  </label>
-                  <input
-                    type="range"
-                    min={0.1}
-                    max={1}
-                    step={0.1}
-                    value={aiConfig.temperature}
-                    onChange={(e) =>
-                      setAiConfig((prev) => ({ ...prev, temperature: Number(e.target.value) }))
-                    }
-                    className="w-full accent-primary"
-                  />
-                </div>
-              </div>
-              </div>
-
-              <div className="space-y-3 border-t border-border/60 pt-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  What callers hear
-                </p>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-muted-foreground">First greeting</label>
-                <textarea
-                  value={aiConfig.firstMessage}
-                  onChange={(e) => setAiConfig((prev) => ({ ...prev, firstMessage: e.target.value }))}
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  placeholder="Thanks for calling. How can I help?"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-muted-foreground">Business hours text</label>
-                <input
-                  type="text"
-                  value={aiConfig.businessHours}
-                  onChange={(e) => setAiConfig((prev) => ({ ...prev, businessHours: e.target.value }))}
-                  className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  placeholder="Mon-Fri 9am-5pm, closed weekends"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Custom instructions (optional)
-                </label>
-                <textarea
-                  value={aiConfig.customInstructions}
-                  onChange={(e) =>
-                    setAiConfig((prev) => ({ ...prev, customInstructions: e.target.value }))
-                  }
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  placeholder="Example: prioritize collecting appointment requests and mention same-day callbacks."
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-muted-foreground">Goodbye message</label>
-                <input
-                  type="text"
-                  value={aiConfig.endCallMessage}
-                  onChange={(e) => setAiConfig((prev) => ({ ...prev, endCallMessage: e.target.value }))}
-                  className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                  placeholder="Thank you for calling. Have a great day!"
-                />
-              </div>
-              </div>
-
-              <div className="space-y-3 border-t border-border/60 pt-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Call limits
-                </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">Silence timeout (sec)</label>
-                  <input
-                    type="number"
-                    min={10}
-                    max={120}
-                    value={aiConfig.silenceTimeoutSeconds}
-                    onChange={(e) =>
-                      setAiConfig((prev) => ({
-                        ...prev,
-                        silenceTimeoutSeconds: Number(e.target.value || 30),
-                      }))
-                    }
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-muted-foreground">Max call length (sec)</label>
-                  <input
-                    type="number"
-                    min={60}
-                    max={1200}
-                    value={aiConfig.maxDurationSeconds}
-                    onChange={(e) =>
-                      setAiConfig((prev) => ({
-                        ...prev,
-                        maxDurationSeconds: Number(e.target.value || 300),
-                      }))
-                    }
-                    className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-                  />
-                </div>
-              </div>
-              </div>
-                </div>
-              </details>
-
-              {aiAssistantId ? (
-                <details className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
-                  <summary className="cursor-pointer font-medium text-foreground">Technical reference</summary>
-                  <p className="mt-2 break-all">Assistant ID: {aiAssistantId}</p>
-                </details>
-              ) : null}
-
-              <p className="text-[11px] text-muted-foreground">
-                Tip: Set up playbook and intake in <span className="font-medium text-foreground">AI flow</span>, then tune
-                voice and greeting here and tap Save changes.
-              </p>
-            </div>
-          )}
+          <p className="text-xs text-muted-foreground">
+            Playbook, opening line, voice, and call limits all live in{" "}
+            <span className="font-medium text-foreground">AI call flow</span> (bottom nav) — not here.
+          </p>
+          <a
+            href="/dashboard/ai-flow"
+            className="mt-3 flex items-center justify-between rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Open AI call flow
+            <ChevronRight className="h-4 w-4" />
+          </a>
         </div>
       </section>
 

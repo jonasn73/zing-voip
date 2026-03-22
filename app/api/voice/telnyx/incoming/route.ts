@@ -36,6 +36,9 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
   if (debug) console.log(`[Zing] Incoming call: To=${calledNumber} From=${callerNumber} CallSid=${callSid}`)
 
   try {
+    // E.164 for DB + fallback URL — must match routing_config.business_number / phone_numbers.number
+    const businessLineE164 = toE164(calledNumber)
+
     // 1. Resolve owner + per-number routing + receptionist in one DB query.
     const routing = await getIncomingRoutingByNumber(calledNumber)
     if (!routing) {
@@ -84,7 +87,7 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
         // the mid-ring tone change from early answer + handoff.
         answerOnBridge: true,
         timeout: routing.ring_timeout_seconds || 20,
-        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}`,
+        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}&bn=${encodeURIComponent(businessLineE164)}`,
         method: "POST",
       })
       dial.number(recPhone)
@@ -96,7 +99,7 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
         callerId: calledNumber,
         answerOnBridge: true,
         timeout: routing.ring_timeout_seconds || 30,
-        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}&primary=owner`,
+        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}&primary=owner&bn=${encodeURIComponent(businessLineE164)}`,
         method: "POST",
       })
       dial.number(ownerPhone)

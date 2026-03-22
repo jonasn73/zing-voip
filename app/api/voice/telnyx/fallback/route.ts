@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
-import { getRoutingConfig, getUser, updateCallLog } from "@/lib/db"
+import { getRoutingConfig, getRoutingConfigForNumber, getUser, updateCallLog } from "@/lib/db"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -70,6 +70,8 @@ export async function POST(req: NextRequest) {
 
   const callSid = req.nextUrl.searchParams.get("callSid") || ""
   const userId = req.nextUrl.searchParams.get("userId") || ""
+  /** Business line that was dialed (E.164) — dashboard saves fallback_type on this row, not only the default. */
+  const businessLine = req.nextUrl.searchParams.get("bn")?.trim() || ""
   /** Set when the first leg already rang the owner's cell (vs receptionist first). */
   const primaryWasOwner = req.nextUrl.searchParams.get("primary") === "owner"
 
@@ -88,8 +90,19 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const [config, user] = await Promise.all([getRoutingConfig(userId), getUser(userId)])
+    const [config, user] = await Promise.all([
+      businessLine
+        ? getRoutingConfigForNumber(userId, businessLine)
+        : getRoutingConfig(userId),
+      getUser(userId),
+    ])
     const fallbackType = config?.fallback_type || "owner"
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `[Zing] Telnyx fallback resolve: userId=${userId} bn=${businessLine || "(default row)"} fallback_type=${fallbackType} vapi=${Boolean(user?.vapi_assistant_id)}`
+      )
+    }
 
     switch (fallbackType) {
       case "owner": {

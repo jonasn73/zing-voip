@@ -37,13 +37,37 @@ function playIndustryAiUnavailableVoicemail(
   })
 }
 
+/** Twilio/Telnyx TeXML: Dial action sends DialCallDuration (seconds) when the dialed leg ends. */
+function parseDialDurationSeconds(formData: FormData): number {
+  const raw =
+    (formData.get("DialCallDuration") as string) ||
+    (formData.get("DialCallDurationSeconds") as string) ||
+    ""
+  let n = parseInt(String(raw).trim(), 10)
+  if (!Number.isFinite(n) || n < 0) return 0
+  // Some providers send milliseconds for duration-like fields
+  if (n > 600) n = Math.round(n / 1000)
+  return n
+}
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
-  // Telnyx may use DialCallStatus (TwiML-compat) or CallStatus; try both
-  const dialStatus =
+  if (process.env.NODE_ENV !== "production") {
+    const fields: Record<string, string> = {}
+    formData.forEach((v, k) => {
+      fields[k] = String(v)
+    })
+    console.log("[Zing] Telnyx fallback webhook:", JSON.stringify(fields))
+  }
+
+  // Telnyx may use DialCallStatus (TwiML-compat) or CallStatus; normalize like no-answer / no_answer
+  const rawStatus =
     (formData.get("DialCallStatus") as string) ||
     (formData.get("CallStatus") as string) ||
     ""
+  const dialStatus = rawStatus.trim().toLowerCase().replace(/_/g, "-")
+  const dialDurationSec = parseDialDurationSeconds(formData)
+
   const callSid = req.nextUrl.searchParams.get("callSid") || ""
   const userId = req.nextUrl.searchParams.get("userId") || ""
   /** Set when the first leg already rang the owner's cell (vs receptionist first). */
@@ -53,7 +77,11 @@ export async function POST(req: NextRequest) {
   const appUrl = getAppUrl()
 
   try {
-    if (dialStatus === "completed") {
+    // "completed" = dialed party answered, then the bridged leg ended (TwiML semantics).
+    // If they only picked up briefly or declined oddly, duration is often short — still run AI/voicemail.
+    // After a real conversation (long bridged time), end the caller's session so we don't stack AI on top.
+    const answeredAndHadConversation = dialStatus === "completed" && dialDurationSec >= 8
+    if (answeredAndHadConversation) {
       texml.hangup()
       return new NextResponse(texml.toString(), {
         headers: { "Content-Type": "text/xml" },
@@ -143,11 +171,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (callSid && dialStatus !== "completed") {
+    if (callSid && !answeredAndHadConversation) {
       // Fire-and-forget: don't delay TeXML response while updating call logs.
       void updateCallLog(callSid, {
         call_type: fallbackType === "voicemail" ? "voicemail" : "incoming",
-        status: dialStatus,
+        status: dialStatus || rawStatus || "unknown",
       }).catch((logErr) => {
         console.error("[Zing] Call log update failed (continuing):", logErr)
       })

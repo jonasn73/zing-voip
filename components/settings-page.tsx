@@ -870,11 +870,11 @@ export function SettingsPage() {
       {showNumberModal && (
         <>
           <div
-            className="fixed inset-0 z-40 animate-in fade-in-0 bg-background/60 backdrop-blur-sm duration-150"
+            className="fixed inset-0 z-[60] animate-in fade-in-0 bg-background/60 backdrop-blur-sm duration-150"
             onClick={() => setShowNumberModal(false)}
             aria-hidden="true"
           />
-          <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200 [-webkit-overflow-scrolling:touch]">
+          <div className="fixed inset-x-4 top-16 z-[70] mx-auto max-h-[calc(100dvh-5rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200 [-webkit-overflow-scrolling:touch]">
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
               <h3 className="text-sm font-semibold text-foreground">Get a Number</h3>
@@ -1172,11 +1172,11 @@ export function SettingsPage() {
       {routingModalNumber && (
         <>
           <div
-            className="fixed inset-0 z-40 animate-in fade-in-0 bg-background/60 backdrop-blur-sm duration-150"
+            className="fixed inset-0 z-[60] animate-in fade-in-0 bg-background/60 backdrop-blur-sm duration-150"
             onClick={() => setRoutingModalNumber(null)}
             aria-hidden="true"
           />
-          <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200 [-webkit-overflow-scrolling:touch]">
+          <div className="fixed inset-x-4 top-16 z-[70] mx-auto max-h-[calc(100dvh-5rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200 [-webkit-overflow-scrolling:touch]">
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
               <div>

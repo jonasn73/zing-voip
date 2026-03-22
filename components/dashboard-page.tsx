@@ -514,11 +514,11 @@ export function DashboardPage() {
               {showSwitcher && (
                 <>
                   <div
-                    className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
+                    className="fixed inset-0 z-[60] bg-background/60 backdrop-blur-sm"
                     onClick={() => setShowSwitcher(false)}
                     aria-hidden="true"
                   />
-                  <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]">
+                  <div className="fixed inset-x-4 top-16 z-[70] mx-auto max-h-[calc(100dvh-5rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]">
                     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-2.5">
                       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Route calls to
@@ -614,15 +614,15 @@ export function DashboardPage() {
               )}
             </div>
 
-            {/* Fallback Settings Modal */}
+            {/* Fallback Settings Modal — z above header (z-40); top-16 clears app bar + safe area */}
             {showFallbackSettings && (
               <>
                 <div
-                  className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
+                  className="fixed inset-0 z-[60] bg-background/60 backdrop-blur-sm"
                   onClick={() => { setShowFallbackSettings(false); setEditingGreeting(false) }}
                   aria-hidden="true"
                 />
-                <div className="fixed inset-x-4 top-4 z-50 mx-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]">
+                <div className="fixed inset-x-4 top-16 z-[70] mx-auto max-h-[calc(100dvh-5rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]">
                   <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Fallback Settings</h3>

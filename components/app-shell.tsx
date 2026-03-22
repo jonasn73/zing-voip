@@ -97,7 +97,7 @@ export function AppShell({
       {/* min-h-0 is required so this flex child can shrink and show its own scrollbar */}
       <main
         ref={mainRef}
-        className="relative z-0 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background pb-[max(env(safe-area-inset-bottom),0px)]"
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background pb-[max(env(safe-area-inset-bottom),0px)]"
       >
         {children}
       </main>

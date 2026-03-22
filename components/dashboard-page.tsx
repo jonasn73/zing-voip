@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
   Phone,
   PhoneForwarded,
@@ -28,7 +29,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/ui/empty-state"
 import { IconSurface } from "@/components/ui/icon-surface"
-import { DEFAULT_BUSY_GENERIC } from "@/lib/ai-intake-defaults"
+import { AiIntakeFlowPanel } from "@/components/ai-intake-flow-panel"
 
 // Format E.164 to display, e.g. +15025551234 -> (502) 555-1234
 function formatPhoneDisplay(phone: string | undefined | null): string {
@@ -117,6 +118,8 @@ const AI_CAPABILITY_CHIPS = [
 ] as const
 
 export function DashboardPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const { toast } = useToast()
   const [mainLinePhone, setMainLinePhone] = useState<string | null>(null)
   const [receptionists, setReceptionists] = useState<Contact[]>([])
@@ -124,9 +127,6 @@ export function DashboardPage() {
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [fallback, setFallback] = useState<FallbackOption>("owner")
   const [showFallbackSettings, setShowFallbackSettings] = useState(false)
-  const [aiGreeting, setAiGreeting] = useState(DEFAULT_BUSY_GENERIC)
-  const [editingGreeting, setEditingGreeting] = useState(false)
-  const [greetingDraft, setGreetingDraft] = useState("")
 
   // Add receptionist state
   const [showAddReceptionist, setShowAddReceptionist] = useState(false)
@@ -139,8 +139,6 @@ export function DashboardPage() {
 
   // AI assistant state
   const [hasVapiAssistant, setHasVapiAssistant] = useState(false)
-  const [activatingAi, setActivatingAi] = useState(false)
-
   // Business numbers for showing which number routing applies to
   const [businessNumbers, setBusinessNumbers] = useState<{ number: string; status: string }[]>([])
 
@@ -213,16 +211,7 @@ export function DashboardPage() {
               setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
               setFallback(rData.config.fallback_type || "owner")
             }
-            const routingMsg =
-              rData?.config?.ai_greeting && String(rData.config.ai_greeting).trim()
-                ? String(rData.config.ai_greeting)
-                : ""
-            const assistantMsg =
-              aiData?.hasAssistant && aiData.assistantConfig?.firstMessage
-                ? String(aiData.assistantConfig.firstMessage).trim()
-                : ""
             if (aiData?.hasAssistant) setHasVapiAssistant(true)
-            setAiGreeting(assistantMsg || routingMsg || DEFAULT_BUSY_GENERIC)
           })
           .catch(() => {})
       })
@@ -234,6 +223,13 @@ export function DashboardPage() {
     }
   }, [])
 
+  // Bookmark / Settings link: /dashboard?ai=1 opens fallback sheet (playbook lives here now).
+  useEffect(() => {
+    if (searchParams.get("ai") !== "1") return
+    setShowFallbackSettings(true)
+    router.replace("/dashboard", { scroll: false })
+  }, [searchParams, router])
+
   const ownerPhoneDisplay = formatPhoneDisplay(mainLinePhone)
   const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) || null
   const isRoutingToOwner = !selectedReceptionist
@@ -242,7 +238,7 @@ export function DashboardPage() {
   const isSetupComplete = hasBusinessNumbers && (hasReceptionists || Boolean(mainLinePhone))
 
   // Save routing for the primary business number (or default if none)
-  function saveRouting(updates: Record<string, unknown>) {
+  function saveRouting(updates: Record<string, unknown>, opts?: { quiet?: boolean }) {
     const primaryNumber = businessNumbers[0]?.number || null
     fetch("/api/routing", {
       method: "PUT",
@@ -251,7 +247,7 @@ export function DashboardPage() {
       body: JSON.stringify({ ...updates, business_number: primaryNumber }),
     })
       .then((res) => {
-        if (res.ok) {
+        if (res.ok && !opts?.quiet) {
           toast({
             title: "Routing updated",
             description: "Incoming calls will follow your new routing rule.",
@@ -333,35 +329,6 @@ export function DashboardPage() {
       }
     } catch { /* silent */ }
     setDeletingRecId(null)
-  }
-
-  async function handleActivateAi() {
-    setActivatingAi(true)
-    try {
-      const res = await fetch("/api/ai-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          greeting: aiGreeting || DEFAULT_BUSY_GENERIC,
-        }),
-      })
-      if (res.ok) setHasVapiAssistant(true)
-    } catch { /* silent */ }
-    setActivatingAi(false)
-  }
-
-  /** Keep Vapi first message in sync when the user edits the opening line here */
-  async function syncLiveAssistantGreeting(text: string) {
-    if (!hasVapiAssistant) return
-    try {
-      await fetch("/api/ai-assistant", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ greeting: text }),
-      })
-    } catch { /* non-fatal */ }
   }
 
   return (
@@ -619,10 +586,15 @@ export function DashboardPage() {
               <>
                 <div
                   className="fixed inset-0 z-[60] bg-background/60 backdrop-blur-sm"
-                  onClick={() => { setShowFallbackSettings(false); setEditingGreeting(false) }}
+                  onClick={() => setShowFallbackSettings(false)}
                   aria-hidden="true"
                 />
-                <div className="fixed inset-x-4 top-16 z-[70] mx-auto max-h-[calc(100dvh-5rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]">
+                <div
+                  className={cn(
+                    "fixed inset-x-4 top-16 z-[70] mx-auto max-h-[calc(100dvh-5rem)] w-full overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl [-webkit-overflow-scrolling:touch]",
+                    fallback === "ai" ? "max-w-md" : "max-w-sm"
+                  )}
+                >
                   <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Fallback Settings</h3>
@@ -633,7 +605,7 @@ export function DashboardPage() {
                       </p>
                     </div>
                     <button
-                      onClick={() => { setShowFallbackSettings(false); setEditingGreeting(false) }}
+                      onClick={() => setShowFallbackSettings(false)}
                       className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
                       aria-label="Close fallback settings"
                     >
@@ -678,92 +650,10 @@ export function DashboardPage() {
                     })}
                   </div>
 
-                  {/* AI Config -- only visible when AI is selected */}
+                  {/* AI: playbook, opening line, voice — same sheet (no separate AI tab). */}
                   {fallback === "ai" && (
-                    <div className="border-t border-border px-4 py-3">
-                      {!hasVapiAssistant && (
-                        <div className="mb-3 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5">
-                          <p className="text-[11px] font-medium text-foreground">Activate voice AI</p>
-                          <p className="mt-1 text-[10px] text-muted-foreground">
-                            Turn on the live assistant in Settings so callers get your industry script and lead capture — not just the basic phone tree.
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <a
-                              href="/dashboard/ai-flow"
-                              className="inline-flex rounded-lg bg-primary px-3 py-1.5 text-[10px] font-semibold text-primary-foreground hover:bg-primary/90"
-                            >
-                              Open AI call flow
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => void handleActivateAi()}
-                              disabled={activatingAi}
-                              className="inline-flex rounded-lg border border-border px-3 py-1.5 text-[10px] font-semibold text-foreground hover:bg-secondary disabled:opacity-50"
-                            >
-                              {activatingAi ? "Working…" : "Quick activate"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      <div className="mb-2 flex items-center justify-between">
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <Bot className="h-4 w-4 text-chart-4" />
-                            <span className="text-xs font-semibold text-foreground">Opening line (first thing AI says)</span>
-                          </div>
-                          <p className="pl-6 text-[10px] text-muted-foreground">
-                            High-call-volume tone — not &quot;we&apos;re closed.&quot; Syncs to your live assistant when it&apos;s on.
-                          </p>
-                        </div>
-                        {!editingGreeting && (
-                          <button
-                            type="button"
-                            onClick={() => { setEditingGreeting(true); setGreetingDraft(aiGreeting) }}
-                            className="shrink-0 text-[11px] font-medium text-primary hover:underline"
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                      {editingGreeting ? (
-                        <div className="flex flex-col gap-2">
-                          <textarea
-                            value={greetingDraft}
-                            onChange={(e) => setGreetingDraft(e.target.value)}
-                            rows={5}
-                            className="w-full resize-none rounded-lg border border-border bg-secondary px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                            placeholder="Thanks for calling — we're helping other customers…"
-                            autoFocus
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = greetingDraft.trim() || DEFAULT_BUSY_GENERIC
-                                setAiGreeting(next)
-                                setEditingGreeting(false)
-                                saveRouting({ ai_greeting: next })
-                                void syncLiveAssistantGreeting(next)
-                              }}
-                              className="zing-btn-sm flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingGreeting(false)}
-                              className="zing-btn-sm bg-secondary text-muted-foreground hover:text-foreground"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="rounded-lg bg-secondary px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                          {'"'}{aiGreeting}{'"'}
-                        </p>
-                      )}
-                      <div className="mt-2.5 flex flex-col gap-1.5">
+                    <div className="space-y-3 border-t border-border px-4 py-3">
+                      <div className="flex flex-col gap-1.5">
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                           With voice AI on
                         </p>
@@ -777,13 +667,14 @@ export function DashboardPage() {
                             </span>
                           ))}
                         </div>
-                        <a
-                          href="/dashboard/ai-flow"
-                          className="mt-1 text-[10px] font-medium text-primary underline-offset-2 hover:underline"
-                        >
-                          Configure playbook, branches &amp; intake → AI flow
-                        </a>
                       </div>
+                      <AiIntakeFlowPanel
+                        variant="modal"
+                        onHasAssistantChange={(active) => setHasVapiAssistant(active)}
+                        onBusyGreetingSavedToRouting={(text) =>
+                          saveRouting({ ai_greeting: text }, { quiet: true })
+                        }
+                      />
                     </div>
                   )}
                 </div>
@@ -928,7 +819,8 @@ export function DashboardPage() {
               <div className="flex-1">
                 <p className="text-sm font-medium text-foreground">AI Receptionist Active</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Voice AI when nobody picks up — industry intake, lead capture, optional SMS. Tune in AI call flow.
+                  Voice AI when nobody picks up — industry intake, lead capture, optional SMS. Tune via{" "}
+                  <span className="font-medium text-foreground">If no answer</span> → AI on this page.
                 </p>
               </div>
               <span className="rounded-full bg-chart-4/10 px-2 py-0.5 text-[10px] font-semibold text-chart-4">
@@ -945,15 +837,10 @@ export function DashboardPage() {
             </p>
             <button
               type="button"
-              onClick={() => void handleActivateAi()}
-              disabled={activatingAi}
-              className="mt-3 rounded-lg bg-chart-4 px-5 py-2 text-xs font-semibold text-white hover:bg-chart-4/90 disabled:opacity-50"
+              onClick={() => setShowFallbackSettings(true)}
+              className="mt-3 rounded-lg bg-chart-4 px-5 py-2 text-xs font-semibold text-white hover:bg-chart-4/90"
             >
-              {activatingAi ? (
-                <span className="flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />Setting up…</span>
-              ) : (
-                "Activate AI Assistant"
-              )}
+              Open fallback settings
             </button>
           </div>
         )}

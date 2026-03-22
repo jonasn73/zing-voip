@@ -830,14 +830,15 @@ export function SettingsPage() {
         </h3>
         <div className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
           <p className="text-xs text-muted-foreground">
-            Playbook, opening line, voice, and call limits all live in{" "}
-            <span className="font-medium text-foreground">AI call flow</span> (bottom nav) — not here.
+            Playbook, opening line, voice, and call limits are under{" "}
+            <span className="font-medium text-foreground">Routing</span> → tap{" "}
+            <span className="font-medium text-foreground">If no answer</span> → choose AI receptionist — not here.
           </p>
           <a
-            href="/dashboard/ai-flow"
+            href="/dashboard?ai=1"
             className="mt-3 flex items-center justify-between rounded-xl bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Open AI call flow
+            Open AI fallback setup
             <ChevronRight className="h-4 w-4" />
           </a>
         </div>

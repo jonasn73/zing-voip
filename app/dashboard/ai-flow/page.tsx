@@ -1,5 +1,6 @@
-import { AiIntakeFlowPage } from "@/components/ai-intake-flow-page"
+import { redirect } from "next/navigation"
 
+/** Old “AI flow” tab URL — open Routing and the fallback sheet instead. */
 export default function AiFlowRoute() {
-  return <AiIntakeFlowPage />
+  redirect("/dashboard?ai=1")
 }

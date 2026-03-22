@@ -12,7 +12,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { AppShell, type PageId } from "@/components/app-shell"
 import { DashboardPageView } from "@/components/dashboard-page-view"
 
-const VALID_PAGES: PageId[] = ["dashboard", "ai-flow", "activity", "leads", "contacts", "analytics", "settings"]
+const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "contacts", "analytics", "settings"]
 
 function getActivePage(pathname: string): PageId {
   const segment = pathname.replace(/^\/dashboard\/?/, "").trim() || "dashboard"

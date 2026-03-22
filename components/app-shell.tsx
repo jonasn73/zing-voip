@@ -10,13 +10,11 @@ import {
   Zap,
   ClipboardList,
   Inbox,
-  Bot,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { id: "dashboard", label: "Routing", icon: Zap },
-  { id: "ai-flow", label: "AI flow", icon: Bot },
   { id: "activity", label: "Activity", icon: ClipboardList },
   { id: "leads", label: "Leads", icon: Inbox },
   { id: "contacts", label: "Team", icon: Users },
@@ -29,7 +27,6 @@ export type PageId = (typeof navItems)[number]["id"]
 /** Href for each tab — use Link (not router.push) so App Router always swaps the page under this client layout. */
 const PAGE_HREF: Record<PageId, string> = {
   dashboard: "/dashboard",
-  "ai-flow": "/dashboard/ai-flow",
   activity: "/dashboard/activity",
   leads: "/dashboard/leads",
   contacts: "/dashboard/contacts",

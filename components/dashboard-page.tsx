@@ -490,12 +490,13 @@ export function DashboardPage() {
                 {isRoutingToOwner ? ownerPhoneDisplay : formatPhoneDisplay(selectedReceptionist!.phone)}
               </p>
 
-              {/* Fallback setting */}
-              {selectedReceptionist && (() => {
+              {/* Fallback when primary target does not answer (receptionist OR your phone) */}
+              {(() => {
                 const activeFallback = fallbackOptions.find((f) => f.id === fallback)!
                 const FallbackIcon = activeFallback.icon
                 return (
                   <button
+                    type="button"
                     onClick={() => setShowFallbackSettings(true)}
                     className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 transition-all hover:bg-secondary active:scale-[0.99]"
                   >
@@ -626,7 +627,9 @@ export function DashboardPage() {
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Fallback Settings</h3>
                       <p className="text-[11px] text-muted-foreground">
-                        What happens if {selectedReceptionist?.name.split(" ")[0]} doesn{"'"}t answer
+                        {isRoutingToOwner
+                          ? "What happens if your phone does not answer"
+                          : `What happens if ${selectedReceptionist?.name.split(" ")[0]} doesn't answer`}
                       </p>
                     </div>
                     <button

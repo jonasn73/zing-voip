@@ -91,11 +91,13 @@ async function handleIncomingCall(calledNumber: string, callerNumber: string, ca
     } else {
       const ownerPhone = toE164(routing.owner_phone)
       if (debug) console.log(`[Zing] No receptionist assigned, routing to owner: ${ownerPhone}`)
+      // Same as receptionist path: if your phone does not answer, POST to fallback so AI / voicemail / second leg can run.
       const dial = texml.dial({
         callerId: calledNumber,
-        // Keep ringback behavior consistent until the owner answers.
         answerOnBridge: true,
-        timeout: 30,
+        timeout: routing.ring_timeout_seconds || 30,
+        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}&primary=owner`,
+        method: "POST",
       })
       dial.number(ownerPhone)
     }

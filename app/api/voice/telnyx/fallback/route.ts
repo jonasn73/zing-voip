@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
     ""
   const callSid = req.nextUrl.searchParams.get("callSid") || ""
   const userId = req.nextUrl.searchParams.get("userId") || ""
+  /** Set when the first leg already rang the owner's cell (vs receptionist first). */
+  const primaryWasOwner = req.nextUrl.searchParams.get("primary") === "owner"
 
   const texml = new VoiceResponse()
   const appUrl = getAppUrl()
@@ -63,6 +65,19 @@ export async function POST(req: NextRequest) {
 
     switch (fallbackType) {
       case "owner": {
+        // First leg was already your phone — do not dial the same number again (would loop).
+        if (primaryWasOwner) {
+          const greeting =
+            config?.ai_greeting?.trim() || "Sorry we could not reach you. Please leave a message after the tone."
+          texml.say(greeting)
+          texml.record({
+            maxLength: 120,
+            transcribe: true,
+            recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
+            action: `${appUrl}/api/voice/telnyx/voicemail-complete?userId=${userId}&callSid=${callSid}`,
+          })
+          break
+        }
         if (user) {
           const calledNum = (formData.get("To") as string) || ""
           const dial = texml.dial({

@@ -6,7 +6,14 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
-import { getRoutingConfig, getRoutingConfigForNumber, getUser, updateCallLog } from "@/lib/db"
+import type { FallbackType } from "@/lib/types"
+import {
+  getRoutingConfig,
+  getRoutingConfigForNumber,
+  getIncomingRoutingByNumber,
+  getUser,
+  updateCallLog,
+} from "@/lib/db"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -17,6 +24,28 @@ function toE164(phone: string): string {
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
   if (phone.startsWith("+")) return phone
   return `+${digits}`
+}
+
+function normalizeFallbackType(v: string | undefined | null): FallbackType {
+  const s = (v || "owner").toLowerCase().trim()
+  if (s === "ai" || s === "voicemail" || s === "owner") return s
+  return "owner"
+}
+
+/**
+ * Telnyx sometimes POSTs to the Dial `action` URL without preserving query params (`bn` lost).
+ * The parent inbound leg usually still includes the business DID in `To` (TwiML-compatible).
+ */
+function resolveBusinessLineE164(bnFromQuery: string, formData: FormData): string {
+  const q = bnFromQuery.trim()
+  if (q) return toE164(q)
+  const keys = ["To", "Called", "called", "OriginalCalledNumber", "DialedNumber"]
+  for (const k of keys) {
+    const raw = formData.get(k)
+    const s = raw != null ? String(raw).trim() : ""
+    if (s.replace(/\D/g, "").length >= 10) return toE164(s)
+  }
+  return ""
 }
 
 /** Zing no longer uses the legacy TeXML + LLM loop; if Vapi cannot run, send callers to voicemail. */
@@ -70,8 +99,8 @@ export async function POST(req: NextRequest) {
 
   const callSid = req.nextUrl.searchParams.get("callSid") || ""
   const userId = req.nextUrl.searchParams.get("userId") || ""
-  /** Business line that was dialed (E.164) — dashboard saves fallback_type on this row, not only the default. */
-  const businessLine = req.nextUrl.searchParams.get("bn")?.trim() || ""
+  const bnFromQuery = req.nextUrl.searchParams.get("bn")?.trim() || ""
+  const businessLineE164 = resolveBusinessLineE164(bnFromQuery, formData)
   /** Set when the first leg already rang the owner's cell (vs receptionist first). */
   const primaryWasOwner = req.nextUrl.searchParams.get("primary") === "owner"
 
@@ -91,18 +120,36 @@ export async function POST(req: NextRequest) {
     }
 
     const [config, user] = await Promise.all([
-      businessLine
-        ? getRoutingConfigForNumber(userId, businessLine)
+      businessLineE164
+        ? getRoutingConfigForNumber(userId, businessLineE164)
         : getRoutingConfig(userId),
       getUser(userId),
     ])
-    const fallbackType = config?.fallback_type || "owner"
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log(
-        `[Zing] Telnyx fallback resolve: userId=${userId} bn=${businessLine || "(default row)"} fallback_type=${fallbackType} vapi=${Boolean(user?.vapi_assistant_id)}`
-      )
-    }
+    // Same SQL path as /incoming TeXML — authoritative fallback_type (per-number row + default).
+    const liveRouting =
+      businessLineE164.length > 0
+        ? await getIncomingRoutingByNumber(businessLineE164, { bypassCache: true })
+        : null
+
+    const fallbackType = normalizeFallbackType(
+      liveRouting && liveRouting.user_id === userId
+        ? liveRouting.fallback_type
+        : config?.fallback_type
+    )
+
+    console.log(
+      JSON.stringify({
+        zing: "telnyx-fallback",
+        userId,
+        businessLineE164: businessLineE164 || null,
+        hadBnQuery: Boolean(bnFromQuery),
+        toField: String(formData.get("To") || ""),
+        fallbackType,
+        hasVapiAssistant: Boolean(user?.vapi_assistant_id),
+        dialStatus: dialStatus || rawStatus || null,
+      })
+    )
 
     switch (fallbackType) {
       case "owner": {

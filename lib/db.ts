@@ -91,6 +91,11 @@ type IncomingRoutingByNumber =
 const incomingRoutingCache = new Map<string, { expiresAt: number; value: IncomingRoutingByNumber }>()
 const INCOMING_ROUTING_CACHE_TTL_MS = 10_000
 
+/** Clear cached routing so voice webhooks see updated fallback_type immediately after dashboard saves. */
+export function clearIncomingRoutingCache(): void {
+  incomingRoutingCache.clear()
+}
+
 // Normalize to E.164 (+1XXXXXXXXXX) so it matches how we store numbers in `phone_numbers.number`.
 function normalizeToE164(phone: string): string {
   const digits = phone.replace(/\D/g, "")
@@ -153,6 +158,7 @@ export async function updateRoutingConfig(
         INSERT INTO routing_config (id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
         VALUES (${crypto.randomUUID()}, ${userId}, ${bn}, ${updates.selected_receptionist_id ?? null}, ${updates.fallback_type ?? "owner"}, ${updates.ai_greeting ?? ""}, ${updates.ring_timeout_seconds ?? 30}, now())
       `
+      clearIncomingRoutingCache()
       return
     }
   }
@@ -174,12 +180,15 @@ export async function updateRoutingConfig(
   if (updates.ring_timeout_seconds !== undefined) {
     await sql`UPDATE routing_config SET ring_timeout_seconds = ${updates.ring_timeout_seconds}, updated_at = now() WHERE ${whereClause}`
   }
+
+  clearIncomingRoutingCache()
 }
 
 // Delete a per-number routing config (reverts to default)
 export async function deleteRoutingConfigForNumber(userId: string, businessNumber: string): Promise<void> {
   const sql = getSql()
   await sql`DELETE FROM routing_config WHERE user_id = ${userId} AND business_number = ${businessNumber}`
+  clearIncomingRoutingCache()
 }
 
 // Parse a receptionists row from the database
@@ -395,7 +404,10 @@ export async function getUserByPhoneNumber(toNumber: string): Promise<User | nul
 
 // Fast routing lookup for incoming voice webhooks.
 // Returns user + resolved routing + receptionist in one query to reduce latency.
-export async function getIncomingRoutingByNumber(toNumber: string): Promise<{
+export async function getIncomingRoutingByNumber(
+  toNumber: string,
+  options?: { bypassCache?: boolean }
+): Promise<{
   user_id: string
   user_name: string
   owner_phone: string
@@ -407,9 +419,11 @@ export async function getIncomingRoutingByNumber(toNumber: string): Promise<{
 } | null> {
   const normalized = normalizeToE164(toNumber)
 
-  // Return cached result if it is still fresh.
-  const cached = incomingRoutingCache.get(normalized)
-  if (cached && cached.expiresAt > Date.now()) return cached.value
+  // Return cached result if it is still fresh (skip when forcing fresh read, e.g. Telnyx fallback webhook).
+  if (!options?.bypassCache) {
+    const cached = incomingRoutingCache.get(normalized)
+    if (cached && cached.expiresAt > Date.now()) return cached.value
+  }
 
   const sql = getSql()
   const rows = await sql`

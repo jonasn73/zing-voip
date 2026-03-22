@@ -6,7 +6,7 @@
 //
 // Required env vars:
 //   VAPI_API_KEY     - your Vapi private API key
-//   VAPI_PHONE_ID    - (optional) Vapi phone number ID for outbound
+//   VAPI_PHONE_ID    - Required for AI fallback: Vapi phone-number resource id (phoneNumberId) for POST /call outbound to the customer.
 //
 // Optional:
 //   ZING_AI_LLM_MODEL - OpenAI model id (default: gpt-4o)
@@ -289,17 +289,35 @@ export async function updateVapiAssistant(
   }
 }
 
+function normalizeCustomerE164(phone: string): string {
+  const t = phone.trim()
+  const digits = t.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (t.startsWith("+")) return t
+  return digits ? `+${digits}` : ""
+}
+
 export async function createVapiCall(params: {
   assistantId: string
   customerNumber: string
 }): Promise<{ callId: string; status: string }> {
-  const call = await vapiFetch("/call/phone", {
+  const phoneNumberId = process.env.VAPI_PHONE_ID?.trim()
+  if (!phoneNumberId) {
+    throw new Error(
+      "VAPI_PHONE_ID is not set — Vapi requires a phoneNumberId to place outbound calls (AI fallback). In Vapi → Phone numbers, copy the number ID into Vercel env VAPI_PHONE_ID."
+    )
+  }
+  const number = normalizeCustomerE164(params.customerNumber)
+  if (!number || number.length < 8) {
+    throw new Error(`Invalid customer number for Vapi outbound: "${params.customerNumber}"`)
+  }
+  const call = await vapiFetch("/call", {
     method: "POST",
     body: JSON.stringify({
       assistantId: params.assistantId,
-      customer: {
-        number: params.customerNumber,
-      },
+      phoneNumberId,
+      customer: { number },
     }),
   })
 

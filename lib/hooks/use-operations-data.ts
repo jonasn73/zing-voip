@@ -147,7 +147,13 @@ function normalizeCallType(value: unknown): UiCallType {
   return "incoming"
 }
 
-export function useOperationsData() {
+export type UseOperationsDataOptions = {
+  /** When set (ms), refetches calls + quality on this interval, ignoring the 45s in-memory cache TTL. */
+  refetchIntervalMs?: number
+}
+
+export function useOperationsData(options?: UseOperationsDataOptions) {
+  const refetchIntervalMs = options?.refetchIntervalMs
   const seed = operationsCache
   const [calls, setCalls] = useState<UiCallRecord[]>(() => seed?.calls ?? [])
   const [quality, setQuality] = useState<VoiceQualitySummary | null>(() => seed?.quality ?? null)
@@ -172,9 +178,9 @@ export function useOperationsData() {
   useEffect(() => {
     let mounted = true
 
-    async function loadData() {
+    async function loadData(bypassCache: boolean) {
       const cached = operationsCache
-      if (cached && cacheIsFresh(cached)) {
+      if (!bypassCache && cached && cacheIsFresh(cached)) {
         if (!mounted) return
         setCalls(cached.calls)
         setQuality(cached.quality)
@@ -254,11 +260,20 @@ export function useOperationsData() {
       }
     }
 
-    void loadData()
+    void loadData(false)
+
+    let intervalId: ReturnType<typeof setInterval> | undefined
+    if (typeof refetchIntervalMs === "number" && refetchIntervalMs > 0) {
+      intervalId = setInterval(() => {
+        void loadData(true)
+      }, refetchIntervalMs)
+    }
+
     return () => {
       mounted = false
+      if (intervalId) clearInterval(intervalId)
     }
-  }, [])
+  }, [refetchIntervalMs])
 
   return { calls, quality, insights, loading, loadError, refreshing }
 }

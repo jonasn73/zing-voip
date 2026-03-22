@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import {
   Phone,
@@ -30,6 +30,7 @@ import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/ui/empty-state"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { AiIntakeFlowPanel } from "@/components/ai-intake-flow-panel"
+import { useOperationsData } from "@/lib/hooks/use-operations-data"
 
 // Format E.164 to display, e.g. +15025551234 -> (502) 555-1234
 function formatPhoneDisplay(phone: string | undefined | null): string {
@@ -38,6 +39,27 @@ function formatPhoneDisplay(phone: string | undefined | null): string {
   if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
   if (digits.length === 11 && digits.startsWith("1")) return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
   return phone
+}
+
+/** Turns stored duration (seconds) into "m:ss" for the recent-calls list; returns null if no duration. */
+function formatDurationMmSs(seconds: number): string | null {
+  if (seconds == null || !(seconds > 0)) return null
+  const whole = Math.max(0, Math.floor(seconds))
+  const m = Math.floor(whole / 60)
+  const s = whole % 60
+  return `${m}:${String(s).padStart(2, "0")}`
+}
+
+/** Hides raw UUIDs in "routed to" when the API only has a receptionist id, not a display name. */
+function looksLikeUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(s).trim())
+}
+
+/** Returns a human label for routing, or null when we should not show "Routed to …". */
+function displayRoutedTo(routedTo: string): string | null {
+  if (!routedTo || routedTo === "Owner") return null
+  if (looksLikeUuid(routedTo)) return null
+  return routedTo
 }
 
 interface Contact {
@@ -56,36 +78,6 @@ interface CallStat {
   bgColor: string
   suffix?: string
 }
-
-const callStats: CallStat[] = [
-  { label: "Total Calls", value: 147, icon: Phone, color: "text-primary", bgColor: "bg-primary/10" },
-  { label: "Incoming", value: 89, icon: PhoneIncoming, color: "text-success", bgColor: "bg-success/10" },
-  { label: "Outgoing", value: 42, icon: PhoneOutgoing, color: "text-chart-2", bgColor: "bg-chart-2/10" },
-  { label: "Missed", value: 16, icon: PhoneMissed, color: "text-destructive", bgColor: "bg-destructive/10" },
-]
-
-const totalTalkTime = { hours: 12, minutes: 34 }
-
-interface RecentCall {
-  id: string
-  number: string
-  callerName: string | null
-  type: "incoming" | "outgoing" | "missed" | "voicemail"
-  time: string
-  duration: string | null
-  routedTo: string | null
-}
-
-const recentCalls: RecentCall[] = [
-  { id: "r1", number: "(555) 901-2345", callerName: "David Chen", type: "incoming", time: "2 min ago", duration: "4:12", routedTo: "Sarah Miller" },
-  { id: "r2", number: "(555) 678-1234", callerName: null, type: "missed", time: "18 min ago", duration: null, routedTo: null },
-  { id: "r3", number: "(555) 432-8765", callerName: "Apex Industries", type: "incoming", time: "45 min ago", duration: "11:03", routedTo: "Sarah Miller" },
-  { id: "r4", number: "(555) 222-9988", callerName: null, type: "voicemail", time: "1 hr ago", duration: "0:42", routedTo: null },
-  { id: "r5", number: "(555) 111-4455", callerName: "Lisa Park", type: "outgoing", time: "1.5 hr ago", duration: "7:28", routedTo: null },
-  { id: "r6", number: "(555) 876-5432", callerName: "Metro Supplies", type: "incoming", time: "2 hr ago", duration: "3:55", routedTo: "James Wilson" },
-  { id: "r7", number: "(555) 333-7766", callerName: null, type: "missed", time: "3 hr ago", duration: null, routedTo: null },
-  { id: "r8", number: "(555) 999-1122", callerName: "Amy Torres", type: "incoming", time: "4 hr ago", duration: "8:16", routedTo: "Sarah Miller" },
-]
 
 const callTypeConfig = {
   incoming: { icon: ArrowDownLeft, color: "text-success", label: "Incoming" },
@@ -121,6 +113,32 @@ export function DashboardPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { toast } = useToast()
+  // Loads real rows from GET /api/calls (same source as Activity); polls every 25s so new calls appear without refresh.
+  const { calls, quality, loading: opsLoading, loadError: opsLoadError, refreshing: opsRefreshing } = useOperationsData({
+    refetchIntervalMs: 25_000,
+  })
+  // Counts by type for the four stat tiles (from the same loaded call list, up to API limit).
+  const callStatsComputed = useMemo((): CallStat[] => {
+    const incoming = calls.filter((c) => c.type === "incoming").length
+    const outgoing = calls.filter((c) => c.type === "outgoing").length
+    const missed = calls.filter((c) => c.type === "missed").length
+    return [
+      { label: "Total Calls", value: calls.length, icon: Phone, color: "text-primary", bgColor: "bg-primary/10" },
+      { label: "Incoming", value: incoming, icon: PhoneIncoming, color: "text-success", bgColor: "bg-success/10" },
+      { label: "Outgoing", value: outgoing, icon: PhoneOutgoing, color: "text-chart-2", bgColor: "bg-chart-2/10" },
+      { label: "Missed", value: missed, icon: PhoneMissed, color: "text-destructive", bgColor: "bg-destructive/10" },
+    ]
+  }, [calls])
+  // Sum talk time from duration_seconds on each log row for the summary card.
+  const totalTalkTimeComputed = useMemo(() => {
+    const totalSeconds = calls.reduce((sum, c) => sum + (c.durationSeconds || 0), 0)
+    return { hours: Math.floor(totalSeconds / 3600), minutes: Math.floor((totalSeconds % 3600) / 60) }
+  }, [calls])
+  // At most 10 rows for the dashboard list; full history stays on Activity.
+  const recentCallsSlice = useMemo(() => calls.slice(0, 10), [calls])
+  // Used in the subtitle next to "Recent Calls".
+  const todayCallCount = useMemo(() => calls.filter((c) => c.date === "Today").length, [calls])
+
   const [mainLinePhone, setMainLinePhone] = useState<string | null>(null)
   const [receptionists, setReceptionists] = useState<Contact[]>([])
   const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(null)
@@ -852,10 +870,15 @@ export function DashboardPage() {
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Call Stats
           </h3>
-          <span className="text-xs text-muted-foreground">This month</span>
+          <span className="text-xs text-muted-foreground">
+            {opsRefreshing ? "Updating…" : "From your call log"}
+          </span>
         </div>
+        {opsLoadError ? (
+          <p className="mb-2 text-xs text-destructive">{opsLoadError}</p>
+        ) : null}
         <div className="grid grid-cols-2 gap-2">
-          {callStats.map((stat) => {
+          {callStatsComputed.map((stat) => {
             const Icon = stat.icon
             return (
               <div
@@ -882,22 +905,26 @@ export function DashboardPage() {
             </IconSurface>
             <div>
               <p className="text-sm font-medium text-foreground">Total Talk Time</p>
-              <p className="text-[11px] text-muted-foreground">All calls this month</p>
+              <p className="text-[11px] text-muted-foreground">Sum of durations in loaded calls</p>
             </div>
           </div>
           <div className="flex items-baseline gap-1 text-right">
-            <span className="text-xl font-bold text-foreground">{totalTalkTime.hours}</span>
+            <span className="text-xl font-bold text-foreground">{totalTalkTimeComputed.hours}</span>
             <span className="text-xs text-muted-foreground">hr</span>
-            <span className="text-xl font-bold text-foreground">{totalTalkTime.minutes}</span>
+            <span className="text-xl font-bold text-foreground">{totalTalkTimeComputed.minutes}</span>
             <span className="text-xs text-muted-foreground">min</span>
           </div>
         </div>
 
-        {/* Trend */}
-        <div className="mt-2 flex items-center gap-2 rounded-lg bg-success/5 px-3 py-2">
-          <TrendingUp className="h-3.5 w-3.5 text-success" />
-          <span className="text-xs text-success">+12% more calls vs last month</span>
-        </div>
+        {/* Voice quality summary from /api/voice/quality when available (no fake trend %). */}
+        {quality && quality.total_calls > 0 ? (
+          <div className="mt-2 flex items-center gap-2 rounded-lg bg-success/5 px-3 py-2">
+            <TrendingUp className="h-3.5 w-3.5 text-success" />
+            <span className="text-xs text-success">
+              {quality.answer_rate_percent}% answered (last 7 days) — see Activity for details
+            </span>
+          </div>
+        ) : null}
       </section>
 
       {/* Recent Calls */}
@@ -906,60 +933,83 @@ export function DashboardPage() {
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Recent Calls
           </h3>
-          <span className="text-xs text-muted-foreground">{recentCalls.length} calls today</span>
+          <span className="text-xs text-muted-foreground">
+            {opsLoading && calls.length === 0
+              ? "Loading…"
+              : `${recentCallsSlice.length} shown · ${todayCallCount} today`}
+          </span>
         </div>
         <div className="flex flex-col gap-1.5">
-          {recentCalls.map((call) => {
-            const config = callTypeConfig[call.type]
-            const TypeIcon = config.icon
-            return (
-              <div
-                key={call.id}
-                className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full",
-                    call.type === "missed" ? "bg-destructive/10" :
-                    call.type === "voicemail" ? "bg-warning/10" :
-                    call.type === "outgoing" ? "bg-chart-2/10" :
-                    "bg-success/10"
-                  )}>
-                    <TypeIcon className={cn("h-4 w-4", config.color)} />
-                  </div>
-                  <div className="flex flex-col">
-                    <p className="text-sm font-medium text-foreground leading-tight">
-                      {call.callerName || call.number}
-                    </p>
-                    <div className="flex items-center gap-1.5">
-                      {call.callerName && (
-                        <span className="text-[11px] text-muted-foreground">{call.number}</span>
+          {opsLoading && calls.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-10 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">Loading call history…</span>
+            </div>
+          ) : recentCallsSlice.length === 0 ? (
+            <EmptyState
+              title="No calls yet"
+              description="When your business line receives or places calls, they will show here and on Activity."
+            />
+          ) : (
+            recentCallsSlice.map((call) => {
+              const config = callTypeConfig[call.type]
+              const TypeIcon = config.icon
+              const routed = displayRoutedTo(call.routedTo)
+              const durationLabel = formatDurationMmSs(call.durationSeconds)
+              const primaryLine = call.callerName !== "Unknown Caller" ? call.callerName : call.callerNumber
+              const showNumberOnSecondLine = call.callerName !== "Unknown Caller"
+              return (
+                <div
+                  key={call.id}
+                  className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-full",
+                        call.type === "missed"
+                          ? "bg-destructive/10"
+                          : call.type === "voicemail"
+                            ? "bg-warning/10"
+                            : call.type === "outgoing"
+                              ? "bg-chart-2/10"
+                              : "bg-success/10"
                       )}
-                      {call.callerName && call.routedTo && (
-                        <span className="text-[11px] text-muted-foreground">{"·"}</span>
-                      )}
-                      {call.routedTo && (
-                        <span className="text-[11px] text-primary/70">
-                          {"Routed to " + call.routedTo}
-                        </span>
-                      )}
+                    >
+                      <TypeIcon className={cn("h-4 w-4", config.color)} />
+                    </div>
+                    <div className="flex flex-col">
+                      <p className="text-sm font-medium text-foreground leading-tight">{primaryLine}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {showNumberOnSecondLine ? (
+                          <span className="text-[11px] text-muted-foreground">{call.callerNumber}</span>
+                        ) : null}
+                        {showNumberOnSecondLine && routed ? (
+                          <span className="text-[11px] text-muted-foreground">{"·"}</span>
+                        ) : null}
+                        {routed ? (
+                          <span className="text-[11px] text-primary/70">{"Routed to " + routed}</span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="text-[11px] text-muted-foreground">{call.time}</span>
-                  {call.duration ? (
-                    <span className="flex items-center gap-1 text-[11px] text-foreground/70">
-                      <Clock className="h-3 w-3" />
-                      {call.duration}
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-[11px] text-muted-foreground">
+                      {call.date} {call.time}
                     </span>
-                  ) : (
-                    <span className="text-[11px] text-destructive">{config.label}</span>
-                  )}
+                    {durationLabel ? (
+                      <span className="flex items-center gap-1 text-[11px] text-foreground/70">
+                        <Clock className="h-3 w-3" />
+                        {durationLabel}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-destructive">{config.label}</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
       </section>
     </div>

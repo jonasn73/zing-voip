@@ -9,15 +9,28 @@ import { telnyxHeaders } from "@/lib/telnyx-config"
 /** Telnyx v2 API base (same as number purchase routes). */
 const TELNYX_BASE = "https://api.telnyx.com/v2"
 
-/** Default LLM id (override with TELNYX_AI_DEFAULT_MODEL). See GET /v2/ai/models. */
-const FALLBACK_MODEL = "openai/gpt-4o-mini"
+/**
+ * Default LLM when `TELNYX_AI_DEFAULT_MODEL` is unset.
+ * Telnyx often rejects `openai/gpt-4o-mini` for Voice AI assistants — use a model they allow (see GET /v2/ai/models).
+ */
+const FALLBACK_MODEL = "openai/gpt-4o"
+
+/** If the primary model is rejected for assistants, try these in order (skip duplicates). */
+const ASSISTANT_MODEL_FALLBACKS = ["openai/gpt-4o", "google/gemini-2.5-flash"] as const
+
+/** Models Telnyx rejects for Voice AI assistants — map to a safe id so updates don’t keep failing. */
+const ASSISTANT_MODEL_ALIASES: Record<string, string> = {
+  "openai/gpt-4o-mini": "openai/gpt-4o",
+}
 
 /** Default Telnyx TTS voice string. Override with TELNYX_AI_VOICE. */
 const FALLBACK_VOICE = "Telnyx.KokoroTTS.af_heart"
 
-/** Read model id from env or use a safe default. */
+/** Read model id from env or use a safe default (remap legacy blocked ids). */
 function defaultModel(): string {
-  return process.env.TELNYX_AI_DEFAULT_MODEL?.trim() || FALLBACK_MODEL
+  const raw = process.env.TELNYX_AI_DEFAULT_MODEL?.trim()
+  if (!raw) return FALLBACK_MODEL
+  return ASSISTANT_MODEL_ALIASES[raw] ?? raw
 }
 
 /** Read voice id from env or use Telnyx built-in default. */
@@ -28,7 +41,7 @@ function defaultVoice(): string {
 /** User override wins; otherwise platform env / built-in default (used on create). */
 export function resolveAssistantModel(override?: string | null | undefined): string {
   const t = override?.trim()
-  if (t) return t
+  if (t) return ASSISTANT_MODEL_ALIASES[t] ?? t
   return defaultModel()
 }
 
@@ -65,30 +78,51 @@ export type CreateTelnyxAssistantParams = {
 /**
  * POST /v2/ai/assistants — provision a new Voice AI assistant on your Telnyx account.
  * Returns Telnyx assistant id for TeXML <AIAssistant id="…">.
+ * Retries with fallback models when Telnyx says the model is not available for AI assistants.
  */
 export async function telnyxCreateAssistant(params: CreateTelnyxAssistantParams): Promise<{ id: string }> {
-  const model = params.model || defaultModel()
   const voice = params.voice || defaultVoice()
-  const res = await fetch(`${TELNYX_BASE}/ai/assistants`, {
-    method: "POST",
-    headers: telnyxHeaders(),
-    body: JSON.stringify({
-      name: params.name,
-      model,
-      instructions: params.instructions,
-      greeting: params.greeting,
-      voice_settings: { voice },
-    }),
-  })
-  const body = (await res.json().catch(() => ({}))) as { data?: { id?: string } }
-  if (!res.ok) {
-    throw new Error(`Telnyx create assistant failed: ${telnyxErrorMessage(body)}`)
+  const primary = params.model || defaultModel()
+  const orderedModels = [primary, ...ASSISTANT_MODEL_FALLBACKS.filter((m) => m !== primary)]
+
+  let lastError: Error | undefined
+
+  for (const model of orderedModels) {
+    const res = await fetch(`${TELNYX_BASE}/ai/assistants`, {
+      method: "POST",
+      headers: telnyxHeaders(),
+      body: JSON.stringify({
+        name: params.name,
+        model,
+        instructions: params.instructions,
+        greeting: params.greeting,
+        voice_settings: { voice },
+      }),
+    })
+    const body = (await res.json().catch(() => ({}))) as { data?: { id?: string } }
+    if (res.ok) {
+      const id = body?.data?.id
+      if (!id || typeof id !== "string") {
+        throw new Error("Telnyx create assistant succeeded but no data.id returned")
+      }
+      if (model !== primary) {
+        console.log(`[Zing] Telnyx assistant created with fallback model "${model}" (primary "${primary}" was rejected).`)
+      }
+      return { id }
+    }
+
+    const detail = telnyxErrorMessage(body)
+    lastError = new Error(`Telnyx create assistant failed: ${detail}`)
+    const modelRejected =
+      detail.includes("not available for AI Assistants") ||
+      (detail.includes("not available") && detail.toLowerCase().includes("model"))
+    if (!modelRejected) {
+      throw lastError
+    }
+    console.warn(`[Zing] Telnyx rejected assistant model "${model}", trying next…`, detail)
   }
-  const id = body?.data?.id
-  if (!id || typeof id !== "string") {
-    throw new Error("Telnyx create assistant succeeded but no data.id returned")
-  }
-  return { id }
+
+  throw lastError ?? new Error("Telnyx create assistant failed")
 }
 
 export type UpdateTelnyxAssistantParams = {

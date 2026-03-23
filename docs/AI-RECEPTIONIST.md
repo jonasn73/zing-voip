@@ -15,7 +15,7 @@ No Telnyx Mission Control account is required for the business owner.
 
 On **AI call flow**, expand **Voice & model (power users)** to set:
 
-- **LLM model** — Telnyx model id (datalist from `GET /api/ai-assistant/models`); empty = `TELNYX_AI_DEFAULT_MODEL` / built-in default.
+- **LLM model** — Telnyx model id (datalist from `GET /api/ai-assistant/models`); empty = `TELNYX_AI_DEFAULT_MODEL` / built-in default (`openai/gpt-4o`). Some ids (e.g. `openai/gpt-4o-mini`) may be rejected for Voice AI — Zing retries with fallbacks on create.
 - **Speaking voice** — Telnyx TTS voice id (from `GET /api/ai-assistant/voices`); empty = `TELNYX_AI_VOICE` / built-in default.
 - **Extra instructions** — appended to the playbook in Telnyx under “Additional instructions (from Zing)”.
 
@@ -31,7 +31,7 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 | Variable | Purpose |
 |----------|---------|
 | `TELNYX_API_KEY` | Required — must allow **AI Assistants** API on your Telnyx project. |
-| `TELNYX_AI_DEFAULT_MODEL` | Optional — default `openai/gpt-4o-mini`; use Telnyx **GET /v2/ai/models** for ids. |
+| `TELNYX_AI_DEFAULT_MODEL` | Optional — default `openai/gpt-4o`; use Telnyx **GET /v2/ai/models** for ids. |
 | `TELNYX_AI_VOICE` | Optional — default `Telnyx.KokoroTTS.af_heart`. |
 
 ## API notes

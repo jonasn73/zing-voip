@@ -25,7 +25,7 @@ export interface AiIntakeConfig {
   lockoutNotes?: string
   otherNotes?: string
   smsNotify?: boolean
-  /** Telnyx LLM id, e.g. openai/gpt-4o-mini — empty = platform default from env */
+  /** Telnyx LLM id (must be allowed for Voice AI assistants) — empty = platform default from env */
   telnyxModel?: string
   /** Telnyx TTS voice id string for Voice AI — empty = platform default from env */
   telnyxVoice?: string

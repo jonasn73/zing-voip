@@ -20,7 +20,7 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `TELNYX_API_KEY`   | Your Telnyx API key (for numbers and voice). |
 | `NEXT_PUBLIC_APP_URL` | Your live site base URL (e.g. `https://your-app.vercel.app`) — used for Telnyx voice webhooks. |
 | `TELNYX_AI_ASSISTANT_ID` | Optional **fallback** only: shared assistant id if **creating** an assistant via API fails (prefer fixing API access). |
-| `TELNYX_AI_DEFAULT_MODEL` | Optional: LLM id for auto-created assistants (default `openai/gpt-4o-mini`). List: Telnyx **GET /v2/ai/models**. |
+| `TELNYX_AI_DEFAULT_MODEL` | Optional: LLM id for auto-created assistants (default `openai/gpt-4o`). List: Telnyx **GET /v2/ai/models**. Avoid `openai/gpt-4o-mini` if Telnyx says it is not available for AI assistants. |
 | `TELNYX_AI_VOICE` | Optional: Telnyx TTS voice string for new assistants (default `Telnyx.KokoroTTS.af_heart`). |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
 

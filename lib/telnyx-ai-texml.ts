@@ -19,5 +19,6 @@ export function escapeXmlAttr(value: string): string {
  */
 export function buildTelnyxAiAssistantTexml(assistantId: string): string {
   const id = escapeXmlAttr(assistantId.trim())
-  return `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><AIAssistant id="${id}"/></Connect></Response>`
+  // Telnyx examples use an explicit closing tag; some parsers reject self-closing custom verbs.
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><AIAssistant id="${id}"></AIAssistant></Connect></Response>`
 }

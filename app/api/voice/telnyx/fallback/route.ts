@@ -132,11 +132,29 @@ export async function POST(req: NextRequest) {
         : Promise.resolve(null),
     ])
 
+    const lr = liveRouting
+    const useLive = Boolean(lr && lr.user_id === userId)
     const fallbackType = normalizeFallbackType(
-      liveRouting && liveRouting.user_id === userId
-        ? liveRouting.fallback_type
-        : config?.fallback_type
+      useLive && lr ? lr.fallback_type : config?.fallback_type
     )
+
+    // Two routing_config rows for the same DID (different string shapes) can make the join pick one fallback while the dashboard row shows another — log to debug "always voicemail".
+    if (
+      useLive &&
+      lr &&
+      config?.fallback_type &&
+      config.fallback_type !== lr.fallback_type
+    ) {
+      console.log(
+        JSON.stringify({
+          zing: "telnyx-fallback-routing-mismatch",
+          userId,
+          businessLineE164: businessLineE164 || null,
+          fromIncomingJoin: lr.fallback_type,
+          fromConfigQuery: config.fallback_type,
+        })
+      )
+    }
 
     console.log(
       JSON.stringify({
@@ -146,6 +164,7 @@ export async function POST(req: NextRequest) {
         hadBnQuery: Boolean(bnFromQuery),
         toField: String(formData.get("To") || ""),
         fallbackType,
+        primaryWasOwner,
         hasTelnyxAiAssistant: Boolean(user?.telnyx_ai_assistant_id?.trim()),
         dialStatus: dialStatus || rawStatus || null,
       })

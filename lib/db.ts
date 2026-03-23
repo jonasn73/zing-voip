@@ -118,6 +118,36 @@ function phoneDigitsKey(phone: string): string {
   return normalizePhoneNumberE164(phone).replace(/\D/g, "")
 }
 
+/**
+ * Find an existing per-number routing_config row so dashboard saves update the same row
+ * whether the client sent +1… or 10 digits (avoids duplicate rows and wrong LIMIT 1 in joins).
+ */
+async function findPerNumberRoutingConfigId(userId: string, businessNumber: string): Promise<string | null> {
+  const sql = getSql()
+  const normalized = normalizePhoneNumberE164(businessNumber)
+  const digitKey = phoneDigitsKey(businessNumber)
+  const exact = await sql`
+    SELECT id FROM routing_config WHERE user_id = ${userId} AND business_number = ${normalized} LIMIT 1
+  `
+  if (exact[0]) return String(exact[0].id)
+  if (digitKey.length < 10) return null
+  const loose = await sql`
+    SELECT id FROM routing_config
+    WHERE user_id = ${userId}
+      AND business_number IS NOT NULL
+      AND (
+        regexp_replace(business_number, '\\D', '', 'g') = ${digitKey}
+        OR (
+          length(regexp_replace(business_number, '\\D', '', 'g')) >= 10
+          AND length(${digitKey}) >= 10
+          AND right(regexp_replace(business_number, '\\D', '', 'g'), 10) = right(${digitKey}, 10)
+        )
+      )
+    LIMIT 1
+  `
+  return loose[0] ? String(loose[0].id) : null
+}
+
 // Get the default (global) routing config for a user (business_number IS NULL)
 export async function getRoutingConfig(userId: string): Promise<RoutingConfig | null> {
   const sql = getSql()
@@ -179,25 +209,55 @@ export async function updateRoutingConfig(
   const sql = getSql()
   const bn = businessNumber ?? null
 
-  // Upsert: create per-number config if it doesn't exist yet
+  // Per-number row: match by normalized E.164 / digits so we never insert a second row for the same DID.
+  // First INSERT must copy receptionist + other fields from the default row — otherwise a row created only
+  // to set "AI fallback" would have NULL receptionist and override the default (calls would skip the receptionist).
   if (bn) {
-    const existing = await sql`
-      SELECT id FROM routing_config WHERE user_id = ${userId} AND business_number = ${bn} LIMIT 1
-    `
-    if (!existing[0]) {
+    const normalizedBn = normalizePhoneNumberE164(bn)
+    const existingId = await findPerNumberRoutingConfigId(userId, bn)
+
+    if (!existingId) {
+      const defaults = await getRoutingConfig(userId)
+      const selected_receptionist_id =
+        updates.selected_receptionist_id !== undefined
+          ? updates.selected_receptionist_id
+          : defaults?.selected_receptionist_id ?? null
+      const fallback_type = updates.fallback_type ?? defaults?.fallback_type ?? "owner"
+      const ai_greeting = updates.ai_greeting !== undefined ? updates.ai_greeting : (defaults?.ai_greeting ?? "")
+      const ring_timeout_seconds =
+        updates.ring_timeout_seconds !== undefined
+          ? updates.ring_timeout_seconds
+          : defaults?.ring_timeout_seconds ?? 30
+
       await sql`
         INSERT INTO routing_config (id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
-        VALUES (${crypto.randomUUID()}, ${userId}, ${bn}, ${updates.selected_receptionist_id ?? null}, ${updates.fallback_type ?? "owner"}, ${updates.ai_greeting ?? ""}, ${updates.ring_timeout_seconds ?? 30}, now())
+        VALUES (${crypto.randomUUID()}, ${userId}, ${normalizedBn}, ${selected_receptionist_id}, ${fallback_type}, ${ai_greeting}, ${ring_timeout_seconds}, now())
       `
       clearIncomingRoutingCache()
       return
     }
+
+    const whereClause = sql`id = ${existingId}`
+
+    if (updates.selected_receptionist_id !== undefined) {
+      await sql`UPDATE routing_config SET selected_receptionist_id = ${updates.selected_receptionist_id}, updated_at = now() WHERE ${whereClause}`
+    }
+    if (updates.fallback_type !== undefined) {
+      await sql`UPDATE routing_config SET fallback_type = ${updates.fallback_type}, updated_at = now() WHERE ${whereClause}`
+    }
+    if (updates.ai_greeting !== undefined) {
+      await sql`UPDATE routing_config SET ai_greeting = ${updates.ai_greeting}, updated_at = now() WHERE ${whereClause}`
+    }
+    if (updates.ring_timeout_seconds !== undefined) {
+      await sql`UPDATE routing_config SET ring_timeout_seconds = ${updates.ring_timeout_seconds}, updated_at = now() WHERE ${whereClause}`
+    }
+
+    clearIncomingRoutingCache()
+    return
   }
 
-  // Update existing row
-  const whereClause = bn
-    ? sql`user_id = ${userId} AND business_number = ${bn}`
-    : sql`user_id = ${userId} AND business_number IS NULL`
+  // Default (global) row — business_number IS NULL
+  const whereClause = sql`user_id = ${userId} AND business_number IS NULL`
 
   if (updates.selected_receptionist_id !== undefined) {
     await sql`UPDATE routing_config SET selected_receptionist_id = ${updates.selected_receptionist_id}, updated_at = now() WHERE ${whereClause}`
@@ -218,7 +278,10 @@ export async function updateRoutingConfig(
 // Delete a per-number routing config (reverts to default)
 export async function deleteRoutingConfigForNumber(userId: string, businessNumber: string): Promise<void> {
   const sql = getSql()
-  await sql`DELETE FROM routing_config WHERE user_id = ${userId} AND business_number = ${businessNumber}`
+  const existingId = await findPerNumberRoutingConfigId(userId, businessNumber)
+  if (existingId) {
+    await sql`DELETE FROM routing_config WHERE id = ${existingId}`
+  }
   clearIncomingRoutingCache()
 }
 

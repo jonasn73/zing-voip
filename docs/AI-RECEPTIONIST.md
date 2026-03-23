@@ -64,7 +64,7 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 - `GET /api/ai-assistant` returns `hasAssistant`, `assistantId`, and intake JSON.
 - `POST /api/ai-assistant` saves intake and **creates** a Telnyx assistant unless `telnyxAiAssistantId` is sent (advanced).
 - `PATCH /api/ai-assistant` updates intake/routing and **syncs** instructions to Telnyx when an assistant is linked.
-- `GET /api/ai-assistant/voices` remains a stub — default voice comes from `TELNYX_AI_VOICE` / built-in default at create time.
+- `GET /api/ai-assistant/voices` lists Telnyx TTS voices (`provider=telnyx`) for the **Voice & model** datalist; if the list is empty, type a voice id or leave empty for `TELNYX_AI_VOICE` / built-in default.
 
 ## Database
 

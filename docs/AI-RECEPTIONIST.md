@@ -41,6 +41,11 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 - **AI call flow → Advanced — link an existing assistant id** can paste a Telnyx assistant instead of creating one.
 - **`TELNYX_AI_ASSISTANT_ID`** — optional shared id used only if **programmatic creation** fails (502 path). Prefer fixing API permissions instead of relying on this long-term.
 
+## Debugging with evidence (not guessing)
+
+1. Set **`ZING_TELNYX_FALLBACK_DIAGNOSTIC=true`** in Vercel, redeploy, place one test call, then copy the log line **`"zing":"telnyx-fallback-diagnostic"`** (numbers are redacted).
+2. Locally run **`npm run test`** — Vitest replays committed fixtures in **`tests/fixtures/telnyx-fallback/`** against the same handler. Add a new scenario there when you have a real callback shape (see **`tests/fixtures/telnyx-fallback/README.md`**).
+
 ## Operator env (Vercel)
 
 | Variable | Purpose |

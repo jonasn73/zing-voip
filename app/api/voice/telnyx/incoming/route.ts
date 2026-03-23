@@ -193,10 +193,18 @@ async function handleIncomingCall(
     }
 
     const didDigits = businessLineE164.replace(/\D/g, "")
+    const fallbackMode = wantsAiAfterNoAnswer
+      ? hasReceptionist
+        ? "recv-ai"
+        : "owner-ai"
+      : hasReceptionist
+        ? "recv"
+        : "owner"
     const fallbackPathBase =
       didDigits.length >= 10
-        ? `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}/n/${didDigits}`
+        ? `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}/n/${didDigits}/${fallbackMode}`
         : `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}`
+    const modeQuery = didDigits.length < 10 ? `&zingFbMode=${encodeURIComponent(fallbackMode)}` : ""
     const fbQuery = wantsAiAfterNoAnswer ? "&fb=ai" : ""
     const bnQuery = `&bn=${encodeURIComponent(businessLineE164)}`
 
@@ -221,7 +229,7 @@ async function handleIncomingCall(
         callerId: calledNumber,
         answerOnBridge: true,
         timeout: ownerRingSec,
-        action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first${bnQuery}${fbQuery}`,
+        action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first${bnQuery}${fbQuery}${modeQuery}`,
         method: "POST",
       })
       dial.number(ownerPhone)

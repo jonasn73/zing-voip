@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import {
   Clock,
   DollarSign,
@@ -185,6 +185,13 @@ function formatCurrency(amount: number): string {
 }
 
 export function AnalyticsPage() {
+  const { calls: liveCalls, loading: liveCallsLoading } = useOperationsData()
+  const liveTotalCalls = liveCalls.length
+  const liveTotalMinutes = useMemo(
+    () => Math.floor(liveCalls.reduce((sum, c) => sum + (c.durationSeconds || 0), 0) / 60),
+    [liveCalls]
+  )
+
   const [weekOffset, setWeekOffset] = useState(0)
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
   const [editingRateId, setEditingRateId] = useState<string | null>(null)
@@ -255,6 +262,15 @@ export function AnalyticsPage() {
           <Settings2 className="h-4 w-4" />
           Pay Rates
         </button>
+      </div>
+
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-950 dark:text-amber-100">
+        <p className="font-semibold text-foreground">Real calls vs sample payroll</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          The three summary tiles below <span className="font-medium text-foreground">Account activity</span> use your
+          live call log (same as Routing → Call Stats). The week picker, charts, and agent list are still{" "}
+          <span className="font-medium text-foreground">demo sample data</span> until payroll is wired to receptionists.
+        </p>
       </div>
 
       {/* Pay Rate Configuration Panel */}
@@ -367,25 +383,25 @@ export function AnalyticsPage() {
         </button>
       </div>
 
-      {/* Weekly Summary Cards */}
+      {/* Account summary — real rows from GET /api/calls (up to 100). */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="zing-card col-span-2 flex flex-col items-center gap-1 p-3.5 sm:col-span-1">
           <IconSurface tone="primary">
             <Clock className="h-5 w-5 text-primary" />
           </IconSurface>
           <p className="text-lg font-bold text-foreground leading-tight">
-            {formatMinutes(totalMinutes)}
+            {liveCallsLoading ? "…" : formatMinutes(liveTotalMinutes)}
           </p>
-          <p className="text-[10px] text-muted-foreground">Total Time</p>
+          <p className="text-[10px] text-muted-foreground">Account talk time</p>
         </div>
         <div className="zing-card flex flex-col items-center gap-1 p-3.5">
           <IconSurface tone="success">
             <Phone className="h-5 w-5 text-success" />
           </IconSurface>
           <p className="text-lg font-bold text-foreground leading-tight">
-            {totalCalls}
+            {liveCallsLoading ? "…" : liveTotalCalls}
           </p>
-          <p className="text-[10px] text-muted-foreground">Total Calls</p>
+          <p className="text-[10px] text-muted-foreground">Calls in log</p>
         </div>
         <div className="zing-card flex flex-col items-center gap-1 p-3.5">
           <IconSurface tone="warning">
@@ -394,7 +410,7 @@ export function AnalyticsPage() {
           <p className="text-lg font-bold text-foreground leading-tight">
             {formatCurrency(totalPayout)}
           </p>
-          <p className="text-[10px] text-muted-foreground">Total Payout</p>
+          <p className="text-[10px] text-muted-foreground">Sample payout (demo)</p>
         </div>
       </div>
 

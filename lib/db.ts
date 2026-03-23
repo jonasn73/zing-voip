@@ -97,12 +97,17 @@ export function clearIncomingRoutingCache(): void {
 }
 
 // Normalize to E.164 (+1XXXXXXXXXX) so it matches how we store numbers in `phone_numbers.number`.
-function normalizeToE164(phone: string): string {
+export function normalizePhoneNumberE164(phone: string): string {
   const digits = phone.replace(/\D/g, "")
   if (digits.length === 10) return `+1${digits}`
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
   if (phone.startsWith("+")) return phone
   return `+${digits}`
+}
+
+/** Digits-only key for matching webhook "To" vs rows stored as +1…, 1…, or 10-digit US. */
+function phoneDigitsKey(phone: string): string {
+  return normalizePhoneNumberE164(phone).replace(/\D/g, "")
 }
 
 // Get the default (global) routing config for a user (business_number IS NULL)
@@ -417,7 +422,8 @@ export async function getIncomingRoutingByNumber(
   receptionist_name: string | null
   receptionist_phone: string | null
 } | null> {
-  const normalized = normalizeToE164(toNumber)
+  const normalized = normalizePhoneNumberE164(toNumber)
+  const digitKey = phoneDigitsKey(toNumber)
 
   // Return cached result if it is still fresh (skip when forcing fresh read, e.g. Telnyx fallback webhook).
   if (!options?.bypassCache) {
@@ -426,12 +432,12 @@ export async function getIncomingRoutingByNumber(
   }
 
   const sql = getSql()
+  // Match Telnyx "To" (+1…) to rows stored as 10-digit, 11-digit, or E.164 (avoids silent no-match → no call_logs).
   const rows = await sql`
     SELECT
       u.id AS user_id,
       u.name AS user_name,
       u.phone AS owner_phone,
-      -- Use the specific per-number config if it exists, even if it sets fields to NULL.
       CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.selected_receptionist_id ELSE rc_def.selected_receptionist_id END
         AS selected_receptionist_id,
       COALESCE(
@@ -448,13 +454,30 @@ export async function getIncomingRoutingByNumber(
     JOIN users u ON u.id = pn.user_id
     LEFT JOIN routing_config rc_spec
       ON rc_spec.user_id = u.id
-      AND rc_spec.business_number = pn.number
+      AND (
+        rc_spec.business_number = pn.number
+        OR regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g') = regexp_replace(pn.number, '\\D', '', 'g')
+        OR (
+          length(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g')) >= 10
+          AND length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
+          AND right(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g'), 10)
+            = right(regexp_replace(pn.number, '\\D', '', 'g'), 10)
+        )
+      )
     LEFT JOIN routing_config rc_def
       ON rc_def.user_id = u.id
       AND rc_def.business_number IS NULL
     LEFT JOIN receptionists rs ON rs.id = rc_spec.selected_receptionist_id
     LEFT JOIN receptionists rd ON rd.id = rc_def.selected_receptionist_id
-    WHERE pn.number = ${normalized} AND pn.status = 'active'
+    WHERE pn.status = 'active'
+      AND (
+        regexp_replace(pn.number, '\\D', '', 'g') = ${digitKey}
+        OR (
+          length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
+          AND length(${digitKey}) >= 10
+          AND right(regexp_replace(pn.number, '\\D', '', 'g'), 10) = right(${digitKey}, 10)
+        )
+      )
     LIMIT 1
   `
 
@@ -970,6 +993,7 @@ export async function insertPhoneNumber(params: {
 }): Promise<PhoneNumber> {
   const sql = getSql()
   const id = crypto.randomUUID()
+  const numberE164 = normalizePhoneNumberE164(params.number)
   await sql`
     INSERT INTO phone_numbers (id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at)
     VALUES (
@@ -977,7 +1001,7 @@ export async function insertPhoneNumber(params: {
       ${params.user_id},
       ${params.provider_number_sid || ""},
       ${params.provider_number_sid || ""},
-      ${params.number},
+      ${numberE164},
       ${params.friendly_name},
       ${params.label || "Business Line"},
       ${params.type || "local"},
@@ -989,7 +1013,7 @@ export async function insertPhoneNumber(params: {
     id,
     user_id: params.user_id,
     provider_number_sid: params.provider_number_sid || "",
-    number: params.number,
+    number: numberE164,
     friendly_name: params.friendly_name,
     label: params.label || "Business Line",
     type: params.type || "local",

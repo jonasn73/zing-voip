@@ -871,9 +871,14 @@ export function DashboardPage() {
             Call Stats
           </h3>
           <span className="text-xs text-muted-foreground">
-            {opsRefreshing ? "Updating…" : "From your call log"}
+            {opsRefreshing ? "Updating…" : "Live · same data as Activity"}
           </span>
         </div>
+        <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
+          These four tiles count your most recent call-log rows (up to 100). If you still see all zeros after real calls,
+          your business line may not be hitting Zing (check Telnyx → number → voice URL) or the DB insert failed (see
+          server logs for <span className="font-mono text-[10px]">Call log insert failed</span>).
+        </p>
         {opsLoadError ? (
           <p className="mb-2 text-xs text-destructive">{opsLoadError}</p>
         ) : null}

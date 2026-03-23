@@ -222,15 +222,23 @@ async function tryBuildAiAssistantResponse(args: {
   return "missing-assistant"
 }
 
+export type TelnyxFallbackPathOpts = {
+  /** E.164 digits from `/fallback/u/{userId}/n/{did}` when query `bn` is missing or stripped. */
+  pathDidDigits?: string
+}
+
 /**
  * @param pathUserId — from `/api/voice/telnyx/fallback/u/{userId}` when Telnyx drops `?userId=` on the Dial action URL.
  */
 export async function handleTelnyxFallbackDialEnded(
   req: NextRequest,
-  pathUserId: string | null
+  pathUserId: string | null,
+  opts?: TelnyxFallbackPathOpts
 ): Promise<NextResponse> {
   const formData = await getDialCallbackFormData(req)
   const url = new URL(req.url)
+  const pathDigits = (opts?.pathDidDigits || "").replace(/\D/g, "")
+  const pathBnE164 = pathDigits.length >= 10 ? toE164(pathDigits) : ""
 
   if (process.env.NODE_ENV !== "production") {
     const fields: Record<string, string> = {}
@@ -258,7 +266,10 @@ export async function handleTelnyxFallbackDialEnded(
       String(formData.get("userId") || "")).trim() || ""
   const bnFromQuery =
     (url.searchParams.get("bn") || String(formData.get("bn") || "")).trim() || ""
-  const businessLineE164 = resolveBusinessLineE164(bnFromQuery, formData)
+  const bnMergedForResolve = (bnFromQuery || pathBnE164).trim()
+  const businessLineE164 = resolveBusinessLineE164(bnMergedForResolve, formData)
+  /** Inbound TeXML set this when the called line uses AI after no-answer — survives some proxy stripping better than DB-only merge. */
+  const inboundFbIntent = (url.searchParams.get("fb") || String(formData.get("fb") || "")).trim().toLowerCase()
   /** Set after we load `user` — may add inference when `primary=owner` is missing from the callback URL. */
   const legHint =
     url.searchParams.get("leg")?.trim() || String(formData.get("leg") || "").trim()
@@ -376,6 +387,23 @@ export async function handleTelnyxFallbackDialEnded(
       }
     }
 
+    // Inbound /incoming used AI on the owner-ring leg — if merge wrongly says voicemail (lost bn, etc.), still use Voice AI.
+    // Do not run after receptionist leg (no leg=owner-first / primaryWasOwner) or we would skip ringing the owner.
+    if (
+      inboundFbIntent === "ai" &&
+      fallbackType === "voicemail" &&
+      (primaryWasOwner || legHint === "owner-first")
+    ) {
+      fallbackType = "ai"
+      console.log(
+        JSON.stringify({
+          zing: "telnyx-fallback-fb-ai-overrides-voicemail",
+          userId,
+          pathBnPresent: Boolean(pathBnE164),
+        })
+      )
+    }
+
     if (useLive && lr && config?.fallback_type && config.fallback_type !== lr.fallback_type) {
       console.log(
         JSON.stringify({
@@ -398,6 +426,8 @@ export async function handleTelnyxFallbackDialEnded(
         businessLineE164: businessLineE164 || null,
         effectiveBusinessLine: effectiveBusinessLine || null,
         hadBnQuery: Boolean(bnFromQuery),
+        pathBnE164: pathBnE164 || null,
+        inboundFbIntent: inboundFbIntent || null,
         httpMethod: req.method,
         toField: String(formData.get("To") || ""),
         fallbackFromConfig: config?.fallback_type ?? null,
@@ -438,6 +468,7 @@ export async function handleTelnyxFallbackDialEnded(
         if (primaryWasOwner) {
           // After owner’s cell we’re still in case "owner" — `fallbackType` is never "ai" here. Prefer AI if the account default / live join says ai or an assistant is already linked.
           const wantAiHandoff =
+            (inboundFbIntent === "ai" && primaryWasOwner) ||
             globalDefaultConfig?.fallback_type === "ai" ||
             (useLive && lr?.fallback_type === "ai") ||
             Boolean(user?.telnyx_ai_assistant_id?.trim()) ||
@@ -483,11 +514,20 @@ export async function handleTelnyxFallbackDialEnded(
             businessLineE164 ||
             (await getPrimaryActiveBusinessNumberE164(userId)) ||
             ""
+          const didPath = bnForAction.replace(/\D/g, "")
+          const fbTail =
+            (useLive && lr?.fallback_type === "ai") || globalDefaultConfig?.fallback_type === "ai"
+              ? "&fb=ai"
+              : ""
+          const secondLegBase =
+            didPath.length >= 10
+              ? `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}/n/${didPath}`
+              : `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}`
           const dial = texml.dial({
             callerId: calledNum || undefined,
             answerOnBridge: true,
             timeout: 30,
-            action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first&bn=${encodeURIComponent(bnForAction)}`,
+            action: `${secondLegBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first&bn=${encodeURIComponent(bnForAction)}${fbTail}`,
             method: "POST",
           })
           dial.number(toE164(user.phone))

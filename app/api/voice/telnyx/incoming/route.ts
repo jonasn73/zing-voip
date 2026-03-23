@@ -192,6 +192,14 @@ async function handleIncomingCall(
       )
     }
 
+    const didDigits = businessLineE164.replace(/\D/g, "")
+    const fallbackPathBase =
+      didDigits.length >= 10
+        ? `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}/n/${didDigits}`
+        : `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}`
+    const fbQuery = wantsAiAfterNoAnswer ? "&fb=ai" : ""
+    const bnQuery = `&bn=${encodeURIComponent(businessLineE164)}`
+
     if (routing.selected_receptionist_id && routing.receptionist_phone) {
       const recPhone = normalizePhoneNumberE164(routing.receptionist_phone)
       if (debug) console.log(`[Zing] Routing to receptionist: ${routing.receptionist_name || "Receptionist"} (${recPhone})`)
@@ -201,7 +209,7 @@ async function handleIncomingCall(
         // the mid-ring tone change from early answer + handoff.
         answerOnBridge: true,
         timeout: receptionistRingSec,
-        action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}?callSid=${encodeURIComponent(callSid)}&bn=${encodeURIComponent(businessLineE164)}`,
+        action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}`,
         method: "POST",
       })
       dial.number(recPhone)
@@ -213,7 +221,7 @@ async function handleIncomingCall(
         callerId: calledNumber,
         answerOnBridge: true,
         timeout: ownerRingSec,
-        action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first&bn=${encodeURIComponent(businessLineE164)}`,
+        action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first${bnQuery}${fbQuery}`,
         method: "POST",
       })
       dial.number(ownerPhone)

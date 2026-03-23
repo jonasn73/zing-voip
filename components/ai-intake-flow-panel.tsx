@@ -252,43 +252,12 @@ export function AiIntakeFlowPanel({
             <div>
               <h1 className="text-lg font-bold text-foreground">AI call flow</h1>
               <p className="text-[11px] text-muted-foreground">
-                Industry intake notes + Telnyx Voice AI on no-answer (same carrier, one stack).
+                Set what the AI says and collects when nobody answers — all in Zing.
               </p>
             </div>
           </div>
         </div>
       )}
-
-      <section className="space-y-2 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Telnyx Voice AI</p>
-        <p className="text-[10px] leading-relaxed text-muted-foreground">
-          When you choose <span className="font-medium text-foreground">AI receptionist</span> in Fallback Settings, Zing
-          creates the assistant on your account automatically — no extra step. Saving here updates how it talks and what
-          it collects.
-        </p>
-        <button
-          type="button"
-          onClick={() => setShowAdvancedAssistantId((v) => !v)}
-          className="text-[10px] font-medium text-primary underline-offset-2 hover:underline"
-        >
-          {showAdvancedAssistantId ? "Hide advanced" : "Advanced — link an existing assistant id"}
-        </button>
-        {showAdvancedAssistantId && (
-          <>
-            <input
-              type="text"
-              value={telnyxAssistantId}
-              onChange={(e) => setTelnyxAssistantId(e.target.value)}
-              placeholder="Only if support gave you an id to paste"
-              className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-              autoComplete="off"
-            />
-            <p className="text-[10px] text-muted-foreground">
-              If this field is filled, Activate uses this id instead of creating a new assistant.
-            </p>
-          </>
-        )}
-      </section>
 
       <div
         className={cn(
@@ -297,13 +266,35 @@ export function AiIntakeFlowPanel({
         )}
       >
         <p className="text-xs font-semibold text-foreground">
-          {assistantReady ? "Voice assistant is active" : "Voice assistant will turn on with AI fallback"}
+          {assistantReady ? "AI receptionist is on" : "Turn on AI for no-answer calls"}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground">
           {assistantReady
-            ? "No-answer calls connect to this Telnyx assistant on the same line. Use Save below to push script changes."
-            : "Select AI receptionist in Fallback Settings on the dashboard — Zing creates your assistant automatically. Then refine the playbook here."}
+            ? "Save below whenever you change the script or greeting — we apply it for you."
+            : "On the main dashboard, open fallback options and pick AI receptionist. Everything else happens here — no other app or site."}
         </p>
+        <button
+          type="button"
+          onClick={() => setShowAdvancedAssistantId((v) => !v)}
+          className="mt-2 text-[10px] font-medium text-primary underline-offset-2 hover:underline"
+        >
+          {showAdvancedAssistantId ? "Hide support option" : "Support only — paste an existing assistant id"}
+        </button>
+        {showAdvancedAssistantId && (
+          <div className="mt-2 space-y-1">
+            <input
+              type="text"
+              value={telnyxAssistantId}
+              onChange={(e) => setTelnyxAssistantId(e.target.value)}
+              placeholder="Only if support gave you an id"
+              className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              autoComplete="off"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              If set, Save uses this id instead of the one Zing created for you.
+            </p>
+          </div>
+        )}
       </div>
 
       <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
@@ -317,7 +308,7 @@ export function AiIntakeFlowPanel({
               Voice &amp; model (power users)
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">
-              Optional LLM, speaking voice, and extra instructions — we push these to Telnyx when you Save or Activate.
+              Optional LLM, speaking voice, and extra instructions — applied when you Save.
             </p>
           </div>
           <ChevronDown
@@ -328,7 +319,7 @@ export function AiIntakeFlowPanel({
         {showAdvancedAi && (
           <div className="space-y-3 border-t border-border/60 pt-3">
             {catalogLoading ? (
-              <p className="text-[10px] text-muted-foreground">Loading Telnyx model and voice lists…</p>
+              <p className="text-[10px] text-muted-foreground">Loading model and voice suggestions…</p>
             ) : null}
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${modelListId}-input`}>

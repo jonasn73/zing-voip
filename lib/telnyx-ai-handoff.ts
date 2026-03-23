@@ -19,8 +19,11 @@ export function buildSayThenRedirectToAiBridgeTeXML(userId: string, callSid?: st
   vr.say(
     "Thanks for calling. Please hold a moment while we connect you to our assistant."
   )
+  // Give TTS time to finish before the next fetch; some Telnyx builds were skipping audio when Redirect followed immediately.
+  vr.pause({ length: 2 })
+  // GET avoids edge cases where a redirect POST has an empty body and the app returns 4xx.
   vr.redirect(
-    { method: "POST" },
+    { method: "GET" },
     `${appUrl}/api/voice/telnyx/ai-bridge/u/${encodeURIComponent(userId)}${qs}`
   )
   return vr.toString()

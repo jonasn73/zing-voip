@@ -181,6 +181,14 @@ async function handleIncomingCall(
       ? Math.min(routing.ring_timeout_seconds || 30, 22)
       : routing.ring_timeout_seconds || 30
 
+    // If AI is the post-ring fallback, say something *before* <Dial> so the caller always hears us first.
+    // If the cell’s voicemail answers the Dial, they may otherwise only hear carrier VM until the bridge ends — our handoff line runs in /fallback after <Dial> completes.
+    if (wantsAiAfterNoAnswer) {
+      texml.say(
+        "Thanks for calling. Please hold while we connect your call."
+      )
+    }
+
     if (routing.selected_receptionist_id && routing.receptionist_phone) {
       const recPhone = normalizePhoneNumberE164(routing.receptionist_phone)
       if (debug) console.log(`[Zing] Routing to receptionist: ${routing.receptionist_name || "Receptionist"} (${recPhone})`)

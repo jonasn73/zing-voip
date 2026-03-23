@@ -14,7 +14,26 @@ export const preferredRegion = "iad1"
 
 type RouteCtx = { params: Promise<{ userId: string }> }
 
+/** Read callSid from redirect URL query and, for POST, from the form body. */
+async function parseCallSidFromRequest(req: NextRequest): Promise<string> {
+  const url = new URL(req.url)
+  const fromQuery = url.searchParams.get("callSid")?.trim() || ""
+  if (fromQuery) return fromQuery
+  if (req.method.toUpperCase() === "POST") {
+    try {
+      const fd = await req.clone().formData()
+      const fromForm = String(fd.get("callSid") || fd.get("CallSid") || "").trim()
+      if (fromForm) return fromForm
+    } catch {
+      /* ignore */
+    }
+  }
+  return ""
+}
+
 async function handleAiBridge(req: NextRequest, userId: string): Promise<NextResponse> {
+  const callSid = await parseCallSidFromRequest(req)
+
   console.log(
     JSON.stringify({
       zing: "telnyx-ai-bridge",

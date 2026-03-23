@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
+import { listTelnyxProviderVoices } from "@/lib/telnyx-ai-catalog"
 
 export const dynamic = "force-dynamic"
 
-/**
- * Voice selection for live calls is configured in Telnyx Mission Control (per assistant).
- * This endpoint remains so older clients do not 404.
- */
-export async function GET(req: NextRequest) {
+/** Telnyx TTS voices (provider=telnyx) for the Advanced AI voice picker. */
+export async function GET(_req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
 
-  return NextResponse.json({
-    voices: [] as { id: string; label: string }[],
-    source: "telnyx",
-    hint: "Pick voice and model in Telnyx → Voice AI → your Assistant. Zing only stores the Assistant id.",
-  })
+  try {
+    const voices = await listTelnyxProviderVoices()
+    return NextResponse.json({ voices, source: "telnyx" })
+  } catch (e) {
+    console.error("[GET /api/ai-assistant/voices]", e)
+    return NextResponse.json({ voices: [], source: "telnyx", error: "Could not load voices" }, { status: 200 })
+  }
 }

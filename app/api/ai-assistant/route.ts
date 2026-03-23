@@ -16,12 +16,18 @@ import {
 } from "@/lib/db"
 import {
   normalizeIntakeConfig,
-  buildIntakeSystemExtension,
+  buildFullTelnyxInstructions,
   resolveTelnyxAssistantGreeting,
   type AiIntakeConfig,
 } from "@/lib/ai-intake-defaults"
 import { isAiIntakeProfileId } from "@/lib/business-industries"
-import { telnyxCreateAssistant, telnyxUpdateAssistant } from "@/lib/telnyx-voice-ai-api"
+import {
+  telnyxCreateAssistant,
+  telnyxUpdateAssistant,
+  type UpdateTelnyxAssistantParams,
+  resolveAssistantModel,
+  resolveAssistantVoice,
+} from "@/lib/telnyx-voice-ai-api"
 
 /** Default hours line embedded in assistant instructions when we have no separate business-hours field. */
 const DEFAULT_BUSINESS_HOURS = "Monday through Friday, 9 AM to 5 PM. Closed weekends."
@@ -43,6 +49,12 @@ function mergeIntakeConfig(
   if (typeof base.profileId === "string" && !isAiIntakeProfileId(base.profileId)) {
     delete base.profileId
   }
+  const clearable = ["telnyxModel", "telnyxVoice", "extraAiInstructions"] as const
+  for (const key of clearable) {
+    if (incoming && key in incoming && incoming[key] === "") {
+      delete base[key]
+    }
+  }
   return base
 }
 
@@ -53,14 +65,12 @@ async function syncTelnyxAssistantFromIntake(userId: string): Promise<void> {
   if (!u || !aid) return
   const raw = await getAiIntakeConfigRaw(userId)
   const cfg = normalizeIntakeConfig(raw, { userIndustry: u.industry })
-  const instructions = buildIntakeSystemExtension(
-    u.business_name,
-    u.phone,
-    DEFAULT_BUSINESS_HOURS,
-    cfg
-  )
+  const instructions = buildFullTelnyxInstructions(u.business_name, u.phone, DEFAULT_BUSINESS_HOURS, cfg)
   const greeting = resolveTelnyxAssistantGreeting(cfg)
-  await telnyxUpdateAssistant(aid, { instructions, greeting })
+  const updates: UpdateTelnyxAssistantParams = { instructions, greeting }
+  if (cfg.telnyxModel?.trim()) updates.model = cfg.telnyxModel.trim()
+  if (cfg.telnyxVoice?.trim()) updates.voice_settings = { voice: cfg.telnyxVoice.trim() }
+  await telnyxUpdateAssistant(aid, updates)
 }
 
 export async function GET(req: NextRequest) {
@@ -148,7 +158,7 @@ export async function POST(req: NextRequest) {
 
     const intakeCfg: AiIntakeConfig = normalizeIntakeConfig(merged, { userIndustry: user.industry })
     const telnyxGreeting = resolveTelnyxAssistantGreeting(intakeCfg)
-    const instructions = buildIntakeSystemExtension(
+    const instructions = buildFullTelnyxInstructions(
       user.business_name,
       user.phone,
       DEFAULT_BUSINESS_HOURS,
@@ -166,6 +176,8 @@ export async function POST(req: NextRequest) {
           name: `Zing — ${user.business_name}`.slice(0, 120),
           instructions,
           greeting: telnyxGreeting,
+          model: resolveAssistantModel(intakeCfg.telnyxModel),
+          voice: resolveAssistantVoice(intakeCfg.telnyxVoice),
         })
         assistantId = created.id
         provisioned = true

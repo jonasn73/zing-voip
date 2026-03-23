@@ -11,9 +11,19 @@ Zing uses **Telnyx** for telephony and **Telnyx Voice AI** for the no-answer fal
 
 No Telnyx Mission Control account is required for the business owner.
 
+## Voice & model (power users)
+
+On **AI call flow**, expand **Voice & model (power users)** to set:
+
+- **LLM model** — Telnyx model id (datalist from `GET /api/ai-assistant/models`); empty = `TELNYX_AI_DEFAULT_MODEL` / built-in default.
+- **Speaking voice** — Telnyx TTS voice id (from `GET /api/ai-assistant/voices`); empty = `TELNYX_AI_VOICE` / built-in default.
+- **Extra instructions** — appended to the playbook in Telnyx under “Additional instructions (from Zing)”.
+
+On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, they are pushed on update too (create always applies resolved defaults or your overrides).
+
 ## Advanced (support / migrations)
 
-- **AI call flow → Advanced** can paste an existing assistant id instead of creating one.
+- **AI call flow → Advanced — link an existing assistant id** can paste a Telnyx assistant instead of creating one.
 - **`TELNYX_AI_ASSISTANT_ID`** — optional shared id used only if **programmatic creation** fails (502 path). Prefer fixing API permissions instead of relying on this long-term.
 
 ## Operator env (Vercel)

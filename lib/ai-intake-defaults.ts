@@ -25,6 +25,12 @@ export interface AiIntakeConfig {
   lockoutNotes?: string
   otherNotes?: string
   smsNotify?: boolean
+  /** Telnyx LLM id, e.g. openai/gpt-4o-mini — empty = platform default from env */
+  telnyxModel?: string
+  /** Telnyx TTS voice id string for Voice AI — empty = platform default from env */
+  telnyxVoice?: string
+  /** Appended to the playbook as “Additional instructions” when syncing to Telnyx */
+  extraAiInstructions?: string
 }
 
 export const DEFAULT_BUSY_GREETING_LOCKSMITH =
@@ -58,6 +64,10 @@ export function normalizeIntakeConfig(
   const explicit =
     typeof o.profileId === "string" && isAiIntakeProfileId(o.profileId) ? o.profileId : undefined
   const profileId = explicit ?? defaultProfileFromUserIndustry(opts?.userIndustry)
+  const telnyxModel = typeof o.telnyxModel === "string" ? o.telnyxModel.trim() : undefined
+  const telnyxVoice = typeof o.telnyxVoice === "string" ? o.telnyxVoice.trim() : undefined
+  const extraAiInstructions =
+    typeof o.extraAiInstructions === "string" ? o.extraAiInstructions : undefined
   return {
     profileId,
     busyGreeting: typeof o.busyGreeting === "string" ? o.busyGreeting : undefined,
@@ -65,6 +75,9 @@ export function normalizeIntakeConfig(
     lockoutNotes: typeof o.lockoutNotes === "string" ? o.lockoutNotes : undefined,
     otherNotes: typeof o.otherNotes === "string" ? o.otherNotes : undefined,
     smsNotify: typeof o.smsNotify === "boolean" ? o.smsNotify : true,
+    telnyxModel: telnyxModel || undefined,
+    telnyxVoice: telnyxVoice || undefined,
+    extraAiInstructions: extraAiInstructions?.trim() || undefined,
   }
 }
 
@@ -91,6 +104,22 @@ function busyForProfile(profileId: AiIntakeProfileId, cfg: AiIntakeConfig): stri
 /** First spoken line for Telnyx Voice AI (matches voicemail / busy greeting intent). */
 export function resolveTelnyxAssistantGreeting(cfg: AiIntakeConfig): string {
   return busyForProfile(cfg.profileId, cfg)
+}
+
+/**
+ * Playbook instructions plus optional owner “extra” block for Telnyx.
+ * Use this when creating/updating assistants so advanced instructions stay in sync.
+ */
+export function buildFullTelnyxInstructions(
+  businessName: string,
+  ownerPhone: string,
+  businessHours: string,
+  cfg: AiIntakeConfig
+): string {
+  const base = buildIntakeSystemExtension(businessName, ownerPhone, businessHours, cfg)
+  const extra = cfg.extraAiInstructions?.trim()
+  if (!extra) return base
+  return `${base}\n\n## Additional instructions (from Zing)\n${extra}`
 }
 
 /** Full system instructions for Telnyx Voice AI (Zing syncs this when users activate or save AI call flow). */

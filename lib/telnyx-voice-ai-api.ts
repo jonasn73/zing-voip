@@ -25,6 +25,20 @@ function defaultVoice(): string {
   return process.env.TELNYX_AI_VOICE?.trim() || FALLBACK_VOICE
 }
 
+/** User override wins; otherwise platform env / built-in default (used on create). */
+export function resolveAssistantModel(override?: string | null | undefined): string {
+  const t = override?.trim()
+  if (t) return t
+  return defaultModel()
+}
+
+/** User override wins; otherwise platform env / built-in default (used on create). */
+export function resolveAssistantVoice(override?: string | null | undefined): string {
+  const t = override?.trim()
+  if (t) return t
+  return defaultVoice()
+}
+
 /** Extract first API error string from a Telnyx JSON body. */
 function telnyxErrorMessage(body: unknown): string {
   if (body && typeof body === "object" && "errors" in body) {

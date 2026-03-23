@@ -4,8 +4,8 @@
 // Playbook + intake + Telnyx Voice AI id (shared: full page or fallback modal)
 // ============================================
 
-import { useEffect, useMemo, useState } from "react"
-import { Bot, Loader2, Save, Sparkles } from "lucide-react"
+import { useEffect, useId, useMemo, useState } from "react"
+import { Bot, ChevronDown, Loader2, Save, Sparkles } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { Switch } from "@/components/ui/switch"
@@ -29,7 +29,8 @@ function buildIntakeBody(
     lockoutNotes: string
     otherNotes: string
     smsNotify: boolean
-  }
+  },
+  aiAdvanced: { telnyxModel: string; telnyxVoice: string; extraAiInstructions: string }
 ) {
   return {
     ...(scriptChoice === "auto" ? { followIndustryForAi: true } : { profileId: scriptChoice }),
@@ -38,6 +39,9 @@ function buildIntakeBody(
     lockoutNotes: aiIntake.lockoutNotes,
     otherNotes: aiIntake.otherNotes,
     smsNotify: aiIntake.smsNotify,
+    telnyxModel: aiAdvanced.telnyxModel,
+    telnyxVoice: aiAdvanced.telnyxVoice,
+    extraAiInstructions: aiAdvanced.extraAiInstructions,
   }
 }
 
@@ -71,6 +75,18 @@ export function AiIntakeFlowPanel({
     otherNotes: "",
     smsNotify: true,
   })
+  /** Optional LLM / TTS / extra prompt — stored in user_ai_intake.config, synced to Telnyx on save/activate. */
+  const [aiAdvanced, setAiAdvanced] = useState({
+    telnyxModel: "",
+    telnyxVoice: "",
+    extraAiInstructions: "",
+  })
+  const [showAdvancedAi, setShowAdvancedAi] = useState(false)
+  const [modelOptions, setModelOptions] = useState<{ id: string }[]>([])
+  const [voiceOptions, setVoiceOptions] = useState<{ id: string; label: string }[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const modelListId = useId()
+  const voiceListId = useId()
 
   const previewProfileId = useMemo(
     () => (scriptChoice === "auto" ? defaultProfileFromUserIndustry(userIndustry) : scriptChoice),
@@ -114,6 +130,9 @@ export function AiIntakeFlowPanel({
               lockoutNotes?: string
               otherNotes?: string
               smsNotify?: boolean
+              telnyxModel?: string
+              telnyxVoice?: string
+              extraAiInstructions?: string
             }
           | undefined
 
@@ -124,6 +143,11 @@ export function AiIntakeFlowPanel({
             lockoutNotes: ic.lockoutNotes || "",
             otherNotes: ic.otherNotes || "",
             smsNotify: ic.smsNotify !== false,
+          })
+          setAiAdvanced({
+            telnyxModel: typeof ic.telnyxModel === "string" ? ic.telnyxModel : "",
+            telnyxVoice: typeof ic.telnyxVoice === "string" ? ic.telnyxVoice : "",
+            extraAiInstructions: typeof ic.extraAiInstructions === "string" ? ic.extraAiInstructions : "",
           })
         }
       })
@@ -136,6 +160,28 @@ export function AiIntakeFlowPanel({
     }
   }, [])
 
+  useEffect(() => {
+    if (!showAdvancedAi) return
+    let cancelled = false
+    setCatalogLoading(true)
+    Promise.all([
+      fetch("/api/ai-assistant/models", { credentials: "include" }).then((r) => r.json()),
+      fetch("/api/ai-assistant/voices", { credentials: "include" }).then((r) => r.json()),
+    ])
+      .then(([m, v]) => {
+        if (cancelled) return
+        setModelOptions(Array.isArray(m.models) ? m.models : [])
+        setVoiceOptions(Array.isArray(v.voices) ? v.voices : [])
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showAdvancedAi])
+
   async function handleSave() {
     setSaving(true)
     try {
@@ -145,7 +191,7 @@ export function AiIntakeFlowPanel({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          intake: buildIntakeBody(scriptChoice, aiIntake),
+          intake: buildIntakeBody(scriptChoice, aiIntake, aiAdvanced),
           greeting,
           // Omit when Advanced is closed so we never wipe a server-created assistant id with an empty string.
           ...(showAdvancedAssistantId ? { telnyxAiAssistantId: telnyxAssistantId.trim() } : {}),
@@ -180,7 +226,7 @@ export function AiIntakeFlowPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           greeting: aiIntake.busyGreeting.trim() || undefined,
-          intake: buildIntakeBody(scriptChoice, aiIntake),
+          intake: buildIntakeBody(scriptChoice, aiIntake, aiAdvanced),
           // Empty string → server creates a new Telnyx assistant via API (no Mission Control).
           telnyxAiAssistantId: telnyxAssistantId.trim() || undefined,
         }),
@@ -303,6 +349,90 @@ export function AiIntakeFlowPanel({
       </div>
 
       <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowAdvancedAi((v) => !v)}
+          className="flex w-full items-start justify-between gap-2 text-left"
+        >
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Voice &amp; model (power users)
+            </p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              Optional LLM, speaking voice, and extra instructions — we push these to Telnyx when you Save or Activate.
+            </p>
+          </div>
+          <ChevronDown
+            className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform", showAdvancedAi && "rotate-180")}
+            aria-hidden
+          />
+        </button>
+        {showAdvancedAi && (
+          <div className="space-y-3 border-t border-border/60 pt-3">
+            {catalogLoading ? (
+              <p className="text-[10px] text-muted-foreground">Loading Telnyx model and voice lists…</p>
+            ) : null}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${modelListId}-input`}>
+                LLM model
+              </label>
+              <input
+                id={`${modelListId}-input`}
+                type="text"
+                list={modelListId}
+                value={aiAdvanced.telnyxModel}
+                onChange={(e) => setAiAdvanced((p) => ({ ...p, telnyxModel: e.target.value }))}
+                placeholder="Empty = platform default (see Vercel TELNYX_AI_DEFAULT_MODEL)"
+                className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                autoComplete="off"
+              />
+              <datalist id={modelListId}>
+                {modelOptions.map((m) => (
+                  <option key={m.id} value={m.id} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${voiceListId}-input`}>
+                Speaking voice
+              </label>
+              <input
+                id={`${voiceListId}-input`}
+                type="text"
+                list={voiceListId}
+                value={aiAdvanced.telnyxVoice}
+                onChange={(e) => setAiAdvanced((p) => ({ ...p, telnyxVoice: e.target.value }))}
+                placeholder="Empty = platform default (TELNYX_AI_VOICE)"
+                className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                autoComplete="off"
+              />
+              <datalist id={voiceListId}>
+                {voiceOptions.map((v) => (
+                  <option key={v.id} value={v.id} label={v.label} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground">Extra instructions for the AI</label>
+              <textarea
+                value={aiAdvanced.extraAiInstructions}
+                onChange={(e) => setAiAdvanced((p) => ({ ...p, extraAiInstructions: e.target.value }))}
+                rows={4}
+                placeholder="Anything else the assistant must follow (policies, pricing tone, languages, tools you use in Telnyx, etc.)"
+                className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              />
+            </div>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Simple:</span> leave blank — defaults apply.{" "}
+              <span className="font-medium text-foreground">More control:</span> set model/voice/text here.{" "}
+              <span className="font-medium text-foreground">Full Telnyx UI:</span> use &quot;Advanced — link an existing
+              assistant id&quot; above.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Playbook (reference)</p>
         <p className="text-[10px] text-muted-foreground">
           This is what we send as your assistant&apos;s instructions when you activate or save.
@@ -354,7 +484,9 @@ export function AiIntakeFlowPanel({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           What callers hear first (voicemail / routing)
         </p>
-        <p className="text-[10px] text-muted-foreground">Saved to routing — not automatically injected into Telnyx AI.</p>
+        <p className="text-[10px] text-muted-foreground">
+          Also used as the first thing the Voice AI says when fallback picks up — synced to Telnyx on Save/Activate.
+        </p>
         <textarea
           value={aiIntake.busyGreeting}
           onChange={(e) => setAiIntake((p) => ({ ...p, busyGreeting: e.target.value }))}

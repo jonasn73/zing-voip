@@ -31,19 +31,20 @@ export const runtime = "nodejs"
 export const preferredRegion = "iad1"
 
 /**
- * After this many `/incoming` POSTs, emit `<Connect><AIAssistant>` once on `/incoming` (Telnyx often re-fetches
- * `/incoming` forever after `/ai-bridge` — redirect-only never attaches the assistant). `0` or `false` disables.
+ * After this many `/incoming` POSTs, optionally emit `<Connect><AIAssistant>` once on `/incoming`.
+ * **Default is off (0):** production logs show Telnyx plays “application error, goodbye” when we return
+ * `<Connect>` on `/incoming` — only enable by setting e.g. `ZING_AI_LAST_RESORT_CONNECT_HIT=5` if Telnyx confirms it’s valid for your app.
  */
 function parseAiLastResortConnectHit(): number {
-  const raw = process.env.ZING_AI_LAST_RESORT_CONNECT_HIT // e.g. "5" or "0" to turn off
-  if (raw === "0" || raw === "false") return 0 // No last-resort connect; use silent cap below
-  const n = parseInt(raw || "5", 10) // Default 5 — one connect attempt after a few redirect cycles
-  if (!Number.isFinite(n) || n < 1) return 5 // Bad env → default
-  return Math.min(Math.floor(n), 15) // Avoid absurd values
+  const raw = (process.env.ZING_AI_LAST_RESORT_CONNECT_HIT || "").trim() // Read env; empty = use safe default below
+  if (raw === "" || raw === "0" || raw === "false") return 0 // **Default off** — avoids Telnyx generic application error on many setups
+  const n = parseInt(raw, 10) // Parse explicit number like "5"
+  if (!Number.isFinite(n) || n < 1) return 0 // Bad or negative env → treat as disabled (safe)
+  return Math.min(Math.floor(n), 15) // Clamp so one typo cannot set a huge value
 }
 
-/** If last-resort connect is off, give up after this many hits (no long silent wait). */
-const SILENT_INCOMING_LOOP_CAP = 12
+/** When last-resort `<Connect>` is off: give up when `incomingHitCount` is **greater than** this (e.g. cap 8 → 9th POST onward). */
+const SILENT_INCOMING_LOOP_CAP = 8
 
 // Pick the first non-empty webhook field (Telnyx / proxies sometimes rename keys).
 function pickField(fields: Record<string, string>, keys: string[]): string {
@@ -204,7 +205,7 @@ async function handleIncomingCall(
       if (assistantId) {
         /** 1 = first `/incoming` for this call_sid; 2+ = Telnyx re-posted (see scripts/013 + 014). */
         const incomingHitCount = connectDirectIncoming ? 1 : await bumpTelnyxAiIncomingHitCount(callSid)
-        const lastResortHit = parseAiLastResortConnectHit() // Nth hit tries <Connect> on /incoming (default 5)
+        const lastResortHit = parseAiLastResortConnectHit() // Nth hit tries <Connect> on /incoming only if env set (default: disabled)
         const useLastResortConnect = lastResortHit > 0 && !connectDirectIncoming // Skip when already forcing connect on first hit
         let handoff: string // Short label for logs so you can see which branch ran
         let xml: string // TeXML string we return to Telnyx
@@ -252,8 +253,10 @@ async function handleIncomingCall(
             handoff, // Which branch above ran
             callStatus: callStatus || null, // Raw normalized status from webhook (empty on first ring sometimes)
             incomingHitCount, // Logged every POST
-            lastResortConnectHit: useLastResortConnect ? lastResortHit : null, // null = disabled
-            note: "Hit lastResortConnectHit: <Connect> on /incoming. Next hit if still looping: give up. Set ZING_AI_LAST_RESORT_CONNECT_HIT=0 to disable.",
+            lastResortConnectHit: useLastResortConnect ? lastResortHit : null, // null = disabled (default)
+            note: useLastResortConnect
+              ? "Experimental: <Connect> on /incoming at lastResortConnectHit; next hit = give up. Telnyx may error — unset env to use silent cap only."
+              : `Last-resort <Connect> on /incoming is off. When incomingHitCount > ${SILENT_INCOMING_LOOP_CAP} we play Zing give-up (not Telnyx error). Set ZING_AI_LAST_RESORT_CONNECT_HIT=N to try Connect on hit N.`,
           })
         )
         return { kind: "raw", xml } // Bypass VoiceResponse builder because helpers return full XML strings

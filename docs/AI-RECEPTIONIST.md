@@ -43,7 +43,7 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 
 ## Debugging with evidence (not guessing)
 
-1. **Redirect loop / “application error” on the phone:** Telnyx may re-POST **`/incoming`** after **`/ai-bridge`**. Zing tracks hits in **`telnyx_ai_incoming_handoff`** — run **`scripts/013-telnyx-ai-incoming-handoff.sql`** and **`scripts/014-telnyx-ai-incoming-hit-count.sql`** in Neon. Hit **1** → silent redirect to `/ai-bridge`; hit **2** → **one** short “One moment please” + Redirect (repeat `/incoming` must **not** return `<Connect>` — Telnyx often plays a generic **application error** for that); hit **3+** → **silent** redirect again (avoids repeating “One moment” every couple seconds). Logs: **`incomingHitCount`**, **`handoff`** **`short-say-redirect-ai-bridge-repeat`** vs **`redirect-silent-ai-bridge-repeat`**.
+1. **Redirect loop / give-up message:** Telnyx may re-POST **`/incoming`** many times after **`/ai-bridge`** (`incomingHitCount` in logs). Flow: hit **1** silent redirect; **2** one “One moment” + redirect; **3+** silent redirect until **`incomingHitCount` > 8** (give-up starts on the **9th** POST by default). **Do not** return **`<Connect>` on `/incoming`** by default — Telnyx often responds with **“We’re sorry, an application error has occurred”** (log shows `handoff: connect-aiassistant-last-resort-incoming`). **`ZING_AI_LAST_RESORT_CONNECT_HIT`** is **off** unless you set it (e.g. `5`) for experiments. Run **`013`** + **`014`** in Neon.
 2. **`/fallback` diagnostics** apply only when **`ZING_AI_RING_OWNER_FIRST=true`** (or receptionist `<Dial>`). The **default** direct-AI path hits **`/incoming`** then **`/ai-bridge`** (silent redirect). With **`ZING_AI_HANDOFF_TWO_STEP`** you still hit **`/ai-bridge`** after the Say. Search logs for **`telnyx-incoming-ai-direct`**. Set **`ZING_TELNYX_FALLBACK_DIAGNOSTIC=true`** when debugging `/fallback`.
 3. Locally run **`npm run test`** — Vitest replays fixtures in **`tests/fixtures/telnyx-fallback/`**. Add a scenario when you capture a real Dial `action` body (see **`tests/fixtures/telnyx-fallback/README.md`**).
 
@@ -56,7 +56,7 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 | `TELNYX_AI_VOICE` | Optional — default `Telnyx.KokoroTTS.af_heart`. |
 | `ZING_AI_HANDOFF_TWO_STEP` | Optional — Say + Pause + Redirect → `/ai-bridge` instead of **silent** redirect (can repeat if Telnyx re-fetches `/incoming`). |
 | `ZING_AI_CONNECT_DIRECT` | Optional — `<Connect><AIAssistant>` on **`/incoming`** (may cause **quiet** on some Telnyx setups). |
-| `ZING_AI_LAST_RESORT_CONNECT_HIT` | Optional — default **`5`**: after several redirect retries, try **`<Connect>` on `/incoming`** once; if Telnyx still loops, the call ends with a spoken message (not 20+ silent cycles). **`0`** disables. |
+| `ZING_AI_LAST_RESORT_CONNECT_HIT` | Optional — **default off**. Set **`5`** (etc.) only to experiment with **`<Connect>` on `/incoming`**; often triggers Telnyx application error. **`0`** / unset = silent redirects then Zing’s give-up when **`incomingHitCount` > 8** (9th POST+). |
 | `ZING_AI_RING_OWNER_FIRST` | Optional — ring cell first; **`/fallback`** after no-answer. |
 
 ## API notes

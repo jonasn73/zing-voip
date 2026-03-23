@@ -103,6 +103,34 @@ function resolveBusinessLineE164(bnFromQuery: string, formData: FormData): strin
   return ""
 }
 
+/**
+ * Telnyx may drop `?primary=owner` on the Dial `action` URL. The callback still includes who was dialed (`To` / `DialCalledNumber`).
+ * If that matches the owner’s cell, this was the “ring your phone first” leg — same as `primary=owner` for AI / voicemail logic.
+ */
+function inferDialLegWasOwnerCell(formData: FormData, ownerPhoneRaw: string | null | undefined): boolean {
+  if (!ownerPhoneRaw?.trim()) return false
+  const owner10 = normalizePhoneNumberE164(ownerPhoneRaw).replace(/\D/g, "").slice(-10)
+  if (owner10.length < 10) return false
+  const keys = [
+    "To",
+    "Called",
+    "DialCalledNumber",
+    "DialedNumber",
+    "called",
+    "CallerDestination",
+    "DialBridgedTo",
+  ]
+  for (const k of keys) {
+    const raw = formData.get(k)
+    if (raw == null) continue
+    const s = String(raw).trim()
+    if (s.replace(/\D/g, "").length < 10) continue
+    const to10 = normalizePhoneNumberE164(s).replace(/\D/g, "").slice(-10)
+    if (to10 === owner10) return true
+  }
+  return false
+}
+
 function playTelnyxAiUnavailableVoicemail(
   texml: InstanceType<typeof VoiceResponse>,
   appUrl: string,
@@ -209,6 +237,7 @@ export async function handleTelnyxFallbackDialEnded(
 
   const rawStatus =
     (formData.get("DialCallStatus") as string) ||
+    (formData.get("DialBridgeStatus") as string) ||
     (formData.get("CallStatus") as string) ||
     ""
   const dialStatus = rawStatus.trim().toLowerCase().replace(/_/g, "-")
@@ -224,8 +253,10 @@ export async function handleTelnyxFallbackDialEnded(
   const bnFromQuery =
     (url.searchParams.get("bn") || String(formData.get("bn") || "")).trim() || ""
   const businessLineE164 = resolveBusinessLineE164(bnFromQuery, formData)
-  const primaryWasOwner =
+  /** Set after we load `user` — may add inference when `primary=owner` is missing from the callback URL. */
+  let primaryWasOwner =
     url.searchParams.get("primary") === "owner" || String(formData.get("primary") || "").trim() === "owner"
+  const primaryOwnerFromParam = primaryWasOwner
 
   const texml = new VoiceResponse()
   const appUrl = getAppUrl()
@@ -280,6 +311,20 @@ export async function handleTelnyxFallbackDialEnded(
       })
     }
 
+    // Infer owner-leg before user row loads — join uses the same owner phone as /incoming TeXML <Dial>.
+    if (!primaryWasOwner && lr?.user_id === userId && lr.owner_phone) {
+      if (inferDialLegWasOwnerCell(formData, lr.owner_phone)) {
+        primaryWasOwner = true
+        console.log(
+          JSON.stringify({
+            zing: "telnyx-fallback-primary-owner-inferred",
+            userId,
+            source: "routing_join_owner_phone",
+          })
+        )
+      }
+    }
+
     const [config, globalDefaultConfig, user] = await Promise.all([
       effectiveBusinessLine
         ? getRoutingConfigForNumber(userId, effectiveBusinessLine)
@@ -288,19 +333,34 @@ export async function handleTelnyxFallbackDialEnded(
       getUser(userId),
     ])
 
+    if (!primaryWasOwner && inferDialLegWasOwnerCell(formData, user?.phone)) {
+      primaryWasOwner = true
+      console.log(
+        JSON.stringify({
+          zing: "telnyx-fallback-primary-owner-inferred",
+          userId,
+          source: "users_phone_column",
+        })
+      )
+    }
+
     const useLive = Boolean(lr && lr.user_id === userId)
     let fallbackType = mergeFallbackType(config, lr?.fallback_type, globalDefaultConfig?.fallback_type, useLive)
 
     if (primaryWasOwner && fallbackType === "owner") {
       const linkedAssistant =
         Boolean(user?.telnyx_ai_assistant_id?.trim()) || Boolean(process.env.TELNYX_AI_ASSISTANT_ID?.trim())
-      if (linkedAssistant) {
+      const accountWantsAi =
+        globalDefaultConfig?.fallback_type === "ai" || (useLive && lr?.fallback_type === "ai")
+      if (linkedAssistant || accountWantsAi) {
         fallbackType = "ai"
         console.log(
           JSON.stringify({
             zing: "telnyx-fallback-promote-ai-after-owner-leg",
             userId,
-            reason: "owner-fallback-after-owner-dial-but-assistant-linked",
+            reason: linkedAssistant
+              ? "owner-row-after-owner-dial-but-assistant-or-account-wants-ai"
+              : "per-number-owner-but-default-or-live-says-ai",
           })
         )
       }
@@ -336,6 +396,8 @@ export async function handleTelnyxFallbackDialEnded(
         fallbackFromLiveJoin: useLive ? lr?.fallback_type ?? null : null,
         fallbackType,
         primaryWasOwner,
+        primaryOwnerFromParam,
+        primaryOwnerInferred: primaryWasOwner && !primaryOwnerFromParam,
         dialDurationSec,
         hasTelnyxAiAssistant: Boolean(user?.telnyx_ai_assistant_id?.trim()),
         dialStatus: dialStatus || rawStatus || null,

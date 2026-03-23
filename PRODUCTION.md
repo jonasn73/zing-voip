@@ -23,7 +23,7 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `TELNYX_AI_DEFAULT_MODEL` | Optional: LLM id for auto-created assistants (default `openai/gpt-4o`). List: Telnyx **GET /v2/ai/models**. Avoid `openai/gpt-4o-mini` if Telnyx says it is not available for AI assistants. |
 | `TELNYX_AI_VOICE` | Optional: Telnyx TTS voice string for new assistants (default `Telnyx.KokoroTTS.af_heart`). |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
-| `ZING_RING_OWNER_BEFORE_AI` | Optional. If `true` / `1`: when **AI fallback** is on and there is **no receptionist**, inbound calls **ring your cell first** then AI (short timeout). **Default (unset):** skip that ring and connect callers **straight to Voice AI** so mobile **carrier voicemail** cannot hijack the call. |
+| `ZING_AI_DIRECT_NO_RECEPTIONIST` | Optional. If `true` / `1`: when **AI fallback** is on and there is **no receptionist**, skip ringing your cell and connect **straight to Voice AI** (avoids some carriers sending the Dial to cell VM). **Default (unset):** your phone **rings first**, then no-answer goes to AI. |
 
 Save and **redeploy** the project (Deployments → … → Redeploy).
 

@@ -142,15 +142,15 @@ async function handleIncomingCall(
     const wantsAiAfterNoAnswer = String(routing.fallback_type || "").toLowerCase() === "ai"
     const hasReceptionist = Boolean(routing.selected_receptionist_id && routing.receptionist_phone)
     /**
-     * Ringing the owner’s cell before AI lets carriers send the **Dial** leg to **cell voicemail** (they “answer”).
-     * The caller then hears mailbox audio — not Zing’s fallback TeXML — so AI never runs reliably.
-     * Default: **skip** that Dial when AI fallback + no receptionist; connect straight to Voice AI.
-     * Set `ZING_RING_OWNER_BEFORE_AI=true` in Vercel to restore “ring my cell first” (short timeout).
+     * **Default:** ring your cell (or receptionist) first, then `/fallback` runs Voice AI if you don’t answer.
+     * Opt-in **skip ring** (connect straight to AI): set `ZING_AI_DIRECT_NO_RECEPTIONIST=true` in Vercel —
+     * use only if your carrier keeps sending the Dial leg to **cell voicemail** instead of no-answer.
      */
-    const ringOwnerBeforeAi =
-      process.env.ZING_RING_OWNER_BEFORE_AI === "1" || process.env.ZING_RING_OWNER_BEFORE_AI === "true"
+    const aiDirectNoReceptionist =
+      process.env.ZING_AI_DIRECT_NO_RECEPTIONIST === "1" ||
+      process.env.ZING_AI_DIRECT_NO_RECEPTIONIST === "true"
 
-    if (wantsAiAfterNoAnswer && !hasReceptionist && !ringOwnerBeforeAi) {
+    if (wantsAiAfterNoAnswer && !hasReceptionist && aiDirectNoReceptionist) {
       let user = await getUser(routing.user_id)
       let assistantId =
         user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
@@ -163,22 +163,22 @@ async function handleIncomingCall(
           JSON.stringify({
             zing: "telnyx-incoming-ai-direct",
             userId: routing.user_id,
-            note: "AI fallback + no receptionist: Voice AI without Dial to owner (avoids carrier VM hijack). Set ZING_RING_OWNER_BEFORE_AI=true to ring cell first.",
+            note: "ZING_AI_DIRECT_NO_RECEPTIONIST: Voice AI without Dial to owner.",
           })
         )
         return { kind: "raw", xml: buildTelnyxAiAssistantTexml(assistantId) }
       }
       console.warn(
-        "[Zing] AI fallback + no receptionist but no assistant id — falling back to Dial owner + /fallback webhook."
+        "[Zing] AI direct requested but no assistant id — falling back to Dial owner + /fallback webhook."
       )
     }
 
-    // When the next step is Voice AI and we still Dial first, keep ring **short** (when owner ring is enabled).
+    // When the next step is Voice AI, cap ring time on the first leg so cell voicemail is less likely to answer the Dial.
     const receptionistRingSec = wantsAiAfterNoAnswer
       ? Math.min(routing.ring_timeout_seconds || 20, 22)
       : routing.ring_timeout_seconds || 20
     const ownerRingSec = wantsAiAfterNoAnswer
-      ? Math.min(routing.ring_timeout_seconds || 30, 12)
+      ? Math.min(routing.ring_timeout_seconds || 30, 22)
       : routing.ring_timeout_seconds || 30
 
     if (routing.selected_receptionist_id && routing.receptionist_phone) {

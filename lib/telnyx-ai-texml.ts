@@ -13,6 +13,11 @@ export function escapeXmlAttr(value: string): string {
     .replace(/"/g, "&quot;")
 }
 
+/** Escape text placed between XML tags (e.g. inside `<Say>`). */
+function escapeXmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 /**
  * Telnyx TeXML expects `id="assistant-xxxxxxxx-xxxx-…"` (see AIAssistant docs).
  * The REST API often returns a bare UUID — without the prefix, Voice AI may not start (caller hears error / wrong treatment).
@@ -27,13 +32,23 @@ export function normalizeTelnyxAssistantIdForTexml(raw: string): string {
   return s
 }
 
+export type BuildAiAssistantTexmlOptions = {
+  /** Spoken right before Voice AI connects — avoids a long silent gap while the assistant leg starts. */
+  preambleSay?: string
+}
+
 /**
  * TeXML that hands the current call to a Telnyx AI Assistant (configured in Mission Control).
  * `assistantId` is from Telnyx AI Assistants API (UUID or `assistant-{uuid}`).
  */
-export function buildTelnyxAiAssistantTexml(assistantId: string): string {
+export function buildTelnyxAiAssistantTexml(
+  assistantId: string,
+  options?: BuildAiAssistantTexmlOptions
+): string {
   const canonical = normalizeTelnyxAssistantIdForTexml(assistantId)
   const id = escapeXmlAttr(canonical)
-  // Telnyx examples use an explicit closing tag; some parsers reject self-closing custom verbs.
-  return `<?xml version="1.0" encoding="UTF-8"?><Response><Connect><AIAssistant id="${id}"></AIAssistant></Connect></Response>`
+  const rawLine = options?.preambleSay?.trim() || "One moment while we connect you."
+  const line = escapeXmlText(rawLine)
+  // Brief Say then Connect — callers otherwise often hear one ring / silence while the AI stream attaches.
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>${line}</Say><Connect><AIAssistant id="${id}"></AIAssistant></Connect></Response>`
 }

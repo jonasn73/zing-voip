@@ -44,10 +44,12 @@ export function buildShortSayThenRedirectToAiBridgeTeXML(userId: string, callSid
   return vr.toString() // Complete TeXML for Telnyx
 }
 
-/** After many `/incoming` loops for one call, stop with a clear message instead of endless redirects. */
+/** After redirect loops + optional last-resort `<Connect>`, end the call clearly (not Telnyx’s generic error tone). */
 export function buildAiHandoffGiveUpTeXML(): string {
   const vr = new VoiceResponse() // TwiML builder
-  vr.say("We're sorry, we could not connect the assistant. Please try your call again later.") // Caller-facing apology
+  vr.say(
+    "We're sorry, our voice assistant did not start on this line. Please try again in a few minutes, or contact support if this keeps happening."
+  ) // Explains it is the AI leg, not a random app error
   vr.hangup() // End the call leg
   return vr.toString() // TeXML string for Telnyx
 }

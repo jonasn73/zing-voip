@@ -56,6 +56,7 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 | `TELNYX_AI_VOICE` | Optional — default `Telnyx.KokoroTTS.af_heart`. |
 | `ZING_AI_HANDOFF_TWO_STEP` | Optional — Say + Pause + Redirect → `/ai-bridge` instead of **silent** redirect (can repeat if Telnyx re-fetches `/incoming`). |
 | `ZING_AI_CONNECT_DIRECT` | Optional — `<Connect><AIAssistant>` on **`/incoming`** (may cause **quiet** on some Telnyx setups). |
+| `ZING_AI_LAST_RESORT_CONNECT_HIT` | Optional — default **`5`**: after several redirect retries, try **`<Connect>` on `/incoming`** once; if Telnyx still loops, the call ends with a spoken message (not 20+ silent cycles). **`0`** disables. |
 | `ZING_AI_RING_OWNER_FIRST` | Optional — ring cell first; **`/fallback`** after no-answer. |
 
 ## API notes

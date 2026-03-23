@@ -30,8 +30,20 @@ import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycl
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
 
-/** Stop redirecting after this many `/incoming` POSTs for one call (safety valve). */
-const MAX_TELNYX_AI_INCOMING_HITS = 20
+/**
+ * After this many `/incoming` POSTs, emit `<Connect><AIAssistant>` once on `/incoming` (Telnyx often re-fetches
+ * `/incoming` forever after `/ai-bridge` — redirect-only never attaches the assistant). `0` or `false` disables.
+ */
+function parseAiLastResortConnectHit(): number {
+  const raw = process.env.ZING_AI_LAST_RESORT_CONNECT_HIT // e.g. "5" or "0" to turn off
+  if (raw === "0" || raw === "false") return 0 // No last-resort connect; use silent cap below
+  const n = parseInt(raw || "5", 10) // Default 5 — one connect attempt after a few redirect cycles
+  if (!Number.isFinite(n) || n < 1) return 5 // Bad env → default
+  return Math.min(Math.floor(n), 15) // Avoid absurd values
+}
+
+/** If last-resort connect is off, give up after this many hits (no long silent wait). */
+const SILENT_INCOMING_LOOP_CAP = 12
 
 // Pick the first non-empty webhook field (Telnyx / proxies sometimes rename keys).
 function pickField(fields: Record<string, string>, keys: string[]): string {
@@ -192,34 +204,45 @@ async function handleIncomingCall(
       if (assistantId) {
         /** 1 = first `/incoming` for this call_sid; 2+ = Telnyx re-posted (see scripts/013 + 014). */
         const incomingHitCount = connectDirectIncoming ? 1 : await bumpTelnyxAiIncomingHitCount(callSid)
+        const lastResortHit = parseAiLastResortConnectHit() // Nth hit tries <Connect> on /incoming (default 5)
+        const useLastResortConnect = lastResortHit > 0 && !connectDirectIncoming // Skip when already forcing connect on first hit
         let handoff: string // Short label for logs so you can see which branch ran
         let xml: string // TeXML string we return to Telnyx
-        if (incomingHitCount > MAX_TELNYX_AI_INCOMING_HITS) {
-          handoff = "ai-handoff-give-up" // Too many loops — end politely
-          xml = buildAiHandoffGiveUpTeXML() // Say + hangup (no more redirects)
+        if (useLastResortConnect && incomingHitCount > lastResortHit) {
+          // Loops continued after last-resort <Connect> — fail fast instead of ~20 silent redirects
+          handoff = "ai-handoff-give-up-after-last-resort"
+          xml = buildAiHandoffGiveUpTeXML() // Clear message + hangup
+        } else if (!useLastResortConnect && incomingHitCount > SILENT_INCOMING_LOOP_CAP) {
+          handoff = "ai-handoff-give-up-silent-cap" // Last-resort disabled; cap silent loops
+          xml = buildAiHandoffGiveUpTeXML()
         } else if (twoStepAiHandoff) {
-          if (incomingHitCount <= 1) {
+          if (useLastResortConnect && incomingHitCount === lastResortHit) {
+            handoff = "connect-aiassistant-last-resort-incoming" // Try <Connect> on /incoming once at hit N
+            xml = buildTelnyxAiAssistantTexml(assistantId) // Some Telnyx builds only attach AI here after redirects
+          } else if (incomingHitCount <= 1) {
             handoff = "say-redirect-ai-bridge" // First hit: full hold line + GET /ai-bridge
             xml = buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // TeXML with Say + Pause + Redirect
           } else if (incomingHitCount === 2) {
-            // Only the **first** repeat /incoming gets spoken audio — avoids “One moment” every ~2s forever.
-            handoff = "short-say-redirect-ai-bridge-repeat" // Telnyx rejects <Connect> on repeat /incoming (application error)
+            handoff = "short-say-redirect-ai-bridge-repeat" // One spoken repeat (avoids Telnyx issues with silent-only repeat)
             xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // One-time short line + Redirect
           } else {
-            handoff = "redirect-silent-ai-bridge-repeat" // Hit 3+: silent Redirect only (still not <Connect> on /incoming)
-            xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Same URL as first hit; no repeated TTS
+            handoff = "redirect-silent-ai-bridge-repeat" // Hit 3+ until last-resort: silent Redirect
+            xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid)
           }
         } else if (connectDirectIncoming) {
           handoff = "connect-aiassistant-in-incoming" // Log label: experimental single-step Connect
           xml = buildTelnyxAiAssistantTexml(assistantId) // Only <Connect><AIAssistant> — may dead-air on first hit
+        } else if (useLastResortConnect && incomingHitCount === lastResortHit) {
+          handoff = "connect-aiassistant-last-resort-incoming"
+          xml = buildTelnyxAiAssistantTexml(assistantId)
         } else if (incomingHitCount <= 1) {
           handoff = "redirect-silent-ai-bridge" // First POST this call_sid — silent Redirect → /ai-bridge
           xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Telnyx GETs /ai-bridge for <Connect>
         } else if (incomingHitCount === 2) {
-          handoff = "short-say-redirect-ai-bridge-repeat" // First repeat only — satisfies Telnyx without looping TTS
+          handoff = "short-say-redirect-ai-bridge-repeat" // First repeat only
           xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid)
         } else {
-          handoff = "redirect-silent-ai-bridge-repeat" // Hit 3+: silent redirect (no repeated “One moment”)
+          handoff = "redirect-silent-ai-bridge-repeat" // Hit 3+ until last-resort
           xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid)
         }
         console.log(
@@ -228,8 +251,9 @@ async function handleIncomingCall(
             userId: routing.user_id, // Which business user this call belongs to
             handoff, // Which branch above ran
             callStatus: callStatus || null, // Raw normalized status from webhook (empty on first ring sometimes)
-            incomingHitCount, // 2 = only hit that plays “One moment”; 3+ = silent redirect to /ai-bridge
-            note: "Hit 2: short Say+Redirect once. Hit 3+: silent Redirect. <Connect> on /incoming → Telnyx application error.",
+            incomingHitCount, // Logged every POST
+            lastResortConnectHit: useLastResortConnect ? lastResortHit : null, // null = disabled
+            note: "Hit lastResortConnectHit: <Connect> on /incoming. Next hit if still looping: give up. Set ZING_AI_LAST_RESORT_CONNECT_HIT=0 to disable.",
           })
         )
         return { kind: "raw", xml } // Bypass VoiceResponse builder because helpers return full XML strings

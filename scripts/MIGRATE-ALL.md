@@ -1,0 +1,28 @@
+# Run all database migrations (Neon)
+
+Zing cannot update your Neon database from Git or Vercel automatically. After pulling new code, **open Neon → SQL Editor** and run any scripts you have **not** run yet, **in this order** (skip ones already applied — most scripts use `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`).
+
+| Order | File | What it does |
+|------:|------|----------------|
+| 1 | `001-create-schema.sql` | Core tables (`users`, `routing_config`, `receptionists`, `phone_numbers`, `call_logs`, …) |
+| 2 | `002-add-password-hash.sql` | Password login column on `users` |
+| 3 | `003-ai-conversation-state.sql` | `ai_conversation_state` table |
+| 4 | `004-phone-numbers-port-in-request-sid.sql` | Porting column on `phone_numbers` |
+| 5 | `005-per-number-routing.sql` | Per-DID routing rows |
+| 6 | `006-vapi-assistant.sql` | Legacy `vapi_assistant_id` (optional if unused) |
+| 7 | `007-call-quality-metrics.sql` | Extra timing columns on `call_logs` |
+| 8 | `008-provider-neutral-ids.sql` | Provider-neutral ID columns |
+| 9 | `009-ai-assistant-presets.sql` | AI preset sync table |
+| 10 | `010-ai-leads-intake.sql` | **`user_ai_intake`** + **`ai_leads`** (required for **Save call flow** / AI intake) |
+| 11 | `011-user-industry.sql` | **`users.industry`** |
+| 12 | `012-telnyx-ai-assistant.sql` | **`users.telnyx_ai_assistant_id`** (Telnyx Voice AI) |
+
+## If “Save call flow” fails
+
+Run **`010-ai-leads-intake.sql`** and **`012-telnyx-ai-assistant.sql`** if the error mentions `user_ai_intake` or `telnyx_ai_assistant_id`.
+
+## Confirm Vercel
+
+**`DATABASE_URL`** must point at the same Neon database where you ran these scripts.
+
+See also **`PRODUCTION.md`**.

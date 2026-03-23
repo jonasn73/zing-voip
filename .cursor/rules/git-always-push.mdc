@@ -1,5 +1,5 @@
 ---
-description: After code changes, commit and push to GitHub (origin/main)
+description: After code changes, commit and push; document DB migrations when schema changes
 alwaysApply: true
 ---
 
@@ -17,3 +17,9 @@ When a task **changes, adds, or deletes** files in this project (not trivial one
 If push fails (auth, network), give the user the **exact commands** to run in Terminal.
 
 If there is **nothing to commit**, say so briefly — no empty commit.
+
+# Database (Neon) — update when needed
+
+- **Agents cannot connect to Neon** from this environment. Never claim the production DB was migrated unless the user ran SQL in Neon.
+- If you **add or change** `scripts/*.sql` or change what `lib/db.ts` expects (new table/column), **update `scripts/MIGRATE-ALL.md`** (and **`PRODUCTION.md`** if the setup story changes), then tell the user to open **Neon → SQL Editor** and run the new script(s).
+- If the user hits save/routing errors about missing tables or columns, point them to **`scripts/MIGRATE-ALL.md`** and the numbered scripts listed there.

@@ -640,7 +640,18 @@ export async function updateUser(
     }
   }
   if (updates.telnyx_ai_assistant_id !== undefined) {
-    await sql`UPDATE users SET telnyx_ai_assistant_id = ${updates.telnyx_ai_assistant_id} WHERE id = ${userId}`
+    try {
+      await sql`UPDATE users SET telnyx_ai_assistant_id = ${updates.telnyx_ai_assistant_id} WHERE id = ${userId}`
+    } catch (e) {
+      const code = pgErrorCode(e)
+      const msg = pgErrorMessage(e)
+      if (code === "42703" && msg.includes("telnyx_ai_assistant_id")) {
+        throw new Error(
+          "Could not link assistant: column telnyx_ai_assistant_id is missing. In Neon → SQL Editor, run scripts/012-telnyx-ai-assistant.sql, then try again."
+        )
+      }
+      throw e
+    }
   }
 }
 
@@ -1364,13 +1375,22 @@ export async function getAiIntakeConfigRaw(userId: string): Promise<Record<strin
 export async function upsertAiIntakeConfig(userId: string, config: Record<string, unknown>): Promise<void> {
   const sql = getSql()
   const json = JSON.stringify(config)
-  await sql`
-    INSERT INTO user_ai_intake (user_id, config, updated_at)
-    VALUES (${userId}, ${json}::jsonb, now())
-    ON CONFLICT (user_id) DO UPDATE SET
-      config = EXCLUDED.config,
-      updated_at = now()
-  `
+  try {
+    await sql`
+      INSERT INTO user_ai_intake (user_id, config, updated_at)
+      VALUES (${userId}, ${json}::jsonb, now())
+      ON CONFLICT (user_id) DO UPDATE SET
+        config = EXCLUDED.config,
+        updated_at = now()
+    `
+  } catch (e) {
+    if (isUndefinedRelationError(e, "user_ai_intake")) {
+      throw new Error(
+        "AI call flow settings could not be saved: table user_ai_intake is missing. In Neon → SQL Editor, run scripts/010-ai-leads-intake.sql, then try Save again."
+      )
+    }
+    throw e
+  }
 }
 
 export async function insertAiLead(params: {

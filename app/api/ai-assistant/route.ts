@@ -126,7 +126,10 @@ export async function PATCH(req: NextRequest) {
     const user = await getUser(userId)
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
 
-    const body = await req.json()
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid JSON body — try again or refresh the page." }, { status: 400 })
+    }
     const {
       greeting,
       intake: intakeBody,
@@ -143,7 +146,11 @@ export async function PATCH(req: NextRequest) {
       await updateUser(userId, { telnyx_ai_assistant_id: trimmed || null })
     }
 
-    const hasIntake = intakeBody !== undefined && typeof intakeBody === "object"
+    const hasIntake =
+      intakeBody !== undefined &&
+      intakeBody !== null &&
+      typeof intakeBody === "object" &&
+      !Array.isArray(intakeBody)
     const hasGreeting = typeof greeting === "string" && greeting.trim().length > 0
     if (!hasIntake && !hasGreeting && !assistantIdSent) {
       return NextResponse.json({ error: "Nothing to update — send intake, greeting, or telnyxAiAssistantId." }, { status: 400 })
@@ -180,6 +187,10 @@ export async function PATCH(req: NextRequest) {
     })
   } catch (error) {
     console.error("[PATCH /api/ai-assistant] failed:", error)
-    return NextResponse.json({ error: "Failed to update" }, { status: 500 })
+    const message =
+      error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : "Could not save call flow (server error). Check Vercel logs or try again in a minute."
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

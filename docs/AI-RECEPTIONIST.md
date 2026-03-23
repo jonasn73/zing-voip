@@ -19,7 +19,8 @@ Zing saves **per-number** routing (or a **default** row that applies when there 
 2. Open **AI call flow** (same sheet or full page) to tune the playbook, greeting, and optional **Voice & model** — **Save** pushes updates to Telnyx (`POST /v2/ai/assistants/{id}`).
 3. **Play preview** calls **`POST /api/ai-assistant/voice-preview`**, which uses Telnyx **`POST /v2/text-to-speech/speech`** (not `/text-to-speech`, which 404s). If TTS still fails, the UI falls back to the **browser’s text-to-speech**. **Live calls** use Telnyx Voice AI on the phone.
 4. No-answer calls use TeXML `<Connect><AIAssistant id="…"/></Connect>` on the same leg. Telnyx expects **`id="assistant-{uuid}"`**; Zing normalizes a bare UUID from the API to that form in `buildTelnyxAiAssistantTexml`.
-5. When **AI** is the no-answer target, the first `<Dial>` uses a **shorter timeout** (owner leg capped at **18s**, receptionist at **22s**) so the mobile carrier’s voicemail is less likely to *answer* the Dial (which would connect the caller to cell VM instead of running our fallback TeXML).
+5. When **AI** is the no-answer target and you still use a first `<Dial>` (receptionist or `ZING_RING_OWNER_BEFORE_AI=true`), timeouts stay **short** so carrier voicemail is less likely to answer that leg.
+6. **Default inbound (AI + no receptionist):** Zing connects the caller **directly** to `<Connect><AIAssistant>` on the business number — **no** `<Dial>` to the owner’s cell first. That avoids the common failure mode where the **cell carrier’s voicemail answers** the Dial and the caller never reaches Zing’s fallback TeXML. To **ring your cell first** anyway, set **`ZING_RING_OWNER_BEFORE_AI=true`** in Vercel (see **`PRODUCTION.md`**).
 
 No Telnyx Mission Control account is required for the business owner.
 

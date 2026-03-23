@@ -13,9 +13,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import {
   getIncomingRoutingByNumber,
+  getUser,
   insertCallLog,
   normalizePhoneNumberE164,
 } from "@/lib/db"
+import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
+import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -64,6 +67,11 @@ function searchParamsToFields(url: URL): Record<string, string> {
   return out
 }
 
+type TwimlInstance = InstanceType<typeof VoiceResponse>
+
+/** Normal `<Response>` from the Twilio builder, or raw XML (e.g. `<Connect><AIAssistant>`). */
+type IncomingCallResult = { kind: "twiml"; texml: TwimlInstance } | { kind: "raw"; xml: string }
+
 // Shared logic for routing a call (used by both POST and GET handlers)
 async function handleIncomingCall(
   calledNumber: string,
@@ -71,7 +79,7 @@ async function handleIncomingCall(
   callSid: string,
   callerName: string | null,
   webhookFieldKeys: string[]
-) {
+): Promise<IncomingCallResult> {
   const texml = new VoiceResponse()
   const appUrl = getAppUrl()
   const debug = process.env.NODE_ENV !== "production"
@@ -98,7 +106,7 @@ async function handleIncomingCall(
       )
       texml.say("Sorry, this number is not configured. Goodbye.")
       texml.hangup()
-      return texml
+      return { kind: "twiml", texml }
     }
 
     if (debug) console.log(`[Zing] Found user ${routing.user_id} (${routing.user_name}) for number ${calledNumber}`)
@@ -132,13 +140,45 @@ async function handleIncomingCall(
     // 4. Route: receptionist (per-number or default) → owner's cell as fallback
     // callerId is REQUIRED by Telnyx TeXML for the outbound leg — use the business number
     const wantsAiAfterNoAnswer = String(routing.fallback_type || "").toLowerCase() === "ai"
-    // When the next step is Voice AI, keep the first-leg ring **short** so the cell carrier’s voicemail
-    // does not "answer" the Dial (that connects the caller to mailbox audio instead of our fallback TeXML).
+    const hasReceptionist = Boolean(routing.selected_receptionist_id && routing.receptionist_phone)
+    /**
+     * Ringing the owner’s cell before AI lets carriers send the **Dial** leg to **cell voicemail** (they “answer”).
+     * The caller then hears mailbox audio — not Zing’s fallback TeXML — so AI never runs reliably.
+     * Default: **skip** that Dial when AI fallback + no receptionist; connect straight to Voice AI.
+     * Set `ZING_RING_OWNER_BEFORE_AI=true` in Vercel to restore “ring my cell first” (short timeout).
+     */
+    const ringOwnerBeforeAi =
+      process.env.ZING_RING_OWNER_BEFORE_AI === "1" || process.env.ZING_RING_OWNER_BEFORE_AI === "true"
+
+    if (wantsAiAfterNoAnswer && !hasReceptionist && !ringOwnerBeforeAi) {
+      let user = await getUser(routing.user_id)
+      let assistantId =
+        user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
+      if (!assistantId) {
+        const ensured = await ensureTelnyxVoiceAiAssistant(routing.user_id)
+        if (ensured.linked && ensured.assistantId?.trim()) assistantId = ensured.assistantId.trim()
+      }
+      if (assistantId) {
+        console.log(
+          JSON.stringify({
+            zing: "telnyx-incoming-ai-direct",
+            userId: routing.user_id,
+            note: "AI fallback + no receptionist: Voice AI without Dial to owner (avoids carrier VM hijack). Set ZING_RING_OWNER_BEFORE_AI=true to ring cell first.",
+          })
+        )
+        return { kind: "raw", xml: buildTelnyxAiAssistantTexml(assistantId) }
+      }
+      console.warn(
+        "[Zing] AI fallback + no receptionist but no assistant id — falling back to Dial owner + /fallback webhook."
+      )
+    }
+
+    // When the next step is Voice AI and we still Dial first, keep ring **short** (when owner ring is enabled).
     const receptionistRingSec = wantsAiAfterNoAnswer
       ? Math.min(routing.ring_timeout_seconds || 20, 22)
       : routing.ring_timeout_seconds || 20
     const ownerRingSec = wantsAiAfterNoAnswer
-      ? Math.min(routing.ring_timeout_seconds || 30, 18)
+      ? Math.min(routing.ring_timeout_seconds || 30, 12)
       : routing.ring_timeout_seconds || 30
 
     if (routing.selected_receptionist_id && routing.receptionist_phone) {
@@ -174,7 +214,7 @@ async function handleIncomingCall(
   }
 
   if (debug) console.log(`[Zing] TeXML response: ${texml.toString().slice(0, 500)}`)
-  return texml
+  return { kind: "twiml", texml }
 }
 
 export async function POST(req: NextRequest) {
@@ -194,9 +234,10 @@ export async function POST(req: NextRequest) {
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const texml = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))
+  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))
+  const body = out.kind === "raw" ? out.xml : out.texml.toString()
 
-  return new NextResponse(texml.toString(), {
+  return new NextResponse(body, {
     headers: { "Content-Type": "text/xml" },
   })
 }
@@ -213,9 +254,10 @@ export async function GET(req: NextRequest) {
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const texml = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))
+  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))
+  const body = out.kind === "raw" ? out.xml : out.texml.toString()
 
-  return new NextResponse(texml.toString(), {
+  return new NextResponse(body, {
     headers: { "Content-Type": "text/xml" },
   })
 }

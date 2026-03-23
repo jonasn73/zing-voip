@@ -17,7 +17,7 @@ import {
   insertCallLog,
   normalizePhoneNumberE164,
 } from "@/lib/db"
-import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
+import { buildSayThenRedirectToAiBridgeTeXML } from "@/lib/telnyx-ai-handoff"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
 export const runtime = "nodejs"
@@ -166,7 +166,7 @@ async function handleIncomingCall(
             note: "ZING_AI_DIRECT_NO_RECEPTIONIST: Voice AI without Dial to owner.",
           })
         )
-        return { kind: "raw", xml: buildTelnyxAiAssistantTexml(assistantId) }
+        return { kind: "raw", xml: buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) }
       }
       console.warn(
         "[Zing] AI direct requested but no assistant id — falling back to Dial owner + /fallback webhook."

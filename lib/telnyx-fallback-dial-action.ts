@@ -17,7 +17,8 @@ import {
   ensureCallLogForInboundLeg,
   normalizePhoneNumberE164,
 } from "@/lib/db"
-import { buildTelnyxAiAssistantTexml, normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
+import { normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
+import { buildSayThenRedirectToAiBridgeTeXML } from "@/lib/telnyx-ai-handoff"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
 /** Build FormData from a Telnyx Dial callback (POST body and/or GET query). */
@@ -208,9 +209,10 @@ async function tryBuildAiAssistantResponse(args: {
         zing: "telnyx-ai-fallback",
         assistantIdLen: forTexml.length,
         texmlIdStartsWithAssistant: forTexml.toLowerCase().startsWith("assistant-"),
+        handoff: "say-then-redirect-ai-bridge",
       })
     )
-    return new NextResponse(buildTelnyxAiAssistantTexml(assistantId), {
+    return new NextResponse(buildSayThenRedirectToAiBridgeTeXML(userId, callSid || undefined), {
       headers: { "Content-Type": "text/xml" },
     })
   }

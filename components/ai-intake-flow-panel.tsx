@@ -237,6 +237,14 @@ export function AiIntakeFlowPanel({
       if (telnyxAssistantId.trim()) {
         setHasAssistant(true)
         onHasAssistantChange?.(true)
+      } else {
+        const fresh = await fetch("/api/ai-assistant", { credentials: "include" }).then((r) =>
+          r.ok ? r.json() : null
+        )
+        if (fresh?.hasAssistant) {
+          setHasAssistant(true)
+          onHasAssistantChange?.(true)
+        }
       }
     } finally {
       setSaving(false)
@@ -262,6 +270,19 @@ export function AiIntakeFlowPanel({
       {loadError && (
         <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-foreground">
           {loadError}
+        </div>
+      )}
+
+      {/* No Telnyx assistant on file → /api/voice/telnyx/fallback plays backup voicemail instead of <AIAssistant>. */}
+      {variant === "modal" && aiNoAnswerSelected && !assistantReady && (
+        <div className="rounded-xl border border-destructive/45 bg-destructive/10 px-3 py-2.5 text-[11px] leading-snug text-foreground">
+          <p className="font-semibold text-destructive">Voice assistant is not linked yet</p>
+          <p className="mt-1 text-muted-foreground">
+            No-answer calls will sound like voicemail until Zing stores a Telnyx assistant on your account. Tap{" "}
+            <span className="font-medium text-foreground">Save call flow</span> below, or toggle fallback off and
+            choose <span className="font-medium text-foreground">AI receptionist</span> again. In Vercel, confirm{" "}
+            <span className="font-mono text-[10px]">TELNYX_API_KEY</span> is set and redeploy if you just added it.
+          </p>
         </div>
       )}
 

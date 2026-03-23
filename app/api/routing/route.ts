@@ -72,9 +72,10 @@ export async function PUT(req: NextRequest) {
       : await getRoutingConfig(userId)
 
     let voiceAi: EnsureTelnyxVoiceAiResult | undefined
-    const shouldProvisionVoiceAi =
-      updated?.fallback_type === "ai" &&
-      (body.fallback_type === "ai" || body.ai_greeting !== undefined)
+    // Any time effective routing is AI, try to link/create Telnyx assistant (idempotent if already linked).
+    // Previously we only ran when this request included fallback_type or ai_greeting — so changing
+    // receptionist (or other fields) skipped retries and left users with fallback=ai but no assistant id → voicemail.
+    const shouldProvisionVoiceAi = updated?.fallback_type === "ai"
     if (shouldProvisionVoiceAi) {
       voiceAi = await ensureTelnyxVoiceAiAssistant(userId, {
         greeting: typeof body.ai_greeting === "string" ? body.ai_greeting : undefined,

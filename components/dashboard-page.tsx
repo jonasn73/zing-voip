@@ -259,25 +259,50 @@ export function DashboardPage() {
     })
       .then(async (res) => {
         const data = (await res.json().catch(() => ({}))) as {
+          error?: string
           voiceAi?: { linked?: boolean; provisioned?: boolean; error?: string }
         }
-        if (res.ok && data.voiceAi?.linked) {
+        if (!res.ok) {
+          if (!opts?.quiet) {
+            toast({
+              title: "Could not save routing",
+              description: String(data.error || res.statusText || "Try again."),
+              variant: "destructive",
+            })
+          }
+          const primary = businessNumbers[0]?.number || null
+          const routingUrl = primary
+            ? `/api/routing?number=${encodeURIComponent(primary)}`
+            : "/api/routing"
+          void fetch(routingUrl, { credentials: "include" })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((rData) => {
+              if (rData?.config?.fallback_type) setFallback(rData.config.fallback_type || "owner")
+            })
+          return
+        }
+        if (data.voiceAi?.linked) {
           setHasTelnyxAiAssistant(true)
         }
-        if (res.ok && data.voiceAi?.error) {
+        if (data.voiceAi?.error) {
           toast({
             title: "Voice AI could not be created",
             description: String(data.voiceAi.error),
             variant: "destructive",
           })
         }
-        if (res.ok && !opts?.quiet) {
+        if (!opts?.quiet) {
           if (data.voiceAi?.error) {
             /* destructive toast already shown */
           } else if (updates.fallback_type === "ai" && data.voiceAi?.provisioned) {
             toast({
               title: "AI receptionist ready",
               description: "Your voice assistant was created automatically. Tune the script below anytime.",
+            })
+          } else if (updates.fallback_type === "ai" && data.voiceAi?.linked) {
+            toast({
+              title: "AI fallback saved",
+              description: "Your assistant is linked — no-answer calls should reach Voice AI after the ring timeout.",
             })
           } else {
             toast({
@@ -287,7 +312,15 @@ export function DashboardPage() {
           }
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!opts?.quiet) {
+          toast({
+            title: "Network error",
+            description: "Could not reach the server. Check your connection and try again.",
+            variant: "destructive",
+          })
+        }
+      })
   }
 
   function selectReceptionist(id: string) {

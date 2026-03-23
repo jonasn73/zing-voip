@@ -302,6 +302,12 @@ export function AiIntakeFlowPanel({
               ? "No extra step — Zing wires up the assistant for you. Adjust the script below and tap Save; reopen this panel if the status looks slow to update."
               : "On the main dashboard, open fallback options and pick AI receptionist. Everything else happens here in Zing."}
         </p>
+        {assistantReady && telnyxAssistantId.trim() ? (
+          <p className="mt-2 text-[9px] text-muted-foreground">
+            <span className="font-medium text-foreground/90">Assistant ID (for support tickets):</span>{" "}
+            <span className="break-all font-mono">{telnyxAssistantId.trim()}</span>
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => setShowAdvancedAssistantId((v) => !v)}
@@ -313,8 +319,8 @@ export function AiIntakeFlowPanel({
           <div className="mt-2 space-y-1.5 rounded-lg border border-border/60 bg-secondary/40 p-2">
             <p className="text-[10px] leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">Almost never needed.</span> Zing creates an assistant for
-              you. Use this only if support or onboarding gave you an ID to use instead (for example moving from another
-              phone setup). Leave it empty for normal use.
+              you. Only paste a different ID if support told you to (they may copy it from the phone carrier’s admin
+              console — e.g. Telnyx Mission Control → Voice AI → Assistants). Leave empty for normal use.
             </p>
             <input
               type="text"

@@ -21,6 +21,17 @@ Zing cannot update your Neon database from Git or Vercel automatically. After pu
 
 Run **`010-ai-leads-intake.sql`** and **`012-telnyx-ai-assistant.sql`** if the error mentions `user_ai_intake` or `telnyx_ai_assistant_id`.
 
+## If Neon says the foreign key “cannot be implemented”
+
+`users.id` is **UUID**. Older copies of `010` used **TEXT** for `user_id` — that fails. Use the **current** `010-ai-leads-intake.sql` from the repo (UUID columns). If you already created wrong tables, run in SQL Editor first:
+
+```sql
+DROP TABLE IF EXISTS ai_leads;
+DROP TABLE IF EXISTS user_ai_intake;
+```
+
+Then run **`010-ai-leads-intake.sql`** again.
+
 ## Confirm Vercel
 
 **`DATABASE_URL`** must point at the same Neon database where you ran these scripts.

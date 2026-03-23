@@ -1,15 +1,16 @@
 -- AI fallback intake config per user + leads captured from Vapi tool calls
 -- Run in Neon SQL Editor after prior migrations.
+-- user_id must be UUID to match users.id (see 001-create-schema.sql).
 
 CREATE TABLE IF NOT EXISTS user_ai_intake (
-  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   config JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS ai_leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   caller_e164 TEXT,
   intent_slug TEXT,
   collected JSONB NOT NULL DEFAULT '{}'::jsonb,

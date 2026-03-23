@@ -389,7 +389,7 @@ export function AiIntakeFlowPanel({
           <p className="text-[9px] text-muted-foreground">First thing the AI says. Tap Save when you change it.</p>
         ) : (
           <p className="text-[10px] text-muted-foreground">
-            Also used when the AI picks up after a no-answer — synced when you Save.
+            Also used when Voice AI answers (default path) or after no-answer if you ring your cell first — synced when you Save.
           </p>
         )}
         <textarea

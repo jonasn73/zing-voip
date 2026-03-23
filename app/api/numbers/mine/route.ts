@@ -5,7 +5,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { getPhoneNumbers } from "@/lib/db"
+import { getPhoneNumbers, getRoutingConfigForNumber, getUser } from "@/lib/db"
+import type { FallbackType, PhoneNumberRoutingSummary } from "@/lib/types"
 
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -14,8 +15,25 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const numbers = await getPhoneNumbers(userId)
-    return NextResponse.json({ numbers })
+    const [numbers, account] = await Promise.all([getPhoneNumbers(userId), getUser(userId)])
+    const assistantLinked = Boolean(account?.telnyx_ai_assistant_id?.trim())
+
+    const numbersWithRouting = await Promise.all(
+      numbers.map(async (row) => {
+        const cfg = await getRoutingConfigForNumber(userId, row.number)
+        const fb = (cfg?.fallback_type ?? "owner") as FallbackType
+        const aiSelected = fb === "ai"
+        const routing_summary: PhoneNumberRoutingSummary = {
+          fallback_type: fb,
+          ai_fallback_selected: aiSelected,
+          telnyx_assistant_linked: assistantLinked,
+          ai_fallback_live: aiSelected && assistantLinked,
+        }
+        return { ...row, routing_summary }
+      })
+    )
+
+    return NextResponse.json({ numbers: numbersWithRouting })
   } catch (error) {
     console.error("[Zing] Error fetching user numbers:", error)
     return NextResponse.json({ error: "Failed to load numbers" }, { status: 500 })

@@ -21,6 +21,7 @@ import {
   X,
   Check,
   Loader2,
+  Sparkles,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -52,6 +53,7 @@ interface ReceptionistInfo {
 interface NumberRouting {
   business_number: string | null
   selected_receptionist_id: string | null
+  fallback_type: string | null
 }
 
 // Format E.164 phone for display, e.g. +15551234567 -> (555) 123-4567. Safe for null/undefined or non-string (e.g. from API).
@@ -153,6 +155,8 @@ export function SettingsPage() {
   const [numberRoutings, setNumberRoutings] = useState<NumberRouting[]>([])
   const [routingModalNumber, setRoutingModalNumber] = useState<string | null>(null) // E.164 number being configured, or null if closed
   const [routingSaving, setRoutingSaving] = useState(false)
+  /** Account has Telnyx assistant id — pairs with per-line `fallback_type === "ai"` for “AI live”. */
+  const [telnyxAssistantLinked, setTelnyxAssistantLinked] = useState(false)
 
   // Load current user so we can show main line (cell) in profile
   useEffect(() => {
@@ -194,6 +198,20 @@ export function SettingsPage() {
     return () => { cancelled = true }
   }, [])
 
+  // Know if Voice AI can run (same signal as dashboard / per-line “AI live” labels).
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/ai-assistant", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (!cancelled && data?.hasAssistant === true) setTelnyxAssistantLinked(true)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Load all routing configs (default + per-number) so we can show which receptionist is assigned
   useEffect(() => {
     let cancelled = false
@@ -201,10 +219,13 @@ export function SettingsPage() {
       .then((res) => (res.ok ? res.json() : { configs: [] }))
       .then((data) => {
         if (!cancelled && Array.isArray(data.configs)) {
-          setNumberRoutings(data.configs.map((c: Record<string, string | null>) => ({
-            business_number: c.business_number,
-            selected_receptionist_id: c.selected_receptionist_id,
-          })))
+          setNumberRoutings(
+            data.configs.map((c: Record<string, string | null>) => ({
+              business_number: c.business_number,
+              selected_receptionist_id: c.selected_receptionist_id,
+              fallback_type: c.fallback_type ?? null,
+            }))
+          )
         }
       })
       .catch(() => {})
@@ -401,9 +422,18 @@ export function SettingsPage() {
     setPortError(null)
   }
 
+  /** True when a routing row’s `business_number` is the same line as `e164` (handles +1 vs digits). */
+  function routingRowMatchesE164(businessNumber: string | null, e164: string): boolean {
+    if (businessNumber == null || businessNumber === "") return false
+    if (businessNumber === e164) return true
+    const a = businessNumber.replace(/\D/g, "")
+    const b = e164.replace(/\D/g, "")
+    return a.length >= 10 && b.length >= 10 && a.slice(-10) === b.slice(-10)
+  }
+
   // Look up which receptionist is assigned to a specific business number
   function getRoutingForNumber(e164: string): { receptionist: ReceptionistInfo | null; isDefault: boolean } {
-    const specific = numberRoutings.find((r) => r.business_number === e164)
+    const specific = numberRoutings.find((r) => routingRowMatchesE164(r.business_number, e164))
     if (specific) {
       const rec = receptionistsList.find((r) => r.id === specific.selected_receptionist_id) || null
       return { receptionist: rec, isDefault: false }
@@ -415,6 +445,35 @@ export function SettingsPage() {
       return { receptionist: rec, isDefault: true }
     }
     return { receptionist: null, isDefault: true }
+  }
+
+  /** Label + style for the no-answer fallback row (matches GET /api/numbers/mine `routing_summary` idea). */
+  function getFallbackLineLabel(e164: string): { label: string; tone: "success" | "warning" | "muted"; title: string } {
+    const specific = numberRoutings.find((r) => routingRowMatchesE164(r.business_number, e164))
+    const defaultRow = numberRoutings.find((r) => r.business_number === null)
+    const fb = (specific?.fallback_type || defaultRow?.fallback_type || "owner").toLowerCase()
+    if (fb === "ai" && telnyxAssistantLinked) {
+      return {
+        label: "AI fallback live",
+        tone: "success",
+        title: "This line uses AI after no answer and your Telnyx assistant is linked.",
+      }
+    }
+    if (fb === "ai" && !telnyxAssistantLinked) {
+      return {
+        label: "AI — finish setup",
+        tone: "warning",
+        title: "AI fallback is selected but no assistant is linked yet. Open Dashboard → AI fallback and save.",
+      }
+    }
+    if (fb === "voicemail") {
+      return { label: "Voicemail fallback", tone: "muted", title: "No-answer calls go to voicemail." }
+    }
+    return {
+      label: "Ring phone fallback",
+      tone: "muted",
+      title: "No-answer follows your “ring again / owner” routing (see Dashboard).",
+    }
   }
 
   // Save a receptionist assignment for a specific number
@@ -431,16 +490,18 @@ export function SettingsPage() {
         }),
       })
       if (res.ok) {
-        // Update local state to reflect the change
-        setNumberRoutings((prev) => {
-          const existing = prev.find((r) => r.business_number === e164)
-          if (existing) {
-            return prev.map((r) =>
-              r.business_number === e164 ? { ...r, selected_receptionist_id: receptionistId } : r
-            )
-          }
-          return [...prev, { business_number: e164, selected_receptionist_id: receptionistId }]
-        })
+        const all = await fetch("/api/routing?all=true", { credentials: "include" }).then((r) =>
+          r.ok ? r.json() : { configs: [] }
+        )
+        if (Array.isArray(all.configs)) {
+          setNumberRoutings(
+            all.configs.map((c: Record<string, string | null>) => ({
+              business_number: c.business_number,
+              selected_receptionist_id: c.selected_receptionist_id,
+              fallback_type: c.fallback_type ?? null,
+            }))
+          )
+        }
         setRoutingModalNumber(null)
         toast({
           title: "Routing saved",
@@ -661,6 +722,7 @@ export function SettingsPage() {
             .filter((num) => num.status === "active")
             .map((num) => {
             const routing = getRoutingForNumber(num.number)
+            const fb = getFallbackLineLabel(num.number)
             return (
               <button
                 key={num.number}
@@ -680,11 +742,25 @@ export function SettingsPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
-                    Active
-                  </span>
-                  <PhoneForwarded className="h-4 w-4 text-muted-foreground" />
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
+                      Active
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      title={fb.title}
+                      className={cn(
+                        "max-w-[9.5rem] text-[10px] font-semibold",
+                        fb.tone === "success" && "border-success/30 bg-success/10 text-success",
+                        fb.tone === "warning" && "border-warning/30 bg-warning/10 text-warning"
+                      )}
+                    >
+                      {fb.tone === "success" && <Sparkles className="mr-0.5 inline h-3 w-3 align-text-bottom" aria-hidden />}
+                      {fb.label}
+                    </Badge>
+                  </div>
+                  <PhoneForwarded className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </div>
               </button>
             )

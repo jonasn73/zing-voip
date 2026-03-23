@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { AiIntakeFlowPanel } from "@/components/ai-intake-flow-panel"
 import { useOperationsData } from "@/lib/hooks/use-operations-data"
+import type { PhoneNumberRoutingSummary } from "@/lib/types"
 
 // Format E.164 to display, e.g. +15025551234 -> (502) 555-1234
 function formatPhoneDisplay(phone: string | undefined | null): string {
@@ -68,6 +69,13 @@ interface Contact {
   phone: string
   initials: string
   color: string
+}
+
+/** One business line on the dashboard — includes API `routing_summary` for AI confirmation. */
+interface DashboardBusinessNumber {
+  number: string
+  status: string
+  routing_summary?: PhoneNumberRoutingSummary
 }
 
 interface CallStat {
@@ -150,7 +158,7 @@ export function DashboardPage() {
   // AI assistant state
   const [hasTelnyxAiAssistant, setHasTelnyxAiAssistant] = useState(false)
   // Business numbers for showing which number routing applies to
-  const [businessNumbers, setBusinessNumbers] = useState<{ number: string; status: string }[]>([])
+  const [businessNumbers, setBusinessNumbers] = useState<DashboardBusinessNumber[]>([])
 
   // Wait until these complete before showing “Quick setup” — otherwise empty initial state looks
   // like an incomplete setup and the banner flashes away when APIs return (confusing on refresh).
@@ -199,10 +207,11 @@ export function DashboardPage() {
           return Promise.resolve()
         }
         const active = data.numbers
-          .filter((n: Record<string, string>) => n.status === "active")
-          .map((n: Record<string, string>) => ({
-            number: n.number,
-            status: n.status,
+          .filter((n: { status: string }) => n.status === "active")
+          .map((n: Record<string, unknown>) => ({
+            number: String(n.number),
+            status: String(n.status),
+            routing_summary: n.routing_summary as PhoneNumberRoutingSummary | undefined,
           }))
         setBusinessNumbers(active)
 
@@ -311,6 +320,21 @@ export function DashboardPage() {
             })
           }
         }
+        // Refresh per-number labels (AI fallback live, etc.) from the server.
+        void fetch("/api/numbers/mine", { credentials: "include" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((mine) => {
+            if (!mine?.numbers || !Array.isArray(mine.numbers)) return
+            const next = mine.numbers
+              .filter((n: { status: string }) => n.status === "active")
+              .map((n: Record<string, unknown>) => ({
+                number: String(n.number),
+                status: String(n.status),
+                routing_summary: n.routing_summary as PhoneNumberRoutingSummary | undefined,
+              }))
+            setBusinessNumbers(next)
+          })
+          .catch(() => {})
       })
       .catch(() => {
         if (!opts?.quiet) {
@@ -470,15 +494,42 @@ export function DashboardPage() {
 
             {/* Show which business number(s) this routing applies to */}
             {businessNumbers.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {businessNumbers.map((bn) => (
-                  <span
-                    key={bn.number}
-                    className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary"
-                  >
-                    {formatPhoneDisplay(bn.number)}
-                  </span>
-                ))}
+              <div className="flex flex-wrap justify-center gap-2">
+                {businessNumbers.map((bn) => {
+                  const rs = bn.routing_summary
+                  return (
+                    <div
+                      key={bn.number}
+                      className="flex max-w-[11rem] flex-col items-center gap-1 rounded-xl border border-primary/20 bg-primary/5 px-2 py-1.5"
+                    >
+                      <span className="text-xs font-medium text-primary">{formatPhoneDisplay(bn.number)}</span>
+                      {rs?.ai_fallback_live ? (
+                        <span
+                          title="This line is set to AI after no answer and your Telnyx assistant is linked — callers should get Voice AI."
+                          className="inline-flex items-center gap-0.5 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success"
+                        >
+                          <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
+                          AI fallback live
+                        </span>
+                      ) : rs?.ai_fallback_selected && !rs.telnyx_assistant_linked ? (
+                        <span
+                          title="AI is selected for this line but no assistant is linked yet — open AI fallback and save."
+                          className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning"
+                        >
+                          AI — finish setup
+                        </span>
+                      ) : rs?.fallback_type === "voicemail" ? (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          Voicemail fallback
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          Ring phone fallback
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
 

@@ -56,6 +56,17 @@ export interface PhoneNumber {
   created_at: string
 }
 
+/** Effective no-answer behavior for one business line (from GET /api/numbers/mine). */
+export interface PhoneNumberRoutingSummary {
+  fallback_type: FallbackType
+  /** Saved routing says AI for this line (per-number or inherited default). */
+  ai_fallback_selected: boolean
+  /** Account has `users.telnyx_ai_assistant_id` — Telnyx can run Voice AI. */
+  telnyx_assistant_linked: boolean
+  /** Callers will actually get AI after no-answer (selected + assistant linked). */
+  ai_fallback_live: boolean
+}
+
 // --- Call Logs ---
 export type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
 

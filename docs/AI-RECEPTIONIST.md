@@ -2,6 +2,17 @@
 
 Zing uses **Telnyx** for telephony and **Telnyx Voice AI** for the no-answer fallback. There is **no Vapi or ElevenLabs** in the app path.
 
+## How to confirm AI is active **for a specific business number**
+
+Zing saves **per-number** routing (or a **default** row that applies when there is no row for that DID). To see what actually applies:
+
+1. **Dashboard** — Under “Calls Are Being Routed”, each business line shows a chip:
+   - **AI fallback live** — Effective `fallback_type` is `ai` for that line **and** `users.telnyx_ai_assistant_id` is set (callers should get Voice AI after no-answer).
+   - **AI — finish setup** — Line is set to AI but no assistant is linked yet; open **AI fallback** and **Save**.
+   - **Voicemail fallback** / **Ring phone fallback** — No AI on no-answer for that line.
+2. **Settings → Business numbers** — The same labels appear next to **Active** (data from `GET /api/routing?all=true` + `GET /api/ai-assistant`).
+3. **API** — `GET /api/numbers/mine` returns each number with `routing_summary`: `fallback_type`, `ai_fallback_selected`, `telnyx_assistant_linked`, `ai_fallback_live`.
+
 ## What the business owner does (in Zing only)
 
 1. In **Fallback Settings**, choose **AI receptionist**. Zing immediately calls **Telnyx `POST /v2/ai/assistants`** (via `PUT /api/routing`), stores the assistant id, and returns `voiceAi` in the JSON response — **no separate “Activate” step**.

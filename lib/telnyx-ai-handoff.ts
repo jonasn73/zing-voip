@@ -7,6 +7,22 @@
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 
 /**
+ * Silent handoff: one `<Redirect>` to `/ai-bridge` (no `<Say>`). Telnyx often needs this second fetch
+ * before `<Connect><AIAssistant>` works; putting `<Connect>` on the first `/incoming` response can go dead-air.
+ */
+export function buildRedirectOnlyToAiBridgeTeXML(userId: string, callSid?: string): string {
+  const appUrl = getAppUrl() // Base URL of this app (from env), so Telnyx can request our next TeXML step
+  const cs = callSid?.trim() // Optional Telnyx call id, trimmed or empty
+  const qs = cs ? `?callSid=${encodeURIComponent(cs)}` : "" // Append query only when we have a call id (safe for URLs)
+  const vr = new VoiceResponse() // Builder that outputs TwiML-compatible TeXML for Telnyx
+  vr.redirect(
+    { method: "GET" }, // Telnyx will GET the next document (avoids empty POST body issues)
+    `${appUrl}/api/voice/telnyx/ai-bridge/u/${encodeURIComponent(userId)}${qs}` // Second step: pure <Connect><AIAssistant>
+  )
+  return vr.toString() // Final XML string sent back to Telnyx
+}
+
+/**
  * TeXML that speaks a short line, then fetches the pure AI `<Connect>` document from our server.
  * Uses the Twilio `VoiceResponse` builder so `<Say>` matches what Telnyx expects for TwiML-compatible TeXML.
  * @param callSid — optional; forwarded on the redirect URL so the bridge can tie voicemail to the same call.

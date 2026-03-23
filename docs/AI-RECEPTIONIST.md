@@ -18,8 +18,8 @@ Zing saves **per-number** routing (or a **default** row that applies when there 
 1. In **Fallback Settings**, choose **AI receptionist**. Zing immediately calls **Telnyx `POST /v2/ai/assistants`** (via `PUT /api/routing`), stores the assistant id, and returns `voiceAi` in the JSON response — **no separate “Activate” step**.
 2. Open **AI call flow** (same sheet or full page) to tune the playbook, greeting, and optional **Voice & model** — **Save** pushes updates to Telnyx (`POST /v2/ai/assistants/{id}`).
 3. **Play preview** calls **`POST /api/ai-assistant/voice-preview`**, which uses Telnyx **`POST /v2/text-to-speech/speech`** (not `/text-to-speech`, which 404s). If TTS still fails, the UI falls back to the **browser’s text-to-speech**. **Live calls** use Telnyx Voice AI on the phone.
-4. No-answer handoff uses **two TeXML steps**: `<Say>` + short **`<Pause>`** + **`<Redirect method="GET">`** to `/api/voice/telnyx/ai-bridge/u/{userId}`, then that URL returns **only** `<Connect><AIAssistant id="…"/>`. Putting `<Say>` and `<Connect><AIAssistant>` in one document often results in **no audio** or voicemail-like behavior on Telnyx. Telnyx expects **`assistant-{uuid}`**; Zing normalizes bare UUIDs in `buildTelnyxAiAssistantTexml`.
-5. **Default inbound (AI + no receptionist):** `/incoming` returns **only** **`<Connect><AIAssistant>`** (no “please hold” Say, no Redirect). That avoids Telnyx **re-fetching** `/incoming` and replaying the old hold line in a loop. Legacy **Say → `/ai-bridge`**: set **`ZING_AI_HANDOFF_TWO_STEP=true`** in Vercel.
+4. Voice AI handoff is usually **two fetches**: **`/incoming`** then **`/ai-bridge`**. Putting `<Say>` and `<Connect><AIAssistant>` in one document often results in **no audio** on Telnyx. The **`/ai-bridge`** URL returns **only** `<Connect><AIAssistant id="…"/>`. Telnyx expects **`assistant-{uuid}`**; Zing normalizes bare UUIDs in `buildTelnyxAiAssistantTexml`.
+5. **Default inbound (AI + no receptionist):** `/incoming` returns a **silent** **`<Redirect method="GET">`** to **`/api/voice/telnyx/ai-bridge/u/{userId}`** (no `<Say>`). That avoids **dead air** that can happen if `<Connect>` is the **first** `/incoming` response, and avoids a **repeating “please hold”** loop from **`ZING_AI_HANDOFF_TWO_STEP`**. Optional: **`ZING_AI_HANDOFF_TWO_STEP=true`** — Say + Pause + Redirect. Optional: **`ZING_AI_CONNECT_DIRECT=true`** — `<Connect>` on `/incoming` (experimental). If Telnyx POSTs `/incoming` again with **`CallStatus`** like **in-progress**, Zing returns **`<Connect>`** inline (no second redirect).
 6. **Ring your cell first (legacy):** set **`ZING_AI_RING_OWNER_FIRST=true`** in Vercel — Zing uses `<Dial>` to your phone and **`/fallback`** after no-answer. Only use if you confirm **POST/GET to `/api/voice/telnyx/fallback/...`** appears in logs when you decline a call.
 7. **“Vercel shows `/incoming` but never `/fallback`”:** Telnyx did not request the Dial `action` URL — you will **not** see `telnyx-fallback-diagnostic` logs. Use the **default** (direct AI, item 5) or fix TeXML/Telnyx routing for your number.
 8. **Ring-first path (`ZING_AI_RING_OWNER_FIRST`):** `/fallback` uses **`/fallback/u/{userId}/n/{digits}/{mode}`**, path **`mode=owner-ai`**, **`zingFbMode=`** fallback, and safe merge rules. Early hang-up only if **`DialBridgedTo`** (10+ digits) **and** duration ≥ 2 minutes.
@@ -43,7 +43,7 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 
 ## Debugging with evidence (not guessing)
 
-1. **`/fallback` diagnostics** apply only when **`ZING_AI_RING_OWNER_FIRST=true`** (or receptionist `<Dial>`). The **default** direct-AI path hits **`/incoming`** only (Connect in one response); with **`ZING_AI_HANDOFF_TWO_STEP`** you will also see **`/ai-bridge`**. Search logs for **`telnyx-incoming-ai-direct`**. Set **`ZING_TELNYX_FALLBACK_DIAGNOSTIC=true`** when debugging `/fallback`.
+1. **`/fallback` diagnostics** apply only when **`ZING_AI_RING_OWNER_FIRST=true`** (or receptionist `<Dial>`). The **default** direct-AI path hits **`/incoming`** then **`/ai-bridge`** (silent redirect). With **`ZING_AI_HANDOFF_TWO_STEP`** you still hit **`/ai-bridge`** after the Say. Search logs for **`telnyx-incoming-ai-direct`** (`handoff` shows **redirect-silent-ai-bridge**, **connect-aiassistant-repeat-incoming**, etc.). Set **`ZING_TELNYX_FALLBACK_DIAGNOSTIC=true`** when debugging `/fallback`.
 2. Locally run **`npm run test`** — Vitest replays fixtures in **`tests/fixtures/telnyx-fallback/`**. Add a scenario when you capture a real Dial `action` body (see **`tests/fixtures/telnyx-fallback/README.md`**).
 
 ## Operator env (Vercel)
@@ -53,6 +53,9 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 | `TELNYX_API_KEY` | Required — must allow **AI Assistants** API on your Telnyx project. |
 | `TELNYX_AI_DEFAULT_MODEL` | Optional — default `openai/gpt-4o`; use Telnyx **GET /v2/ai/models** for ids. |
 | `TELNYX_AI_VOICE` | Optional — default `Telnyx.KokoroTTS.af_heart`. |
+| `ZING_AI_HANDOFF_TWO_STEP` | Optional — Say + Pause + Redirect → `/ai-bridge` instead of **silent** redirect (can repeat if Telnyx re-fetches `/incoming`). |
+| `ZING_AI_CONNECT_DIRECT` | Optional — `<Connect><AIAssistant>` on **`/incoming`** (may cause **quiet** on some Telnyx setups). |
+| `ZING_AI_RING_OWNER_FIRST` | Optional — ring cell first; **`/fallback`** after no-answer. |
 
 ## API notes
 

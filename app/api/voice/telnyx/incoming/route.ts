@@ -17,7 +17,10 @@ import {
   insertCallLog,
   normalizePhoneNumberE164,
 } from "@/lib/db"
-import { buildSayThenRedirectToAiBridgeTeXML } from "@/lib/telnyx-ai-handoff"
+import {
+  buildRedirectOnlyToAiBridgeTeXML,
+  buildSayThenRedirectToAiBridgeTeXML,
+} from "@/lib/telnyx-ai-handoff"
 import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
@@ -79,7 +82,8 @@ async function handleIncomingCall(
   callerNumber: string,
   callSid: string,
   callerName: string | null,
-  webhookFieldKeys: string[]
+  webhookFieldKeys: string[],
+  webhookFields: Record<string, string>
 ): Promise<IncomingCallResult> {
   const texml = new VoiceResponse()
   const appUrl = getAppUrl()
@@ -143,39 +147,70 @@ async function handleIncomingCall(
     const wantsAiAfterNoAnswer = String(routing.fallback_type || "").toLowerCase() === "ai"
     const hasReceptionist = Boolean(routing.selected_receptionist_id && routing.receptionist_phone)
     /**
-     * **Default (AI fallback, no receptionist):** return **`<Connect><AIAssistant>`** from `/incoming` (no Say, no Redirect).
-     * Say→Redirect→ai-bridge caused a **repeating hold message** when Telnyx re-fetched `/incoming` on some setups.
-     * Set **`ZING_AI_HANDOFF_TWO_STEP=true`** to restore Say + Redirect → `/ai-bridge` (legacy).
-     * Set **`ZING_AI_RING_OWNER_FIRST=true`** to ring the owner’s cell first (Dial + `/fallback`).
+     * **Default (AI + no receptionist):** silent **`<Redirect>`** to `/ai-bridge` → `<Connect><AIAssistant>`.
+     * Putting `<Connect>` on the first `/incoming` response often goes **dead-air** on Telnyx.
+     * **`ZING_AI_HANDOFF_TWO_STEP`:** Say + Redirect (repeats if Telnyx re-fetches `/incoming` — avoid unless needed).
+     * **`ZING_AI_CONNECT_DIRECT`:** `<Connect>` on `/incoming` only (experimental).
+     * **`ZING_AI_RING_OWNER_FIRST`:** `<Dial>` owner + `/fallback`.
      */
     const ringOwnerFirst =
-      process.env.ZING_AI_RING_OWNER_FIRST === "1" || process.env.ZING_AI_RING_OWNER_FIRST === "true"
+      process.env.ZING_AI_RING_OWNER_FIRST === "1" || process.env.ZING_AI_RING_OWNER_FIRST === "true" // true = Dial cell first, then /fallback
     const twoStepAiHandoff =
-      process.env.ZING_AI_HANDOFF_TWO_STEP === "1" || process.env.ZING_AI_HANDOFF_TWO_STEP === "true"
+      process.env.ZING_AI_HANDOFF_TWO_STEP === "1" || process.env.ZING_AI_HANDOFF_TWO_STEP === "true" // true = play “please hold” then redirect
+    const connectDirectIncoming =
+      process.env.ZING_AI_CONNECT_DIRECT === "1" || process.env.ZING_AI_CONNECT_DIRECT === "true" // true = skip redirect; <Connect> on /incoming (can be quiet)
     const useDirectAiWhenNoReceptionist =
-      wantsAiAfterNoAnswer && !hasReceptionist && !ringOwnerFirst
+      wantsAiAfterNoAnswer && !hasReceptionist && !ringOwnerFirst // AI fallback with nobody to Dial first
+
+    const callStatusRaw = pickField(webhookFields, [
+      // Telnyx may use different key names; try each until one has a value
+      "CallStatus",
+      "CallState",
+      "call_status",
+      "CallLegStatus",
+    ])
+    const callStatus = callStatusRaw.trim().toLowerCase().replace(/_/g, "-") // Normalize so “in_progress” matches “in-progress”
+    /** Telnyx may POST /incoming again while the call is already up — skip another Redirect and emit Connect here to reduce churn. */
+    const callAlreadyLive =
+      callStatus === "in-progress" || // Common Twilio/Telnyx name for an answered call
+      callStatus === "answered" || // Some webhooks use this instead
+      callStatus === "active" || // Alternate wording
+      callStatus === "ongoing" // Alternate wording
 
     if (useDirectAiWhenNoReceptionist) {
-      let user = await getUser(routing.user_id)
+      let user = await getUser(routing.user_id) // Load DB row for this business user
       let assistantId =
-        user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
+        user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || "" // Prefer per-user id, else env fallback
       if (!assistantId) {
-        const ensured = await ensureTelnyxVoiceAiAssistant(routing.user_id)
-        if (ensured.linked && ensured.assistantId?.trim()) assistantId = ensured.assistantId.trim()
+        const ensured = await ensureTelnyxVoiceAiAssistant(routing.user_id) // Create/link assistant via Telnyx API if missing
+        if (ensured.linked && ensured.assistantId?.trim()) assistantId = ensured.assistantId.trim() // Use newly created id
       }
       if (assistantId) {
+        let handoff: string // Short label for logs so you can see which branch ran
+        let xml: string // TeXML string we return to Telnyx
+        if (twoStepAiHandoff) {
+          handoff = "say-redirect-ai-bridge" // Log label: spoken line then GET /ai-bridge
+          xml = buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // TeXML with Say + Pause + Redirect
+        } else if (connectDirectIncoming) {
+          handoff = "connect-aiassistant-in-incoming" // Log label: experimental single-step Connect
+          xml = buildTelnyxAiAssistantTexml(assistantId) // Only <Connect><AIAssistant> — may dead-air on first hit
+        } else if (callAlreadyLive) {
+          handoff = "connect-aiassistant-repeat-incoming" // Log label: Telnyx hit /incoming again mid-call
+          xml = buildTelnyxAiAssistantTexml(assistantId) // Avoid stacking another Redirect when call is already live
+        } else {
+          handoff = "redirect-silent-ai-bridge" // Log label: default — no speech, just redirect
+          xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Silent Redirect → /ai-bridge (recommended default)
+        }
         console.log(
           JSON.stringify({
-            zing: "telnyx-incoming-ai-direct",
-            userId: routing.user_id,
-            handoff: twoStepAiHandoff ? "say-redirect-ai-bridge" : "connect-aiassistant-in-incoming",
-            note: "No <Dial> to owner unless ZING_AI_RING_OWNER_FIRST. Use ZING_AI_HANDOFF_TWO_STEP for legacy Say+Redirect.",
+            zing: "telnyx-incoming-ai-direct", // Fixed key: search Vercel logs for this
+            userId: routing.user_id, // Which business user this call belongs to
+            handoff, // Which branch above ran
+            callStatus: callStatus || null, // Raw normalized status from webhook (empty on first ring sometimes)
+            note: "Default: silent Redirect→ai-bridge. ZING_AI_CONNECT_DIRECT for Connect on first hit.",
           })
         )
-        if (twoStepAiHandoff) {
-          return { kind: "raw", xml: buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) }
-        }
-        return { kind: "raw", xml: buildTelnyxAiAssistantTexml(assistantId) }
+        return { kind: "raw", xml } // Bypass VoiceResponse builder because helpers return full XML strings
       }
       console.warn(
         "[Zing] AI direct path skipped — no assistant id; falling back to <Dial> owner + /fallback webhook."
@@ -259,7 +294,7 @@ export async function POST(req: NextRequest) {
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))
+  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields), fields)
   const body = out.kind === "raw" ? out.xml : out.texml.toString()
 
   return new NextResponse(body, {
@@ -279,7 +314,7 @@ export async function GET(req: NextRequest) {
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))
+  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields), fields)
   const body = out.kind === "raw" ? out.xml : out.texml.toString()
 
   return new NextResponse(body, {

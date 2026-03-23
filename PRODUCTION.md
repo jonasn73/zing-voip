@@ -24,7 +24,8 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `TELNYX_AI_VOICE` | Optional: Telnyx TTS voice string for new assistants (default `Telnyx.KokoroTTS.af_heart`). |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
 | `ZING_AI_RING_OWNER_FIRST` | Optional. If `true` / `1`: when **AI fallback** is on and there is **no receptionist**, **ring your cell first** and use the Dial `action` URL (`/fallback`) for Voice AI after no-answer. **Default (unset):** connect **straight to Voice AI** (no ring) — recommended because Telnyx often **does not call** `/fallback`, so ring-first + AI appears “stuck” on voicemail. |
-| `ZING_AI_HANDOFF_TWO_STEP` | Optional. If `true` / `1`: use **Say + Redirect** to **`/ai-bridge`** from `/incoming` instead of **`<Connect><AIAssistant>`** directly. Only if you need the old handoff; default avoids a **repeating “please hold”** loop when Telnyx re-requests `/incoming`. |
+| `ZING_AI_HANDOFF_TWO_STEP` | Optional. If `true` / `1`: **Say + Pause + Redirect** to **`/ai-bridge`** from `/incoming`. Default is a **silent** Redirect (no Say) to **`/ai-bridge`** — avoids **dead air** from `<Connect>` on the first `/incoming` response and avoids a **repeating hold line** if Telnyx re-requests `/incoming`. |
+| `ZING_AI_CONNECT_DIRECT` | Optional. If `true` / `1`: return **`<Connect><AIAssistant>`** on **`/incoming`** (skip silent redirect). **Experimental** — Telnyx may go **quiet**; prefer unset (default). |
 | `ZING_AI_DIRECT_NO_RECEPTIONIST` | Legacy no-op (still accepted). Direct-to-AI is now the **default** when AI fallback + no receptionist; use **`ZING_AI_RING_OWNER_FIRST`** if you need the old ring-first behavior. |
 | `ZING_TELNYX_FALLBACK_DIAGNOSTIC` | Optional. If `true` / `1`: log **`zing: telnyx-fallback-diagnostic`** per Dial `action` request (PII-redacted form fields + routing snapshot). Use when debugging; turn off after. See **`tests/fixtures/telnyx-fallback/README.md`**. |
 
@@ -34,7 +35,7 @@ Save and **redeploy** the project (Deployments → … → Redeploy).
 
 - **Owners do not use Mission Control.** **AI call flow → Activate** creates a Telnyx assistant via API from their playbook. Saving updates that assistant.
 - Advanced / support can still paste an existing assistant id; `TELNYX_AI_ASSISTANT_ID` is only an emergency fallback if creation fails.
-- On **no answer**, Zing returns TeXML `<Connect><AIAssistant id="…"/></Connect>` on the **same** call (no second carrier).
+- **AI + no receptionist:** `/incoming` **redirects** to `/ai-bridge`, which returns `<Connect><AIAssistant id="…"/></Connect>` (same call leg; second HTTP fetch).
 - See **`docs/AI-RECEPTIONIST.md`**. Lead webhooks from tools are **not** wired to Vapi anymore; use Telnyx tool/webhook features when you need structured lead capture.
 
 ## 3. Sign up on the live site

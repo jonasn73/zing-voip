@@ -88,7 +88,12 @@ function busyForProfile(profileId: AiIntakeProfileId, cfg: AiIntakeConfig): stri
   }
 }
 
-/** Main entry: full system block for documentation / future use (Telnyx assistant prompts are edited in Mission Control). */
+/** First spoken line for Telnyx Voice AI (matches voicemail / busy greeting intent). */
+export function resolveTelnyxAssistantGreeting(cfg: AiIntakeConfig): string {
+  return busyForProfile(cfg.profileId, cfg)
+}
+
+/** Full system instructions for Telnyx Voice AI (Zing syncs this when users activate or save AI call flow). */
 export function buildIntakeSystemExtension(
   businessName: string,
   ownerPhone: string,

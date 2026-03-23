@@ -22,14 +22,17 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `SESSION_SECRET`   | Random string for signing cookies (e.g. run `openssl rand -base64 32` and paste). |
 | `TELNYX_API_KEY`   | Your Telnyx API key (for numbers and voice). |
 | `NEXT_PUBLIC_APP_URL` | Your live site base URL (e.g. `https://your-app.vercel.app`) — used for Telnyx voice webhooks. |
-| `TELNYX_AI_ASSISTANT_ID` | Optional platform default: Telnyx **Voice AI → Assistant** id when a user has not saved their own in the app. |
+| `TELNYX_AI_ASSISTANT_ID` | Optional **fallback** only: shared assistant id if **creating** an assistant via API fails (prefer fixing API access). |
+| `TELNYX_AI_DEFAULT_MODEL` | Optional: LLM id for auto-created assistants (default `openai/gpt-4o-mini`). List: Telnyx **GET /v2/ai/models**. |
+| `TELNYX_AI_VOICE` | Optional: Telnyx TTS voice string for new assistants (default `Telnyx.KokoroTTS.af_heart`). |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
 
 Save and **redeploy** the project (Deployments → … → Redeploy).
 
 ### AI receptionist (Telnyx Voice AI)
 
-- Create an assistant in **Telnyx Mission Control → Voice AI → Assistants**; owners paste the assistant **id** in **AI call flow** (or set `TELNYX_AI_ASSISTANT_ID` for a default).
+- **Owners do not use Mission Control.** **AI call flow → Activate** creates a Telnyx assistant via API from their playbook. Saving updates that assistant.
+- Advanced / support can still paste an existing assistant id; `TELNYX_AI_ASSISTANT_ID` is only an emergency fallback if creation fails.
 - On **no answer**, Zing returns TeXML `<Connect><AIAssistant id="…"/></Connect>` on the **same** call (no second carrier).
 - See **`docs/AI-RECEPTIONIST.md`**. Lead webhooks from tools are **not** wired to Vapi anymore; use Telnyx tool/webhook features when you need structured lead capture.
 

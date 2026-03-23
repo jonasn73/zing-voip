@@ -1,8 +1,8 @@
 // ============================================
 // GET/POST/PATCH /api/ai-assistant
 // ============================================
-// Telnyx Voice AI: user pastes Assistant id from Mission Control; fallback TeXML uses <AIAssistant>.
-// Intake + greetings still saved here for your playbook copy in the app (configure full behavior in Telnyx).
+// Telnyx Voice AI: Zing creates/updates assistants via POST /v2/ai/assistants (no Mission Control for end users).
+// Optional manual id still supported for support/debug. Fallback TeXML uses <AIAssistant id="…">.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
@@ -14,8 +14,17 @@ import {
   upsertAiIntakeConfig,
   updateRoutingConfig,
 } from "@/lib/db"
-import { normalizeIntakeConfig, type AiIntakeConfig } from "@/lib/ai-intake-defaults"
+import {
+  normalizeIntakeConfig,
+  buildIntakeSystemExtension,
+  resolveTelnyxAssistantGreeting,
+  type AiIntakeConfig,
+} from "@/lib/ai-intake-defaults"
 import { isAiIntakeProfileId } from "@/lib/business-industries"
+import { telnyxCreateAssistant, telnyxUpdateAssistant } from "@/lib/telnyx-voice-ai-api"
+
+/** Default hours line embedded in assistant instructions when we have no separate business-hours field. */
+const DEFAULT_BUSINESS_HOURS = "Monday through Friday, 9 AM to 5 PM. Closed weekends."
 
 function mergeIntakeConfig(
   prev: Record<string, unknown> | null,
@@ -35,6 +44,23 @@ function mergeIntakeConfig(
     delete base.profileId
   }
   return base
+}
+
+/** Push latest intake playbook + opening line to Telnyx for this user’s linked assistant. */
+async function syncTelnyxAssistantFromIntake(userId: string): Promise<void> {
+  const u = await getUser(userId)
+  const aid = u?.telnyx_ai_assistant_id?.trim()
+  if (!u || !aid) return
+  const raw = await getAiIntakeConfigRaw(userId)
+  const cfg = normalizeIntakeConfig(raw, { userIndustry: u.industry })
+  const instructions = buildIntakeSystemExtension(
+    u.business_name,
+    u.phone,
+    DEFAULT_BUSINESS_HOURS,
+    cfg
+  )
+  const greeting = resolveTelnyxAssistantGreeting(cfg)
+  await telnyxUpdateAssistant(aid, { instructions, greeting })
 }
 
 export async function GET(req: NextRequest) {
@@ -94,17 +120,6 @@ export async function POST(req: NextRequest) {
 
     const fromBody = typeof bodyAssistantId === "string" ? bodyAssistantId.trim() : ""
     const fromEnv = process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
-    const assistantId = fromBody || fromEnv
-
-    if (!assistantId) {
-      return NextResponse.json(
-        {
-          error:
-            "Add your Telnyx Voice AI Assistant id (Mission Control → Voice AI → Assistants), or set TELNYX_AI_ASSISTANT_ID for a platform default.",
-        },
-        { status: 400 }
-      )
-    }
 
     if (user.telnyx_ai_assistant_id?.trim()) {
       return NextResponse.json({
@@ -131,12 +146,54 @@ export async function POST(req: NextRequest) {
       await updateRoutingConfig(userId, { ai_greeting: greeting }, null)
     }
 
+    const intakeCfg: AiIntakeConfig = normalizeIntakeConfig(merged, { userIndustry: user.industry })
+    const telnyxGreeting = resolveTelnyxAssistantGreeting(intakeCfg)
+    const instructions = buildIntakeSystemExtension(
+      user.business_name,
+      user.phone,
+      DEFAULT_BUSINESS_HOURS,
+      intakeCfg
+    )
+
+    let assistantId: string
+    let provisioned = false
+
+    if (fromBody) {
+      assistantId = fromBody
+    } else {
+      try {
+        const created = await telnyxCreateAssistant({
+          name: `Zing — ${user.business_name}`.slice(0, 120),
+          instructions,
+          greeting: telnyxGreeting,
+        })
+        assistantId = created.id
+        provisioned = true
+      } catch (e) {
+        if (fromEnv) {
+          assistantId = fromEnv
+          console.error("[POST /api/ai-assistant] Telnyx create failed, using TELNYX_AI_ASSISTANT_ID:", e)
+        } else {
+          const msg = e instanceof Error ? e.message : "Failed to create Telnyx assistant"
+          return NextResponse.json(
+            {
+              error: `${msg}. Set TELNYX_AI_ASSISTANT_ID as a temporary platform default, or ask support.`,
+            },
+            { status: 502 }
+          )
+        }
+      }
+    }
+
     await updateUser(userId, { telnyx_ai_assistant_id: assistantId })
 
     return NextResponse.json({
       success: true,
       assistantId,
-      message: "Telnyx Voice AI linked — no-answer fallback will use this assistant on the live call.",
+      provisioned,
+      message: provisioned
+        ? "Voice assistant created on your line — no-answer calls will connect to it automatically."
+        : "Telnyx Voice AI linked — no-answer fallback will use this assistant on the live call.",
       provider: "telnyx",
     })
   } catch (error) {
@@ -165,14 +222,15 @@ export async function PATCH(req: NextRequest) {
       telnyxAiAssistantId?: string
     }
 
-    if (typeof telnyxAiAssistantId === "string") {
+    const assistantIdSent = typeof telnyxAiAssistantId === "string"
+    if (assistantIdSent) {
       const trimmed = telnyxAiAssistantId.trim()
       await updateUser(userId, { telnyx_ai_assistant_id: trimmed || null })
     }
 
     const hasIntake = intakeBody !== undefined && typeof intakeBody === "object"
     const hasGreeting = typeof greeting === "string" && greeting.trim().length > 0
-    if (!hasIntake && !hasGreeting && typeof telnyxAiAssistantId !== "string") {
+    if (!hasIntake && !hasGreeting && !assistantIdSent) {
       return NextResponse.json({ error: "Nothing to update — send intake, greeting, or telnyxAiAssistantId." }, { status: 400 })
     }
 
@@ -182,6 +240,16 @@ export async function PATCH(req: NextRequest) {
       await upsertAiIntakeConfig(userId, merged)
       if (hasGreeting) {
         await updateRoutingConfig(userId, { ai_greeting: greeting!.trim() }, null)
+      }
+    }
+
+    const fresh = await getUser(userId)
+    const linked = fresh?.telnyx_ai_assistant_id?.trim()
+    if (linked && (hasIntake || hasGreeting || (assistantIdSent && Boolean(telnyxAiAssistantId.trim())))) {
+      try {
+        await syncTelnyxAssistantFromIntake(userId)
+      } catch (e) {
+        console.error("[PATCH /api/ai-assistant] Telnyx assistant sync failed:", e)
       }
     }
 

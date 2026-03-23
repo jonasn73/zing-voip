@@ -59,7 +59,10 @@ export function AiIntakeFlowPanel({
   const [activating, setActivating] = useState(false)
   const [hasAssistant, setHasAssistant] = useState(false)
   const [userIndustry, setUserIndustry] = useState<string>("generic")
+  /** Optional override — Zing normally creates the Telnyx assistant for you (see Advanced). */
   const [telnyxAssistantId, setTelnyxAssistantId] = useState("")
+  /** Show the rare “paste an existing assistant id” field (support / migrations). */
+  const [showAdvancedAssistantId, setShowAdvancedAssistantId] = useState(false)
   const [scriptChoice, setScriptChoice] = useState<"auto" | AiIntakeProfileId>("auto")
   const [aiIntake, setAiIntake] = useState({
     busyGreeting: "",
@@ -144,7 +147,8 @@ export function AiIntakeFlowPanel({
         body: JSON.stringify({
           intake: buildIntakeBody(scriptChoice, aiIntake),
           greeting,
-          telnyxAiAssistantId: telnyxAssistantId.trim(),
+          // Omit when Advanced is closed so we never wipe a server-created assistant id with an empty string.
+          ...(showAdvancedAssistantId ? { telnyxAiAssistantId: telnyxAssistantId.trim() } : {}),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -177,7 +181,8 @@ export function AiIntakeFlowPanel({
         body: JSON.stringify({
           greeting: aiIntake.busyGreeting.trim() || undefined,
           intake: buildIntakeBody(scriptChoice, aiIntake),
-          telnyxAiAssistantId: telnyxAssistantId.trim(),
+          // Empty string → server creates a new Telnyx assistant via API (no Mission Control).
+          telnyxAiAssistantId: telnyxAssistantId.trim() || undefined,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -242,23 +247,32 @@ export function AiIntakeFlowPanel({
       <section className="space-y-2 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Telnyx Voice AI</p>
         <p className="text-[10px] leading-relaxed text-muted-foreground">
-          Create an assistant in{" "}
-          <span className="font-medium text-foreground">Telnyx Mission Control → Voice AI → Assistants</span>, then paste
-          its <span className="font-medium text-foreground">id</span> here. Voice, model, and prompts are edited in
-          Telnyx — Zing hands the live call to that assistant when nobody answers.
+          You don&apos;t need Telnyx Mission Control. Tap <span className="font-medium text-foreground">Activate voice assistant</span>{" "}
+          below and Zing will create an assistant on your account from your playbook and greeting. When you save changes
+          later, we update that same assistant for you.
         </p>
-        <input
-          type="text"
-          value={telnyxAssistantId}
-          onChange={(e) => setTelnyxAssistantId(e.target.value)}
-          placeholder="e.g. assistant-776d0d6f-716d-4d8f-b6da-b95181636838"
-          className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-          autoComplete="off"
-        />
-        <p className="text-[10px] text-muted-foreground">
-          Optional: set <span className="font-mono">TELNYX_AI_ASSISTANT_ID</span> in Vercel for a platform default when
-          this field is empty.
-        </p>
+        <button
+          type="button"
+          onClick={() => setShowAdvancedAssistantId((v) => !v)}
+          className="text-[10px] font-medium text-primary underline-offset-2 hover:underline"
+        >
+          {showAdvancedAssistantId ? "Hide advanced" : "Advanced — link an existing assistant id"}
+        </button>
+        {showAdvancedAssistantId && (
+          <>
+            <input
+              type="text"
+              value={telnyxAssistantId}
+              onChange={(e) => setTelnyxAssistantId(e.target.value)}
+              placeholder="Only if support gave you an id to paste"
+              className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              autoComplete="off"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              If this field is filled, Activate uses this id instead of creating a new assistant.
+            </p>
+          </>
+        )}
       </section>
 
       <div
@@ -273,7 +287,7 @@ export function AiIntakeFlowPanel({
         <p className="mt-1 text-[11px] text-muted-foreground">
           {hasAssistant
             ? "Fallback → AI connects this Telnyx assistant on the same call."
-            : "With AI fallback on, paste a Telnyx Assistant id above, then Activate (or Save)."}
+            : "Turn on “If no answer: AI” on the dashboard, then tap Activate here — no external setup."}
         </p>
         {!hasAssistant && (
           <button
@@ -291,7 +305,7 @@ export function AiIntakeFlowPanel({
       <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Playbook (reference)</p>
         <p className="text-[10px] text-muted-foreground">
-          Use this as a checklist when writing your assistant instructions in Telnyx.
+          This is what we send as your assistant&apos;s instructions when you activate or save.
         </p>
         <select
           value={scriptChoice}

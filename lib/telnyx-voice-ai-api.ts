@@ -120,3 +120,35 @@ export async function telnyxUpdateAssistant(
     throw new Error(`Telnyx update assistant failed: ${telnyxErrorMessage(body)}`)
   }
 }
+
+const MAX_TTS_PREVIEW_CHARS = 1200
+
+/**
+ * One-shot TTS for “preview opening line” in the dashboard (same Telnyx account as Voice AI).
+ * Docs: POST /v2/text-to-speech — voice string matches assistant voice_settings.voice (e.g. Telnyx.KokoroTTS.af_heart).
+ */
+export async function telnyxSynthesizeSpeechPreview(
+  text: string,
+  voice: string
+): Promise<{ buffer: ArrayBuffer; contentType: string }> {
+  const clipped = text.trim().slice(0, MAX_TTS_PREVIEW_CHARS)
+  if (!clipped) {
+    throw new Error("No text to speak")
+  }
+  const res = await fetch(`${TELNYX_BASE}/text-to-speech`, {
+    method: "POST",
+    headers: telnyxHeaders(),
+    body: JSON.stringify({
+      text: clipped,
+      voice: voice.trim(),
+      output_type: "binary_output",
+    }),
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as unknown
+    throw new Error(`Telnyx TTS failed: ${telnyxErrorMessage(body)}`)
+  }
+  const buffer = await res.arrayBuffer()
+  const contentType = res.headers.get("content-type") || "audio/mpeg"
+  return { buffer, contentType }
+}

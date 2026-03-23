@@ -5,7 +5,7 @@
 // ============================================
 
 import { useEffect, useId, useMemo, useState } from "react"
-import { Bot, ChevronDown, Loader2, Save } from "lucide-react"
+import { Bot, ChevronDown, Loader2, Save, Volume2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { Switch } from "@/components/ui/switch"
@@ -93,6 +93,8 @@ export function AiIntakeFlowPanel({
   const [modelOptions, setModelOptions] = useState<{ id: string }[]>([])
   const [voiceOptions, setVoiceOptions] = useState<{ id: string; label: string }[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
+  /** True while we are fetching MP3 from Telnyx TTS for “Play preview”. */
+  const [previewLoading, setPreviewLoading] = useState(false)
   const modelListId = useId()
   const voiceListId = useId()
 
@@ -251,6 +253,51 @@ export function AiIntakeFlowPanel({
     }
   }
 
+  /**
+   * Ask the server to synthesize the opening line with Telnyx TTS (same engine family as Voice AI),
+   * then play the returned audio in the browser.
+   */
+  async function playVoicePreview() {
+    const line = aiIntake.busyGreeting.trim() || DEFAULT_BUSY_GREETING_LOCKSMITH
+    setPreviewLoading(true)
+    try {
+      const res = await fetch("/api/ai-assistant/voice-preview", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: line,
+          voice: aiAdvanced.telnyxVoice.trim() || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        toast({
+          title: "Preview failed",
+          description: String(data.error || res.statusText),
+          variant: "destructive",
+        })
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      const revoke = () => URL.revokeObjectURL(url)
+      audio.addEventListener("ended", revoke)
+      audio.addEventListener("error", revoke)
+      await audio.play().catch(() => {
+        revoke()
+        toast({
+          title: "Could not play audio",
+          description: "Your browser blocked playback — try again or check sound settings.",
+          variant: "destructive",
+        })
+      })
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div
@@ -321,6 +368,25 @@ export function AiIntakeFlowPanel({
           placeholder={DEFAULT_BUSY_GREETING_LOCKSMITH}
           className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
         />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            disabled={previewLoading}
+            onClick={() => void playVoicePreview()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/15 disabled:opacity-50"
+          >
+            {previewLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Volume2 className="h-3.5 w-3.5" aria-hidden />
+            )}
+            {previewLoading ? "Loading preview…" : "Play preview"}
+          </button>
+          <p className="text-[9px] leading-snug text-muted-foreground sm:max-w-[14rem] sm:text-right">
+            Uses Telnyx TTS with your <span className="font-medium text-foreground">Voice &amp; model</span> voice (or
+            the platform default). Live AI may sound slightly different once the call connects.
+          </p>
+        </div>
 
         {showLocksmithExtras && (
           <>

@@ -93,6 +93,8 @@ export function AiIntakeFlowPanel({
   const [modelOptions, setModelOptions] = useState<{ id: string }[]>([])
   const [voiceOptions, setVoiceOptions] = useState<{ id: string; label: string }[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
+  /** Set when Telnyx catalog APIs fail or return an error field (shown under Voice & model). */
+  const [catalogError, setCatalogError] = useState<string | null>(null)
   /** True while we are fetching MP3 from Telnyx TTS for “Play preview”. */
   const [previewLoading, setPreviewLoading] = useState(false)
   const modelListId = useId()
@@ -192,16 +194,33 @@ export function AiIntakeFlowPanel({
     if (!showAdvancedAi) return
     let cancelled = false
     setCatalogLoading(true)
+    setCatalogError(null)
     Promise.all([
-      fetch("/api/ai-assistant/models", { credentials: "include" }).then((r) => r.json()),
-      fetch("/api/ai-assistant/voices", { credentials: "include" }).then((r) => r.json()),
+      fetch("/api/ai-assistant/models", { credentials: "include" }).then(async (r) => ({
+        ok: r.ok,
+        status: r.status,
+        ...(await r.json().catch(() => ({}))),
+      })),
+      fetch("/api/ai-assistant/voices", { credentials: "include" }).then(async (r) => ({
+        ok: r.ok,
+        status: r.status,
+        ...(await r.json().catch(() => ({}))),
+      })),
     ])
       .then(([m, v]) => {
         if (cancelled) return
         setModelOptions(Array.isArray(m.models) ? m.models : [])
         setVoiceOptions(Array.isArray(v.voices) ? v.voices : [])
+        const parts: string[] = []
+        if (typeof m.error === "string" && m.error.trim()) parts.push(`Models: ${m.error.trim()}`)
+        if (typeof v.error === "string" && v.error.trim()) parts.push(`Voices: ${v.error.trim()}`)
+        if (!m.ok) parts.push(`Models request failed (HTTP ${m.status}).`)
+        if (!v.ok) parts.push(`Voices request failed (HTTP ${v.status}).`)
+        setCatalogError(parts.length ? parts.join(" ") : null)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setCatalogError("Could not load model or voice lists. Check your connection and try again.")
+      })
       .finally(() => {
         if (!cancelled) setCatalogLoading(false)
       })
@@ -559,6 +578,19 @@ export function AiIntakeFlowPanel({
             {catalogLoading ? (
               <p className="text-[10px] text-muted-foreground">Loading suggestions…</p>
             ) : null}
+            {catalogError ? (
+              <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[10px] text-destructive">
+                {catalogError}
+              </p>
+            ) : null}
+            {!catalogLoading && !catalogError ? (
+              <p className="text-[10px] text-muted-foreground">
+                Suggestions use your browser&apos;s datalist:{" "}
+                <span className="font-semibold text-foreground">click the field</span>, then use the dropdown arrow (if
+                shown) or start typing — some browsers hide the list until you focus the box. You can always paste a Telnyx
+                id manually.
+              </p>
+            ) : null}
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${modelListId}-input`}>
                 LLM model
@@ -599,6 +631,14 @@ export function AiIntakeFlowPanel({
                 ))}
               </datalist>
             </div>
+            {!catalogLoading && modelOptions.length === 0 && voiceOptions.length === 0 && !catalogError ? (
+              <p className="text-[10px] text-muted-foreground">
+                Telnyx returned no entries — leave both fields empty for Zing&apos;s platform defaults, or type e.g.{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[9px]">openai/gpt-4o</code> and{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[9px]">Telnyx.KokoroTTS.af_heart</code> then
+                Save.
+              </p>
+            ) : null}
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-muted-foreground">Extra instructions</label>
               <textarea

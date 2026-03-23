@@ -9,7 +9,7 @@ import { listTelnyxAiModels } from "@/lib/telnyx-ai-catalog"
 
 export const dynamic = "force-dynamic"
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 

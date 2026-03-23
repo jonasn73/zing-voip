@@ -181,11 +181,14 @@ async function handleIncomingCall(
       ? Math.min(routing.ring_timeout_seconds || 30, 22)
       : routing.ring_timeout_seconds || 30
 
-    // If AI is the post-ring fallback, say something *before* <Dial> so the caller always hears us first.
-    // If the cell’s voicemail answers the Dial, they may otherwise only hear carrier VM until the bridge ends — our handoff line runs in /fallback after <Dial> completes.
-    if (wantsAiAfterNoAnswer) {
+    // If AI is the post-ring fallback, a short line *before* <Dial> so callers hear Zing first (carrier VM can otherwise “win” the leg).
+    // Wording mentions ringing so it doesn’t sound like we’re connecting straight through — the “assistant” line still plays in /fallback after no-answer.
+    const skipPreDialGreeting =
+      process.env.ZING_VOICE_SKIP_PRE_DIAL_GREETING === "1" ||
+      process.env.ZING_VOICE_SKIP_PRE_DIAL_GREETING === "true"
+    if (wantsAiAfterNoAnswer && !skipPreDialGreeting) {
       texml.say(
-        "Thanks for calling. Please hold while we connect your call."
+        "Thanks for calling. Please hold—you may hear ringing next while we try to reach someone."
       )
     }
 

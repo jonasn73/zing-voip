@@ -152,6 +152,10 @@ async function handleIncomingCall(
      * **`ZING_AI_HANDOFF_TWO_STEP`:** Say + Redirect (repeats if Telnyx re-fetches `/incoming` — avoid unless needed).
      * **`ZING_AI_CONNECT_DIRECT`:** `<Connect>` on `/incoming` only (experimental).
      * **`ZING_AI_RING_OWNER_FIRST`:** `<Dial>` owner + `/fallback`.
+     *
+     * **Do not** skip the redirect when `CallStatus` looks “live” on the **first** `/incoming` request —
+     * Telnyx sometimes sends `in-progress` / `answered` while fetching TeXML; `<Connect>` on that first
+     * response often goes **dead-air** (one ring, then silence).
      */
     const ringOwnerFirst =
       process.env.ZING_AI_RING_OWNER_FIRST === "1" || process.env.ZING_AI_RING_OWNER_FIRST === "true" // true = Dial cell first, then /fallback
@@ -169,13 +173,7 @@ async function handleIncomingCall(
       "call_status",
       "CallLegStatus",
     ])
-    const callStatus = callStatusRaw.trim().toLowerCase().replace(/_/g, "-") // Normalize so “in_progress” matches “in-progress”
-    /** Telnyx may POST /incoming again while the call is already up — skip another Redirect and emit Connect here to reduce churn. */
-    const callAlreadyLive =
-      callStatus === "in-progress" || // Common Twilio/Telnyx name for an answered call
-      callStatus === "answered" || // Some webhooks use this instead
-      callStatus === "active" || // Alternate wording
-      callStatus === "ongoing" // Alternate wording
+    const callStatus = callStatusRaw.trim().toLowerCase().replace(/_/g, "-") // Normalize so “in_progress” matches “in-progress” (logged for debugging only)
 
     if (useDirectAiWhenNoReceptionist) {
       let user = await getUser(routing.user_id) // Load DB row for this business user
@@ -194,10 +192,8 @@ async function handleIncomingCall(
         } else if (connectDirectIncoming) {
           handoff = "connect-aiassistant-in-incoming" // Log label: experimental single-step Connect
           xml = buildTelnyxAiAssistantTexml(assistantId) // Only <Connect><AIAssistant> — may dead-air on first hit
-        } else if (callAlreadyLive) {
-          handoff = "connect-aiassistant-repeat-incoming" // Log label: Telnyx hit /incoming again mid-call
-          xml = buildTelnyxAiAssistantTexml(assistantId) // Avoid stacking another Redirect when call is already live
         } else {
+          // Always redirect here (never <Connect> on /incoming) unless two-step or ZING_AI_CONNECT_DIRECT — avoids quiet line when Telnyx’s first webhook already says in-progress/answered.
           handoff = "redirect-silent-ai-bridge" // Log label: default — no speech, just redirect
           xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Silent Redirect → /ai-bridge (recommended default)
         }

@@ -52,14 +52,78 @@ export function resolveAssistantVoice(override?: string | null | undefined): str
   return defaultVoice()
 }
 
-/** Extract first API error string from a Telnyx JSON body. */
-function telnyxErrorMessage(body: unknown): string {
-  if (body && typeof body === "object" && "errors" in body) {
-    const errs = (body as { errors?: { detail?: string }[] }).errors
-    const d = errs?.[0]?.detail
-    if (d) return d
+/** Telnyx rejects extremely large payloads with opaque 5xx — stay under a conservative limit. */
+const MAX_ASSISTANT_INSTRUCTIONS_CHARS = 120_000
+const MAX_ASSISTANT_GREETING_CHARS = 2_000
+
+/**
+ * Turn Telnyx error JSON (or non-JSON) + HTTP status into one string for logs and UI toasts.
+ * Many errors use `errors[].title` / `errors[].detail`, FastAPI uses `detail`, some use top-level `message`.
+ */
+function formatTelnyxErrorBody(body: unknown, httpStatus: number): string {
+  const statusSuffix =
+    httpStatus >= 500
+      ? " Telnyx returned a server error (HTTP 5xx) — try again shortly; if it persists, check Telnyx status or your account limits."
+      : ""
+
+  const parts: string[] = []
+
+  if (body && typeof body === "object") {
+    const o = body as Record<string, unknown>
+
+    if (Array.isArray(o.errors)) {
+      for (const item of o.errors) {
+        if (!item || typeof item !== "object") continue
+        const e = item as Record<string, unknown>
+        const code = typeof e.code === "string" ? e.code.trim() : ""
+        const title = typeof e.title === "string" ? e.title.trim() : ""
+        const detail = typeof e.detail === "string" ? e.detail.trim() : ""
+        const line = [code, title, detail].filter(Boolean).join(" — ")
+        if (line) parts.push(line)
+      }
+    }
+
+    const msg = o.message
+    if (typeof msg === "string" && msg.trim()) parts.push(msg.trim())
+
+    const errStr = o.error
+    if (typeof errStr === "string" && errStr.trim()) parts.push(errStr.trim())
+
+    const detail = o.detail
+    if (typeof detail === "string" && detail.trim()) parts.push(detail.trim())
+    if (Array.isArray(detail)) {
+      for (const d of detail) {
+        if (typeof d === "object" && d !== null && "msg" in d) {
+          const m = (d as { msg?: string }).msg
+          if (m) parts.push(String(m))
+        } else if (typeof d === "string") parts.push(d)
+      }
+    }
+
+    if (typeof o._nonJson === "string" && o._nonJson.trim()) {
+      parts.push(`Non-JSON body: ${o._nonJson.trim().slice(0, 400)}`)
+    }
   }
-  return JSON.stringify(body).slice(0, 500)
+
+  const unique = [...new Set(parts.filter(Boolean))]
+  let out = unique.join(" — ")
+
+  const generic =
+    !out ||
+    /^an unexpected error occurred\.?$/i.test(out) ||
+    (out.toLowerCase().includes("unexpected") && out.length < 80)
+  if (generic) {
+    const raw =
+      body && typeof body === "object" ? JSON.stringify(body).slice(0, 900) : String(body).slice(0, 400)
+    out =
+      raw && raw !== "{}"
+        ? `${raw} (HTTP ${httpStatus})${statusSuffix}`
+        : `HTTP ${httpStatus} with no error details from Telnyx.${statusSuffix} Check Vercel logs for the full response body.`
+  } else if (httpStatus >= 400) {
+    out = `${out} (HTTP ${httpStatus})`
+  }
+
+  return out
 }
 
 /**
@@ -83,6 +147,27 @@ function extractAssistantIdFromCreateResponse(body: unknown): string | null {
     }
   }
   return null
+}
+
+/** Shorten instructions/greeting so Telnyx is less likely to 500 on huge playbooks. */
+function clampAssistantCreateFields(
+  params: Pick<CreateTelnyxAssistantParams, "name" | "instructions" | "greeting">
+): Pick<CreateTelnyxAssistantParams, "name" | "instructions" | "greeting"> {
+  let instructions = params.instructions
+  if (instructions.length > MAX_ASSISTANT_INSTRUCTIONS_CHARS) {
+    console.warn(
+      `[Zing] Truncating assistant instructions from ${instructions.length} to ${MAX_ASSISTANT_INSTRUCTIONS_CHARS} for Telnyx create`
+    )
+    instructions =
+      instructions.slice(0, MAX_ASSISTANT_INSTRUCTIONS_CHARS) +
+      "\n\n[Zing: instructions truncated for Telnyx — shorten extra notes in AI call flow if needed]"
+  }
+  let greeting = params.greeting
+  if (greeting.length > MAX_ASSISTANT_GREETING_CHARS) {
+    console.warn(`[Zing] Truncating greeting from ${greeting.length} to ${MAX_ASSISTANT_GREETING_CHARS}`)
+    greeting = greeting.slice(0, MAX_ASSISTANT_GREETING_CHARS)
+  }
+  return { name: params.name.slice(0, 120), instructions, greeting }
 }
 
 export type CreateTelnyxAssistantParams = {
@@ -110,19 +195,33 @@ export async function telnyxCreateAssistant(params: CreateTelnyxAssistantParams)
 
   let lastError: Error | undefined
 
+  const clamped = clampAssistantCreateFields({
+    name: params.name,
+    instructions: params.instructions,
+    greeting: params.greeting,
+  })
+
   for (const model of orderedModels) {
     const res = await fetch(`${TELNYX_BASE}/ai/assistants`, {
       method: "POST",
       headers: telnyxHeaders(),
       body: JSON.stringify({
-        name: params.name,
+        name: clamped.name,
         model,
-        instructions: params.instructions,
-        greeting: params.greeting,
+        instructions: clamped.instructions,
+        greeting: clamped.greeting,
         voice_settings: { voice },
       }),
     })
-    const body = (await res.json().catch(() => ({}))) as unknown
+    const rawText = await res.text()
+    let body: unknown = {}
+    if (rawText.trim()) {
+      try {
+        body = JSON.parse(rawText) as unknown
+      } catch {
+        body = { _nonJson: rawText.slice(0, 1200) }
+      }
+    }
     if (res.ok) {
       const id = extractAssistantIdFromCreateResponse(body)
       if (!id) {
@@ -137,7 +236,8 @@ export async function telnyxCreateAssistant(params: CreateTelnyxAssistantParams)
       return { id }
     }
 
-    const detail = telnyxErrorMessage(body)
+    console.error(`[Zing] Telnyx POST /ai/assistants HTTP ${res.status}:`, rawText.slice(0, 5000))
+    const detail = formatTelnyxErrorBody(body, res.status)
     lastError = new Error(`Telnyx create assistant failed: ${detail}`)
     const modelRejected =
       detail.includes("not available for AI Assistants") ||
@@ -175,9 +275,18 @@ export async function telnyxUpdateAssistant(
       promote_to_main: true,
     }),
   })
-  const body = await res.json().catch(() => ({}))
+  const rawText = await res.text()
+  let body: unknown = {}
+  if (rawText.trim()) {
+    try {
+      body = JSON.parse(rawText) as unknown
+    } catch {
+      body = { _nonJson: rawText.slice(0, 1200) }
+    }
+  }
   if (!res.ok) {
-    throw new Error(`Telnyx update assistant failed: ${telnyxErrorMessage(body)}`)
+    console.error(`[Zing] Telnyx POST /ai/assistants/${id} HTTP ${res.status}:`, rawText.slice(0, 4000))
+    throw new Error(`Telnyx update assistant failed: ${formatTelnyxErrorBody(body, res.status)}`)
   }
 }
 
@@ -206,8 +315,16 @@ export async function telnyxSynthesizeSpeechPreview(
     }),
   })
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as unknown
-    throw new Error(`Telnyx TTS failed: ${telnyxErrorMessage(body)}`)
+    const rawText = await res.text()
+    let body: unknown = {}
+    if (rawText.trim()) {
+      try {
+        body = JSON.parse(rawText) as unknown
+      } catch {
+        body = { _nonJson: rawText.slice(0, 600) }
+      }
+    }
+    throw new Error(`Telnyx TTS failed: ${formatTelnyxErrorBody(body, res.status)}`)
   }
   const buffer = await res.arrayBuffer()
   const contentType = res.headers.get("content-type") || "audio/mpeg"

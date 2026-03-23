@@ -81,20 +81,21 @@ function mergeFallbackType(
   return normalizeFallbackType(resolvedConfig?.fallback_type ?? liveFb ?? globalDefaultFb)
 }
 
+/**
+ * Public business DID for routing — **not** the party we just dialed on a Dial `action` callback.
+ * Telnyx/TwiML often sets `To` / `DialCalledNumber` to the **owner cell** on that webhook; treating that as the DID
+ * makes `getIncomingRoutingByNumber` fail or mismatch, so `fallback_type` can fall back to the **default row** (e.g. voicemail)
+ * even when the line they called is set to **AI** in Zing.
+ */
 function resolveBusinessLineE164(bnFromQuery: string, formData: FormData): string {
   const q = bnFromQuery.trim()
   if (q) return toE164(q)
   const keys = [
-    "To",
-    "Called",
-    "called",
     "OriginalCalledNumber",
-    "DialedNumber",
-    "DialCalledNumber",
-    "dialed_number",
-    "CallerDestination",
+    "OriginalCalled",
     "ForwardedFrom",
     "SipHeader_X-Telnyx-OriginalCalledNumber",
+    "CallerDestination",
   ]
   for (const k of keys) {
     const raw = formData.get(k)
@@ -117,9 +118,11 @@ function inferDialLegWasOwnerCell(formData: FormData, ownerPhoneRaw: string | nu
     "Called",
     "DialCalledNumber",
     "DialedNumber",
+    "dialed_number",
     "called",
     "CallerDestination",
     "DialBridgedTo",
+    "Destination",
   ]
   for (const k of keys) {
     const raw = formData.get(k)
@@ -239,6 +242,7 @@ export async function handleTelnyxFallbackDialEnded(
 
   const rawStatus =
     (formData.get("DialCallStatus") as string) ||
+    (formData.get("DialCallLegStatus") as string) ||
     (formData.get("DialBridgeStatus") as string) ||
     (formData.get("CallStatus") as string) ||
     ""
@@ -256,8 +260,12 @@ export async function handleTelnyxFallbackDialEnded(
     (url.searchParams.get("bn") || String(formData.get("bn") || "")).trim() || ""
   const businessLineE164 = resolveBusinessLineE164(bnFromQuery, formData)
   /** Set after we load `user` — may add inference when `primary=owner` is missing from the callback URL. */
+  const legHint =
+    url.searchParams.get("leg")?.trim() || String(formData.get("leg") || "").trim()
   let primaryWasOwner =
-    url.searchParams.get("primary") === "owner" || String(formData.get("primary") || "").trim() === "owner"
+    url.searchParams.get("primary") === "owner" ||
+    String(formData.get("primary") || "").trim() === "owner" ||
+    legHint === "owner-first"
   const primaryOwnerFromParam = primaryWasOwner
 
   const texml = new VoiceResponse()
@@ -400,6 +408,7 @@ export async function handleTelnyxFallbackDialEnded(
         primaryWasOwner,
         primaryOwnerFromParam,
         primaryOwnerInferred: primaryWasOwner && !primaryOwnerFromParam,
+        legHint: legHint || null,
         dialDurationSec,
         hasTelnyxAiAssistant: Boolean(user?.telnyx_ai_assistant_id?.trim()),
         dialStatus: dialStatus || rawStatus || null,
@@ -468,10 +477,18 @@ export async function handleTelnyxFallbackDialEnded(
         }
         if (user) {
           const calledNum = (formData.get("To") as string) || ""
+          const bnForAction =
+            (bnFromQuery || "").trim() ||
+            effectiveBusinessLine ||
+            businessLineE164 ||
+            (await getPrimaryActiveBusinessNumberE164(userId)) ||
+            ""
           const dial = texml.dial({
             callerId: calledNum || undefined,
             answerOnBridge: true,
             timeout: 30,
+            action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first&bn=${encodeURIComponent(bnForAction)}`,
+            method: "POST",
           })
           dial.number(toE164(user.phone))
         } else {

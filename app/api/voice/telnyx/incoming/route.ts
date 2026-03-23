@@ -131,6 +131,16 @@ async function handleIncomingCall(
 
     // 4. Route: receptionist (per-number or default) → owner's cell as fallback
     // callerId is REQUIRED by Telnyx TeXML for the outbound leg — use the business number
+    const wantsAiAfterNoAnswer = String(routing.fallback_type || "").toLowerCase() === "ai"
+    // When the next step is Voice AI, keep the first-leg ring **short** so the cell carrier’s voicemail
+    // does not "answer" the Dial (that connects the caller to mailbox audio instead of our fallback TeXML).
+    const receptionistRingSec = wantsAiAfterNoAnswer
+      ? Math.min(routing.ring_timeout_seconds || 20, 22)
+      : routing.ring_timeout_seconds || 20
+    const ownerRingSec = wantsAiAfterNoAnswer
+      ? Math.min(routing.ring_timeout_seconds || 30, 18)
+      : routing.ring_timeout_seconds || 30
+
     if (routing.selected_receptionist_id && routing.receptionist_phone) {
       const recPhone = normalizePhoneNumberE164(routing.receptionist_phone)
       if (debug) console.log(`[Zing] Routing to receptionist: ${routing.receptionist_name || "Receptionist"} (${recPhone})`)
@@ -139,7 +149,7 @@ async function handleIncomingCall(
         // Keep the caller on carrier ringback until bridge, which avoids
         // the mid-ring tone change from early answer + handoff.
         answerOnBridge: true,
-        timeout: routing.ring_timeout_seconds || 20,
+        timeout: receptionistRingSec,
         action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}?callSid=${encodeURIComponent(callSid)}&bn=${encodeURIComponent(businessLineE164)}`,
         method: "POST",
       })
@@ -151,7 +161,7 @@ async function handleIncomingCall(
       const dial = texml.dial({
         callerId: calledNumber,
         answerOnBridge: true,
-        timeout: routing.ring_timeout_seconds || 30,
+        timeout: ownerRingSec,
         action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}?callSid=${encodeURIComponent(callSid)}&primary=owner&bn=${encodeURIComponent(businessLineE164)}`,
         method: "POST",
       })

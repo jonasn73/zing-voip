@@ -20,7 +20,6 @@ export async function POST(req: NextRequest) {
   )
   texml.record({
     maxLength: 120,
-    transcribe: true,
     recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
     action: `${appUrl}/api/voice/telnyx/voicemail-complete?userId=${encodeURIComponent(userId)}&callSid=${encodeURIComponent(callSid)}`,
   })

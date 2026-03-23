@@ -18,7 +18,8 @@ Zing saves **per-number** routing (or a **default** row that applies when there 
 1. In **Fallback Settings**, choose **AI receptionist**. Zing immediately calls **Telnyx `POST /v2/ai/assistants`** (via `PUT /api/routing`), stores the assistant id, and returns `voiceAi` in the JSON response — **no separate “Activate” step**.
 2. Open **AI call flow** (same sheet or full page) to tune the playbook, greeting, and optional **Voice & model** — **Save** pushes updates to Telnyx (`POST /v2/ai/assistants/{id}`).
 3. **Play preview** calls **`POST /api/ai-assistant/voice-preview`**, which uses Telnyx **`POST /v2/text-to-speech/speech`** (not `/text-to-speech`, which 404s). If TTS still fails, the UI falls back to the **browser’s text-to-speech**. **Live calls** use Telnyx Voice AI on the phone.
-4. No-answer calls use TeXML `<Connect><AIAssistant id="…"/></Connect>` on the same leg.
+4. No-answer calls use TeXML `<Connect><AIAssistant id="…"/></Connect>` on the same leg. Telnyx expects **`id="assistant-{uuid}"`**; Zing normalizes a bare UUID from the API to that form in `buildTelnyxAiAssistantTexml`.
+5. When **AI** is the no-answer target, the first `<Dial>` uses a **shorter timeout** (owner leg capped at **18s**, receptionist at **22s**) so the mobile carrier’s voicemail is less likely to *answer* the Dial (which would connect the caller to cell VM instead of running our fallback TeXML).
 
 No Telnyx Mission Control account is required for the business owner.
 

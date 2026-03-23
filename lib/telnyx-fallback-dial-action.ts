@@ -17,7 +17,7 @@ import {
   ensureCallLogForInboundLeg,
   normalizePhoneNumberE164,
 } from "@/lib/db"
-import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
+import { buildTelnyxAiAssistantTexml, normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
 /** Build FormData from a Telnyx Dial callback (POST body and/or GET query). */
@@ -112,9 +112,9 @@ function playTelnyxAiUnavailableVoicemail(
   texml.say(
     "Thanks for calling. Our voice assistant is not set up on this line yet. Please leave your name, phone number, and what you need after the tone and we will get back to you."
   )
+  // Omit Twilio-only `transcribe` — Telnyx TeXML may not support it and can break `<Record>`.
   texml.record({
     maxLength: 120,
-    transcribe: true,
     recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
     action: `${appUrl}/api/voice/telnyx/voicemail-complete?userId=${userId}&callSid=${callSid}`,
   })
@@ -160,13 +160,28 @@ async function tryBuildAiAssistantResponse(args: {
     }
   }
   if (assistantId) {
+    const forTexml = normalizeTelnyxAssistantIdForTexml(assistantId)
+    if (forTexml !== assistantId.trim()) {
+      console.log(
+        JSON.stringify({
+          zing: "telnyx-ai-assistant-id-prefixed",
+          reason: "TeXML expects assistant-{uuid}; API returned bare UUID",
+        })
+      )
+    }
     if (callSid && !answeredAndHadConversation) {
       void updateCallLog(callSid, {
         call_type: "incoming",
         status: dialStatus || rawStatus || "ai-handoff",
       }).catch((e) => console.error("[Zing] Call log update (AI handoff):", e))
     }
-    console.log(JSON.stringify({ zing: "telnyx-ai-fallback", assistantIdLen: assistantId.length }))
+    console.log(
+      JSON.stringify({
+        zing: "telnyx-ai-fallback",
+        assistantIdLen: forTexml.length,
+        texmlIdStartsWithAssistant: forTexml.toLowerCase().startsWith("assistant-"),
+      })
+    )
     return new NextResponse(buildTelnyxAiAssistantTexml(assistantId), {
       headers: { "Content-Type": "text/xml" },
     })
@@ -382,7 +397,6 @@ export async function handleTelnyxFallbackDialEnded(
           texml.say(greeting)
           texml.record({
             maxLength: 120,
-            transcribe: true,
             recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
             action: `${appUrl}/api/voice/telnyx/voicemail-complete?userId=${userId}&callSid=${callSid}`,
           })
@@ -400,7 +414,6 @@ export async function handleTelnyxFallbackDialEnded(
           texml.say("We're sorry, no one is available. Please leave a message after the beep.")
           texml.record({
             maxLength: 120,
-            transcribe: true,
             recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
           })
         }
@@ -433,7 +446,6 @@ export async function handleTelnyxFallbackDialEnded(
         texml.say(greeting)
         texml.record({
           maxLength: 120,
-          transcribe: true,
           recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
           action: `${appUrl}/api/voice/telnyx/voicemail-complete?userId=${userId}&callSid=${callSid}`,
         })

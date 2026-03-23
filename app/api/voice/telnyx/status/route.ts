@@ -13,7 +13,11 @@ export const preferredRegion = "iad1"
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
-  const callSid = (formData.get("CallSid") as string) || ""
+  const callSid =
+    (formData.get("CallSid") as string) ||
+    (formData.get("CallControlId") as string) ||
+    (formData.get("call_control_id") as string) ||
+    ""
   const callStatus = (formData.get("CallStatus") as string) || ""
   const duration = parseInt((formData.get("CallDuration") as string) || "0", 10)
   const direction = (formData.get("Direction") as string) || ""

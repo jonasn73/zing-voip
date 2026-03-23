@@ -203,6 +203,9 @@ export function useOperationsData(options?: UseOperationsDataOptions) {
           fetch("/api/voice/quality?days=7", { credentials: "include" }),
         ])
 
+        if (callsRes.status === 401) {
+          throw new Error("Session expired — sign out and sign in again to see call stats.")
+        }
         if (!callsRes.ok) throw new Error("Failed to load calls")
         const callsData = await callsRes.json()
         const normalizedCalls: UiCallRecord[] = Array.isArray(callsData.calls)

@@ -13,6 +13,8 @@ import {
   getIncomingRoutingByNumber,
   getUser,
   updateCallLog,
+  ensureCallLogForInboundLeg,
+  normalizePhoneNumberE164,
 } from "@/lib/db"
 
 export const runtime = "nodejs"
@@ -119,18 +121,15 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const [config, user] = await Promise.all([
+    const [config, user, liveRouting] = await Promise.all([
       businessLineE164
         ? getRoutingConfigForNumber(userId, businessLineE164)
         : getRoutingConfig(userId),
       getUser(userId),
-    ])
-
-    // Same SQL path as /incoming TeXML — authoritative fallback_type (per-number row + default).
-    const liveRouting =
       businessLineE164.length > 0
-        ? await getIncomingRoutingByNumber(businessLineE164, { bypassCache: true })
-        : null
+        ? getIncomingRoutingByNumber(businessLineE164, { bypassCache: true })
+        : Promise.resolve(null),
+    ])
 
     const fallbackType = normalizeFallbackType(
       liveRouting && liveRouting.user_id === userId
@@ -150,6 +149,25 @@ export async function POST(req: NextRequest) {
         dialStatus: dialStatus || rawStatus || null,
       })
     )
+
+    // If /incoming insert failed (missing DB column, etc.), still persist a row so Activity / Call Stats update.
+    const fromDial =
+      String(formData.get("From") || formData.get("Caller") || formData.get("RemoteParty") || "").trim() ||
+      "Unknown"
+    const toDial =
+      businessLineE164 ||
+      resolveBusinessLineE164(bnFromQuery, formData) ||
+      String(formData.get("To") || formData.get("Called") || "").trim()
+    if (userId && callSid) {
+      void ensureCallLogForInboundLeg({
+        userId,
+        providerCallSid: callSid,
+        fromNumber: fromDial === "Unknown" ? fromDial : normalizePhoneNumberE164(fromDial),
+        toNumber: toDial ? normalizePhoneNumberE164(toDial) : "Unknown",
+        routedToReceptionistId:
+          liveRouting && liveRouting.user_id === userId ? liveRouting.selected_receptionist_id : null,
+      }).catch((err) => console.error("[Zing] ensureCallLogForInboundLeg failed:", err))
+    }
 
     switch (fallbackType) {
       case "owner": {

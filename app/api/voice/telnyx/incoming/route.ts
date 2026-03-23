@@ -8,6 +8,7 @@
 // being called, so different numbers can route to different receptionists.
 // Falls back to the user's default config if no number-specific config exists.
 
+import { randomUUID } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import {
@@ -110,7 +111,7 @@ async function handleIncomingCall(
       void insertCallLog({
         user_id: routing.user_id,
         provider_call_sid: callSid,
-        from_number: callerNumber ? normalizePhoneNumberE164(callerNumber) : callerNumber,
+        from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
         to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
         caller_name: callerName,
         call_type: "incoming",
@@ -174,7 +175,13 @@ export async function POST(req: NextRequest) {
 
   const calledNumber = pickField(fields, ["To", "Called", "ToNumber", "CalledNumber"])
   const callerNumber = pickField(fields, ["From", "Caller", "RemoteParty"])
-  const callSid = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
+  const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
+  const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
+  if (!callSidRaw.trim()) {
+    console.error(
+      "[Zing] Telnyx incoming missing CallSid/CallControlId — using synthetic id; confirm webhook fields in Telnyx portal."
+    )
+  }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
   const texml = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))
@@ -189,7 +196,11 @@ export async function GET(req: NextRequest) {
   const fields = searchParamsToFields(url)
   const calledNumber = pickField(fields, ["To", "Called", "ToNumber", "CalledNumber"])
   const callerNumber = pickField(fields, ["From", "Caller", "RemoteParty"])
-  const callSid = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
+  const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
+  const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
+  if (!callSidRaw.trim()) {
+    console.error("[Zing] Telnyx incoming (GET) missing CallSid — using synthetic id.")
+  }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
   const texml = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields))

@@ -47,6 +47,14 @@ function isMissingCallQualityColumnsError(e: unknown): boolean {
   return msg.includes("setup_duration_ms") || msg.includes("post_dial_delay_ms")
 }
 
+function pgErrorCode(e: unknown): string {
+  return e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : ""
+}
+
+function pgErrorMessage(e: unknown): string {
+  return (e instanceof Error ? e.message : String(e)).toLowerCase()
+}
+
 // Lazy Neon client so we only connect when DATABASE_URL is set
 let cachedSql: ReturnType<typeof neon> | null = null
 function getSql(): ReturnType<typeof neon> {
@@ -123,13 +131,31 @@ export async function getRoutingConfig(userId: string): Promise<RoutingConfig | 
 // Get routing config for a specific business number, falling back to the default config
 export async function getRoutingConfigForNumber(userId: string, businessNumber: string): Promise<RoutingConfig | null> {
   const sql = getSql()
-  // Try number-specific config first
-  const specific = await sql`
+  const digitKey = phoneDigitsKey(businessNumber)
+  // Exact match first (fast path)
+  const specificExact = await sql`
     SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
     FROM routing_config WHERE user_id = ${userId} AND business_number = ${businessNumber} LIMIT 1
   `
-  if (specific[0]) return parseRoutingRow(specific[0])
-  // Fall back to default config
+  if (specificExact[0]) return parseRoutingRow(specificExact[0])
+  if (digitKey.length < 10) return getRoutingConfig(userId)
+  // Digit match: per-number rows saved as a different string shape than TeXML sends (+1 vs 10-digit US).
+  const specificLoose = await sql`
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    FROM routing_config
+    WHERE user_id = ${userId}
+      AND business_number IS NOT NULL
+      AND (
+        regexp_replace(business_number, '\\D', '', 'g') = ${digitKey}
+        OR (
+          length(regexp_replace(business_number, '\\D', '', 'g')) >= 10
+          AND length(${digitKey}) >= 10
+          AND right(regexp_replace(business_number, '\\D', '', 'g'), 10) = right(${digitKey}, 10)
+        )
+      )
+    LIMIT 1
+  `
+  if (specificLoose[0]) return parseRoutingRow(specificLoose[0])
   return getRoutingConfig(userId)
 }
 
@@ -558,17 +584,115 @@ export async function updateUser(
 // Insert a call log
 export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Promise<void> {
   const sql = getSql()
-  await sql`
-    INSERT INTO call_logs (
-      user_id, provider_call_sid, from_number, to_number, caller_name,
-      call_type, status, duration_seconds, routed_to_receptionist_id,
-      routed_to_name, has_recording, recording_url, recording_duration_seconds, first_ring_at
-    ) VALUES (
-      ${log.user_id}, ${log.provider_call_sid}, ${log.from_number}, ${log.to_number}, ${log.caller_name},
-      ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
-      ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}, now()
-    )
+  const sid = (log.provider_call_sid || "").trim() || `zing-${crypto.randomUUID()}`
+  const fromNum = (log.from_number || "").trim() || "Unknown"
+  const toNum = (log.to_number || "").trim() || "Unknown"
+
+  try {
+    await sql`
+      INSERT INTO call_logs (
+        user_id, provider_call_sid, from_number, to_number, caller_name,
+        call_type, status, duration_seconds, routed_to_receptionist_id,
+        routed_to_name, has_recording, recording_url, recording_duration_seconds, first_ring_at
+      ) VALUES (
+        ${log.user_id}, ${sid}, ${fromNum}, ${toNum}, ${log.caller_name},
+        ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
+        ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}, now()
+      )
+    `
+    return
+  } catch (e) {
+    const code = pgErrorCode(e)
+    const msg = pgErrorMessage(e)
+    // Neon not migrated with scripts/007 — no first_ring_at column
+    if (code === "42703" && msg.includes("first_ring_at")) {
+      await sql`
+        INSERT INTO call_logs (
+          user_id, provider_call_sid, from_number, to_number, caller_name,
+          call_type, status, duration_seconds, routed_to_receptionist_id,
+          routed_to_name, has_recording, recording_url, recording_duration_seconds
+        ) VALUES (
+          ${log.user_id}, ${sid}, ${fromNum}, ${toNum}, ${log.caller_name},
+          ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
+          ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}
+        )
+      `
+      return
+    }
+    // Legacy DB: twilio_call_sid NOT NULL — duplicate sid into both columns
+    if (msg.includes("twilio_call_sid")) {
+      try {
+        await sql`
+          INSERT INTO call_logs (
+            user_id, provider_call_sid, twilio_call_sid, from_number, to_number, caller_name,
+            call_type, status, duration_seconds, routed_to_receptionist_id,
+            routed_to_name, has_recording, recording_url, recording_duration_seconds, first_ring_at
+          ) VALUES (
+            ${log.user_id}, ${sid}, ${sid}, ${fromNum}, ${toNum}, ${log.caller_name},
+            ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
+            ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}, now()
+          )
+        `
+        return
+      } catch (e2) {
+        const m2 = pgErrorMessage(e2)
+        if (pgErrorCode(e2) === "42703" && m2.includes("first_ring_at")) {
+          await sql`
+            INSERT INTO call_logs (
+              user_id, provider_call_sid, twilio_call_sid, from_number, to_number, caller_name,
+              call_type, status, duration_seconds, routed_to_receptionist_id,
+              routed_to_name, has_recording, recording_url, recording_duration_seconds
+            ) VALUES (
+              ${log.user_id}, ${sid}, ${sid}, ${fromNum}, ${toNum}, ${log.caller_name},
+              ${log.call_type}, ${log.status}, ${log.duration_seconds}, ${log.routed_to_receptionist_id},
+              ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}
+            )
+          `
+          return
+        }
+        throw e2
+      }
+    }
+    throw e
+  }
+}
+
+/**
+ * If the inbound TeXML handler never wrote a row (DB error, etc.), create one when the Dial action hits fallback.
+ * Avoids empty dashboard when the call still reached voicemail / AI.
+ */
+export async function ensureCallLogForInboundLeg(params: {
+  userId: string
+  providerCallSid: string
+  fromNumber: string
+  toNumber: string
+  callerName?: string | null
+  routedToReceptionistId?: string | null
+}): Promise<void> {
+  const sid = params.providerCallSid.trim()
+  if (!sid) return
+  const sql = getSql()
+  const existing = await sql`
+    SELECT 1 AS ok FROM call_logs
+    WHERE user_id = ${params.userId} AND provider_call_sid = ${sid}
+    LIMIT 1
   `
+  if (existing[0]) return
+  await insertCallLog({
+    user_id: params.userId,
+    provider_call_sid: sid,
+    from_number: params.fromNumber.trim() || "Unknown",
+    to_number: params.toNumber.trim() || "Unknown",
+    caller_name: params.callerName ?? null,
+    call_type: "incoming",
+    status: "no-answer",
+    duration_seconds: 0,
+    routed_to_receptionist_id: params.routedToReceptionistId ?? null,
+    routed_to_name: null,
+    has_recording: false,
+    recording_url: null,
+    recording_duration_seconds: null,
+  })
 }
 
 // Update a call log (e.g., when status callback arrives)

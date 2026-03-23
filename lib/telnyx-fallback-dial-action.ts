@@ -20,6 +20,7 @@ import {
 import { normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
 import { buildSayThenRedirectToAiBridgeTeXML } from "@/lib/telnyx-ai-handoff"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
+import { maybeLogTelnyxFallbackDiagnostic } from "@/lib/telnyx-fallback-diagnostics"
 
 /** Build FormData from a Telnyx Dial callback (POST body and/or GET query). */
 async function getDialCallbackFormData(req: NextRequest): Promise<FormData> {
@@ -484,6 +485,34 @@ export async function handleTelnyxFallbackDialEnded(
         dialStatus: dialStatus || rawStatus || null,
       })
     )
+
+    maybeLogTelnyxFallbackDiagnostic({
+      requestUrl: url.toString(),
+      method: req.method,
+      formData,
+      snapshot: {
+        userId,
+        callSid,
+        dialStatus,
+        rawDialStatus: rawStatus,
+        dialDurationSec,
+        bridgedToDigits,
+        answeredAndHadConversation,
+        pathFallbackMode: pathFallbackMode ?? null,
+        virtualFbAi,
+        inboundFbIntent,
+        primaryWasOwner,
+        legHint,
+        businessLineResolved: businessLineE164,
+        effectiveBusinessLine,
+        fallbackType,
+        useLive,
+        liveFallbackType: useLive ? lr?.fallback_type ?? null : null,
+        configFallbackType: config?.fallback_type ?? null,
+        globalFallbackType: globalDefaultConfig?.fallback_type ?? null,
+        hasAssistantId: Boolean(user?.telnyx_ai_assistant_id?.trim()),
+      },
+    })
 
     const fromDial =
       String(formData.get("From") || formData.get("Caller") || formData.get("RemoteParty") || "").trim() ||

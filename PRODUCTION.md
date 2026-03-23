@@ -25,6 +25,7 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
 | `ZING_AI_DIRECT_NO_RECEPTIONIST` | Optional. If `true` / `1`: when **AI fallback** is on and there is **no receptionist**, skip ringing your cell and connect **straight to Voice AI** (avoids some carriers sending the Dial to cell VM). **Default (unset):** your phone **rings first**, then no-answer goes to AI. |
 | `ZING_VOICE_SKIP_PRE_DIAL_GREETING` | Optional. If `true` / `1`: **do not** play the short “thanks for calling…” line **before** ringing (AI fallback flows only). **Default (unset):** that line plays first so callers always hear Zing before ringback. |
+| `ZING_TELNYX_FALLBACK_DIAGNOSTIC` | Optional. If `true` / `1`: log **`zing: telnyx-fallback-diagnostic`** per Dial `action` request (PII-redacted form fields + routing snapshot). Use when debugging; turn off after. See **`tests/fixtures/telnyx-fallback/README.md`**. |
 
 Save and **redeploy** the project (Deployments → … → Redeploy).
 

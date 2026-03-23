@@ -142,15 +142,17 @@ async function handleIncomingCall(
     const wantsAiAfterNoAnswer = String(routing.fallback_type || "").toLowerCase() === "ai"
     const hasReceptionist = Boolean(routing.selected_receptionist_id && routing.receptionist_phone)
     /**
-     * **Default:** ring your cell (or receptionist) first, then `/fallback` runs Voice AI if you don’t answer.
-     * Opt-in **skip ring** (connect straight to AI): set `ZING_AI_DIRECT_NO_RECEPTIONIST=true` in Vercel —
-     * use only if your carrier keeps sending the Dial leg to **cell voicemail** instead of no-answer.
+     * **Default (AI fallback, no receptionist):** connect **straight to Voice AI** (Say → ai-bridge).
+     * Telnyx often **never requests** the Dial `action` URL (`/fallback`), so ring-then-AI breaks silently.
+     * Set **`ZING_AI_RING_OWNER_FIRST=true`** to ring the owner’s cell first (legacy; requires working Dial `action`).
+     * `ZING_AI_DIRECT_NO_RECEPTIONIST=true` is a no-op alias (kept for old env blocks).
      */
-    const aiDirectNoReceptionist =
-      process.env.ZING_AI_DIRECT_NO_RECEPTIONIST === "1" ||
-      process.env.ZING_AI_DIRECT_NO_RECEPTIONIST === "true"
+    const ringOwnerFirst =
+      process.env.ZING_AI_RING_OWNER_FIRST === "1" || process.env.ZING_AI_RING_OWNER_FIRST === "true"
+    const useDirectAiWhenNoReceptionist =
+      wantsAiAfterNoAnswer && !hasReceptionist && !ringOwnerFirst
 
-    if (wantsAiAfterNoAnswer && !hasReceptionist && aiDirectNoReceptionist) {
+    if (useDirectAiWhenNoReceptionist) {
       let user = await getUser(routing.user_id)
       let assistantId =
         user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
@@ -163,13 +165,13 @@ async function handleIncomingCall(
           JSON.stringify({
             zing: "telnyx-incoming-ai-direct",
             userId: routing.user_id,
-            note: "ZING_AI_DIRECT_NO_RECEPTIONIST: Voice AI without Dial to owner.",
+            note: "Default path: Voice AI without <Dial> to owner (Telnyx Dial action /fallback often not called). Set ZING_AI_RING_OWNER_FIRST=true to ring cell first.",
           })
         )
         return { kind: "raw", xml: buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) }
       }
       console.warn(
-        "[Zing] AI direct requested but no assistant id — falling back to Dial owner + /fallback webhook."
+        "[Zing] AI direct path skipped — no assistant id; falling back to <Dial> owner + /fallback webhook."
       )
     }
 
@@ -180,17 +182,6 @@ async function handleIncomingCall(
     const ownerRingSec = wantsAiAfterNoAnswer
       ? Math.min(routing.ring_timeout_seconds || 30, 22)
       : routing.ring_timeout_seconds || 30
-
-    // If AI is the post-ring fallback, a short line *before* <Dial> so callers hear Zing first (carrier VM can otherwise “win” the leg).
-    // Wording mentions ringing so it doesn’t sound like we’re connecting straight through — the “assistant” line still plays in /fallback after no-answer.
-    const skipPreDialGreeting =
-      process.env.ZING_VOICE_SKIP_PRE_DIAL_GREETING === "1" ||
-      process.env.ZING_VOICE_SKIP_PRE_DIAL_GREETING === "true"
-    if (wantsAiAfterNoAnswer && !skipPreDialGreeting) {
-      texml.say(
-        "Thanks for calling. Please hold—you may hear ringing next while we try to reach someone."
-      )
-    }
 
     const didDigits = businessLineE164.replace(/\D/g, "")
     const fallbackMode = wantsAiAfterNoAnswer

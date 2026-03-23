@@ -311,7 +311,8 @@ export function DashboardPage() {
           } else if (updates.fallback_type === "ai" && data.voiceAi?.linked) {
             toast({
               title: "AI fallback saved",
-              description: "Your assistant is linked — no-answer calls should reach Voice AI after the ring timeout.",
+              description:
+                "Your assistant is linked — callers get Voice AI on AI fallback (default: straight to assistant; optional ring-your-cell-first in PRODUCTION.md).",
             })
           } else {
             toast({
@@ -505,7 +506,7 @@ export function DashboardPage() {
                       <span className="text-xs font-medium text-primary">{formatPhoneDisplay(bn.number)}</span>
                       {rs?.ai_fallback_live ? (
                         <span
-                          title="This line is set to AI after no answer and your Telnyx assistant is linked — callers should get Voice AI."
+                          title="AI fallback is on and your assistant is linked — callers should reach Voice AI (default connects directly; optional ring cell first via ZING_AI_RING_OWNER_FIRST)."
                           className="inline-flex items-center gap-0.5 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success"
                         >
                           <Sparkles className="h-3 w-3 shrink-0" aria-hidden />

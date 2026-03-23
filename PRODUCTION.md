@@ -23,8 +23,8 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `TELNYX_AI_DEFAULT_MODEL` | Optional: LLM id for auto-created assistants (default `openai/gpt-4o`). List: Telnyx **GET /v2/ai/models**. Avoid `openai/gpt-4o-mini` if Telnyx says it is not available for AI assistants. |
 | `TELNYX_AI_VOICE` | Optional: Telnyx TTS voice string for new assistants (default `Telnyx.KokoroTTS.af_heart`). |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
-| `ZING_AI_DIRECT_NO_RECEPTIONIST` | Optional. If `true` / `1`: when **AI fallback** is on and there is **no receptionist**, skip ringing your cell and connect **straight to Voice AI** (avoids some carriers sending the Dial to cell VM). **Default (unset):** your phone **rings first**, then no-answer goes to AI. |
-| `ZING_VOICE_SKIP_PRE_DIAL_GREETING` | Optional. If `true` / `1`: **do not** play the short “thanks for calling…” line **before** ringing (AI fallback flows only). **Default (unset):** that line plays first so callers always hear Zing before ringback. |
+| `ZING_AI_RING_OWNER_FIRST` | Optional. If `true` / `1`: when **AI fallback** is on and there is **no receptionist**, **ring your cell first** and use the Dial `action` URL (`/fallback`) for Voice AI after no-answer. **Default (unset):** connect **straight to Voice AI** (no ring) — recommended because Telnyx often **does not call** `/fallback`, so ring-first + AI appears “stuck” on voicemail. |
+| `ZING_AI_DIRECT_NO_RECEPTIONIST` | Legacy no-op (still accepted). Direct-to-AI is now the **default** when AI fallback + no receptionist; use **`ZING_AI_RING_OWNER_FIRST`** if you need the old ring-first behavior. |
 | `ZING_TELNYX_FALLBACK_DIAGNOSTIC` | Optional. If `true` / `1`: log **`zing: telnyx-fallback-diagnostic`** per Dial `action` request (PII-redacted form fields + routing snapshot). Use when debugging; turn off after. See **`tests/fixtures/telnyx-fallback/README.md`**. |
 
 Save and **redeploy** the project (Deployments → … → Redeploy).

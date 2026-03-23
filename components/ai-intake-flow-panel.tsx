@@ -254,8 +254,7 @@ export function AiIntakeFlowPanel({
   }
 
   /**
-   * Ask the server to synthesize the opening line with Telnyx TTS (same engine family as Voice AI),
-   * then play the returned audio in the browser.
+   * Server may return Telnyx MP3 (base64) or ask us to use the browser’s SpeechSynthesis (Telnyx HTTP TTS is often 404).
    */
   async function playVoicePreview() {
     const line = aiIntake.busyGreeting.trim() || DEFAULT_BUSY_GREETING_LOCKSMITH
@@ -270,29 +269,63 @@ export function AiIntakeFlowPanel({
           voice: aiAdvanced.telnyxVoice.trim() || undefined,
         }),
       })
+      const data = (await res.json().catch(() => null)) as
+        | { error?: string; mode?: string; notice?: string; mimeType?: string; base64?: string }
+        | null
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string }
         toast({
           title: "Preview failed",
-          description: String(data.error || res.statusText),
+          description: String(data?.error || res.statusText),
           variant: "destructive",
         })
         return
       }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      const revoke = () => URL.revokeObjectURL(url)
-      audio.addEventListener("ended", revoke)
-      audio.addEventListener("error", revoke)
-      await audio.play().catch(() => {
-        revoke()
-        toast({
-          title: "Could not play audio",
-          description: "Your browser blocked playback — try again or check sound settings.",
-          variant: "destructive",
+      if (!data || typeof data !== "object") {
+        toast({ title: "Preview failed", description: "Bad response from server.", variant: "destructive" })
+        return
+      }
+      if (data.mode === "browser") {
+        if (typeof window === "undefined" || !window.speechSynthesis) {
+          toast({
+            title: "Preview not available",
+            description: "This browser does not support speech preview.",
+            variant: "destructive",
+          })
+          return
+        }
+        if (data.notice) {
+          toast({ title: "Approximate preview", description: data.notice })
+        }
+        window.speechSynthesis.cancel()
+        const utter = new SpeechSynthesisUtterance(line)
+        utter.lang = "en-US"
+        utter.rate = 0.95
+        window.speechSynthesis.speak(utter)
+        return
+      }
+      if (data.mode === "telnyx" && data.base64 && data.mimeType) {
+        const bin = atob(data.base64)
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) {
+          bytes[i] = bin.charCodeAt(i)
+        }
+        const blob = new Blob([bytes], { type: data.mimeType })
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        const revoke = () => URL.revokeObjectURL(url)
+        audio.addEventListener("ended", revoke)
+        audio.addEventListener("error", revoke)
+        await audio.play().catch(() => {
+          revoke()
+          toast({
+            title: "Could not play audio",
+            description: "Your browser blocked playback — try again or check sound settings.",
+            variant: "destructive",
+          })
         })
-      })
+        return
+      }
+      toast({ title: "Preview failed", description: "Unexpected response.", variant: "destructive" })
     } finally {
       setPreviewLoading(false)
     }
@@ -383,8 +416,10 @@ export function AiIntakeFlowPanel({
             {previewLoading ? "Loading preview…" : "Play preview"}
           </button>
           <p className="text-[9px] leading-snug text-muted-foreground sm:max-w-[14rem] sm:text-right">
-            Uses Telnyx TTS with your <span className="font-medium text-foreground">Voice &amp; model</span> voice (or
-            the platform default). Live AI may sound slightly different once the call connects.
+            Tries Telnyx audio when the API allows it; otherwise uses your{" "}
+            <span className="font-medium text-foreground">browser voice</span> so you can still check wording. Real
+            calls use your Telnyx assistant (see <span className="font-medium text-foreground">Voice &amp; model</span>
+            ).
           </p>
         </div>
 

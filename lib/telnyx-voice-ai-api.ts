@@ -124,8 +124,9 @@ export async function telnyxUpdateAssistant(
 const MAX_TTS_PREVIEW_CHARS = 1200
 
 /**
- * One-shot TTS for “preview opening line” in the dashboard (same Telnyx account as Voice AI).
- * Docs: POST /v2/text-to-speech — voice string matches assistant voice_settings.voice (e.g. Telnyx.KokoroTTS.af_heart).
+ * One-shot TTS for “preview opening line” in the dashboard.
+ * Docs list POST /v2/text-to-speech, but that path often returns HTTP 404 while /v2/text-to-speech/voices works;
+ * callers should catch errors and fall back (e.g. browser speechSynthesis).
  */
 export async function telnyxSynthesizeSpeechPreview(
   text: string,

@@ -43,7 +43,7 @@ On **Save** / **Activate**, Zing syncs instructions; if model/voice are set, the
 
 ## Debugging with evidence (not guessing)
 
-1. **Redirect loop (one ring, silence):** If Vercel shows **`/incoming`** and **`/ai-bridge`** alternating **many times per call**, Telnyx was re-POSTing `/incoming` after each `<Connect>`. Zing breaks that with DB table **`telnyx_ai_incoming_handoff`** (run **`scripts/013-telnyx-ai-incoming-handoff.sql`** in Neon). Logs: **`handoff`** becomes **`connect-aiassistant-loop-break`** on repeat POSTs; **`redirectSlotAvailable":false`**.
+1. **Redirect loop / “application error” on the phone:** Telnyx may re-POST **`/incoming`** after **`/ai-bridge`**. Zing tracks hits in **`telnyx_ai_incoming_handoff`** (`**scripts/013**` + **`scripts/014`** in Neon). Hit **1** → silent redirect to `/ai-bridge`; hit **2+** → **short “One moment please” + Redirect** to `/ai-bridge` again (repeat `/incoming` must **not** return `<Connect>` — Telnyx often plays a generic **application error** for that). Logs: **`incomingHitCount`**, **`handoff`** **`short-say-redirect-ai-bridge-repeat`**.
 2. **`/fallback` diagnostics** apply only when **`ZING_AI_RING_OWNER_FIRST=true`** (or receptionist `<Dial>`). The **default** direct-AI path hits **`/incoming`** then **`/ai-bridge`** (silent redirect). With **`ZING_AI_HANDOFF_TWO_STEP`** you still hit **`/ai-bridge`** after the Say. Search logs for **`telnyx-incoming-ai-direct`**. Set **`ZING_TELNYX_FALLBACK_DIAGNOSTIC=true`** when debugging `/fallback`.
 3. Locally run **`npm run test`** — Vitest replays fixtures in **`tests/fixtures/telnyx-fallback/`**. Add a scenario when you capture a real Dial `action` body (see **`tests/fixtures/telnyx-fallback/README.md`**).
 

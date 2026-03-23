@@ -16,17 +16,22 @@ import {
   getUser,
   insertCallLog,
   normalizePhoneNumberE164,
-  tryConsumeTelnyxAiIncomingRedirectSlot,
+  bumpTelnyxAiIncomingHitCount,
 } from "@/lib/db"
 import {
+  buildAiHandoffGiveUpTeXML,
   buildRedirectOnlyToAiBridgeTeXML,
   buildSayThenRedirectToAiBridgeTeXML,
+  buildShortSayThenRedirectToAiBridgeTeXML,
 } from "@/lib/telnyx-ai-handoff"
 import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
+
+/** Stop redirecting after this many `/incoming` POSTs for one call (safety valve). */
+const MAX_TELNYX_AI_INCOMING_HITS = 20
 
 // Pick the first non-empty webhook field (Telnyx / proxies sometimes rename keys).
 function pickField(fields: Record<string, string>, keys: string[]): string {
@@ -185,28 +190,31 @@ async function handleIncomingCall(
         if (ensured.linked && ensured.assistantId?.trim()) assistantId = ensured.assistantId.trim() // Use newly created id
       }
       if (assistantId) {
-        /** When false, Telnyx has already hit /incoming for this call_sid — return <Connect> here to stop redirect↔ai-bridge loops (see scripts/013). */
-        const redirectSlotAvailable =
-          connectDirectIncoming ? true : await tryConsumeTelnyxAiIncomingRedirectSlot(callSid)
+        /** 1 = first `/incoming` for this call_sid; 2+ = Telnyx re-posted (see scripts/013 + 014). */
+        const incomingHitCount = connectDirectIncoming ? 1 : await bumpTelnyxAiIncomingHitCount(callSid)
         let handoff: string // Short label for logs so you can see which branch ran
         let xml: string // TeXML string we return to Telnyx
-        if (twoStepAiHandoff) {
-          if (!redirectSlotAvailable) {
-            handoff = "connect-aiassistant-after-say-loop" // Repeat /incoming after Say+Redirect path — connect only (no second Say)
-            xml = buildTelnyxAiAssistantTexml(assistantId) // Break loop: <Connect> on /incoming
-          } else {
-            handoff = "say-redirect-ai-bridge" // Log label: spoken line then GET /ai-bridge
+        if (incomingHitCount > MAX_TELNYX_AI_INCOMING_HITS) {
+          handoff = "ai-handoff-give-up" // Too many loops — end politely
+          xml = buildAiHandoffGiveUpTeXML() // Say + hangup (no more redirects)
+        } else if (twoStepAiHandoff) {
+          if (incomingHitCount <= 1) {
+            handoff = "say-redirect-ai-bridge" // First hit: full hold line + GET /ai-bridge
             xml = buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // TeXML with Say + Pause + Redirect
+          } else {
+            // Repeat /incoming: do NOT emit <Connect> here — Telnyx plays generic “application error” for that.
+            handoff = "short-say-redirect-ai-bridge-repeat" // Short line + Redirect → /ai-bridge again
+            xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid)
           }
         } else if (connectDirectIncoming) {
           handoff = "connect-aiassistant-in-incoming" // Log label: experimental single-step Connect
           xml = buildTelnyxAiAssistantTexml(assistantId) // Only <Connect><AIAssistant> — may dead-air on first hit
-        } else if (!redirectSlotAvailable) {
-          handoff = "connect-aiassistant-loop-break" // Second+ POST /incoming for same call — DB dedupe
-          xml = buildTelnyxAiAssistantTexml(assistantId) // Stops Telnyx redirect loop; same assistant id as /ai-bridge
-        } else {
+        } else if (incomingHitCount <= 1) {
           handoff = "redirect-silent-ai-bridge" // First POST this call_sid — silent Redirect → /ai-bridge
           xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Telnyx GETs /ai-bridge for <Connect>
+        } else {
+          handoff = "short-say-redirect-ai-bridge-repeat" // Second+ POST: Say + Redirect (not <Connect> on /incoming)
+          xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid)
         }
         console.log(
           JSON.stringify({
@@ -214,8 +222,8 @@ async function handleIncomingCall(
             userId: routing.user_id, // Which business user this call belongs to
             handoff, // Which branch above ran
             callStatus: callStatus || null, // Raw normalized status from webhook (empty on first ring sometimes)
-            redirectSlotAvailable, // false = repeat /incoming for this call_sid (loop break path)
-            note: "013 telnyx_ai_incoming_handoff: first POST redirects; later POSTs return Connect on /incoming.",
+            incomingHitCount, // 1 = first /incoming; 2+ = repeat (Say+Redirect to /ai-bridge, not <Connect> on /incoming)
+            note: "014 incoming_hits: repeat /incoming uses Say+Redirect; <Connect> on /incoming triggers Telnyx application error.",
           })
         )
         return { kind: "raw", xml } // Bypass VoiceResponse builder because helpers return full XML strings

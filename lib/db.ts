@@ -1479,28 +1479,49 @@ export async function listAiLeadsForUser(userId: string, limit = 50): Promise<
 }
 
 /**
- * Telnyx may POST `/incoming` repeatedly for one call. Returning `<Redirect>` every time
- * can loop with `<Connect>` from `/ai-bridge` (caller: one ring, then silence).
- * First INSERT for this `call_sid` wins → return `true` (emit Redirect to ai-bridge).
- * Later POSTs conflict → return `false` (emit `<Connect><AIAssistant>` on `/incoming`).
+ * Counts how many times Telnyx has POSTed `/incoming` for this `call_sid` (atomic upsert).
+ * - **1** → first hit: silent `<Redirect>` to `/ai-bridge` is OK.
+ * - **≥ 2** → repeat hits: use **Say + Redirect** to `/ai-bridge` (not `<Connect>` on `/incoming` —
+ *   Telnyx often plays a generic “application error” for `<Connect>` on the repeat).
  */
-export async function tryConsumeTelnyxAiIncomingRedirectSlot(callSid: string): Promise<boolean> {
+export async function bumpTelnyxAiIncomingHitCount(callSid: string): Promise<number> {
   const sid = callSid.trim()
-  if (!sid) return true
+  if (!sid) return 1
   const sql = getSql()
   try {
     const rows = await sql`
-      INSERT INTO telnyx_ai_incoming_handoff (call_sid) VALUES (${sid})
-      ON CONFLICT (call_sid) DO NOTHING
-      RETURNING call_sid
+      INSERT INTO telnyx_ai_incoming_handoff (call_sid, incoming_hits) VALUES (${sid}, 1)
+      ON CONFLICT (call_sid) DO UPDATE
+      SET incoming_hits = telnyx_ai_incoming_handoff.incoming_hits + 1
+      RETURNING incoming_hits
     `
-    return Array.isArray(rows) && rows.length > 0
+    const row = rows[0] as { incoming_hits?: number } | undefined
+    const n = row?.incoming_hits != null ? Number(row.incoming_hits) : NaN
+    return Number.isFinite(n) && n >= 1 ? n : 1
   } catch (e) {
     if (isUndefinedRelationError(e, "telnyx_ai_incoming_handoff")) {
       console.warn(
-        "[db] telnyx_ai_incoming_handoff missing — run scripts/013-telnyx-ai-incoming-handoff.sql in Neon. Until then, Telnyx may redirect-loop on AI calls."
+        "[db] telnyx_ai_incoming_handoff missing — run scripts/013-telnyx-ai-incoming-handoff.sql in Neon."
       )
-      return true
+      return 1
+    }
+    const msg = (e instanceof Error ? e.message : String(e)).toLowerCase()
+    const code = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : ""
+    if (code === "42703" && msg.includes("incoming_hits")) {
+      console.warn(
+        "[db] incoming_hits missing — run scripts/014-telnyx-ai-incoming-hit-count.sql. Using legacy first/repeat detection."
+      )
+      try {
+        const legacy = await sql`
+          INSERT INTO telnyx_ai_incoming_handoff (call_sid) VALUES (${sid})
+          ON CONFLICT (call_sid) DO NOTHING
+          RETURNING call_sid
+        `
+        return Array.isArray(legacy) && legacy.length > 0 ? 1 : 2
+      } catch (e2) {
+        console.warn("[db] Legacy telnyx_ai_incoming_handoff insert failed:", e2)
+        return 1
+      }
     }
     throw e
   }

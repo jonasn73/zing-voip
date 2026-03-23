@@ -8,7 +8,8 @@
 
 CREATE TABLE IF NOT EXISTS telnyx_ai_incoming_handoff (
   call_sid TEXT PRIMARY KEY,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  incoming_hits INT NOT NULL DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS telnyx_ai_incoming_handoff_created_at_idx

@@ -5,7 +5,7 @@ For the app to work in production (sign up, login, settings, call routing), you 
 ## 1. Database (Neon)
 
 1. Go to [neon.tech](https://neon.tech) and create a project (free tier is fine).
-2. In the Neon dashboard, open **SQL Editor** and run migrations **in order**. See **`scripts/MIGRATE-ALL.md`** for the full checklist (001 → 013). At minimum for a new project: **`001-create-schema.sql`**, **`002-add-password-hash.sql`**, then **`010`**, **`011`**, **`012`**, **`013`** if you use AI call flow / Telnyx Voice AI (013 stops redirect loops on direct AI).
+2. In the Neon dashboard, open **SQL Editor** and run migrations **in order**. See **`scripts/MIGRATE-ALL.md`** for the full checklist (001 → 014). At minimum for a new project: **`001`**, **`002`**, then **`010`**, **`011`**, **`012`**, **`013`**, **`014`** if you use Telnyx Voice AI direct-to-assistant (013 + 014 fix redirect loops and repeat-`/incoming` behavior).
 3. In Neon, go to **Connection details** and copy the connection string (URI). It looks like:
    `postgresql://USER:PASSWORD@ep-xxx.region.aws.neon.tech/neondb?sslmode=require`
 

@@ -23,6 +23,36 @@ export function buildRedirectOnlyToAiBridgeTeXML(userId: string, callSid?: strin
 }
 
 /**
+ * Minimal spoken bridge + `<Redirect>` to `/ai-bridge` — use when Telnyx POSTs `/incoming` again
+ * (hit ≥ 2). **Do not** return `<Connect><AIAssistant>` on repeat `/incoming`; Telnyx often plays a
+ * generic “application error” message for that TeXML shape on the voice URL.
+ */
+export function buildShortSayThenRedirectToAiBridgeTeXML(userId: string, callSid?: string): string {
+  const appUrl = getAppUrl() // Public base URL for the redirect target
+  const cs = callSid?.trim() // Telnyx call id when present
+  const q =
+    cs.length > 0
+      ? `?callSid=${encodeURIComponent(cs)}&zingFrom=incoming-repeat`
+      : `?zingFrom=incoming-repeat` // Query string for logging / cache behavior on ai-bridge
+  const vr = new VoiceResponse() // TwiML builder Telnyx accepts
+  vr.say("One moment please.") // Short TTS so the document is not Redirect-only on a “stuck” leg
+  vr.pause({ length: 1 }) // Small gap before fetch (mirrors longer pause on the full Say variant)
+  vr.redirect(
+    { method: "GET" }, // GET /ai-bridge returns only <Connect><AIAssistant>
+    `${appUrl}/api/voice/telnyx/ai-bridge/u/${encodeURIComponent(userId)}${q}`
+  )
+  return vr.toString() // Complete TeXML for Telnyx
+}
+
+/** After many `/incoming` loops for one call, stop with a clear message instead of endless redirects. */
+export function buildAiHandoffGiveUpTeXML(): string {
+  const vr = new VoiceResponse() // TwiML builder
+  vr.say("We're sorry, we could not connect the assistant. Please try your call again later.") // Caller-facing apology
+  vr.hangup() // End the call leg
+  return vr.toString() // TeXML string for Telnyx
+}
+
+/**
  * TeXML that speaks a short line, then fetches the pure AI `<Connect>` document from our server.
  * Uses the Twilio `VoiceResponse` builder so `<Say>` matches what Telnyx expects for TwiML-compatible TeXML.
  * @param callSid — optional; forwarded on the redirect URL so the bridge can tie voicemail to the same call.

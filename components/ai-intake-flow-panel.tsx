@@ -414,9 +414,9 @@ export function AiIntakeFlowPanel({
             {previewLoading ? "Loading preview…" : "Play preview"}
           </button>
           <p className="text-[9px] leading-snug text-muted-foreground sm:max-w-[14rem] sm:text-right">
-            Tries Telnyx audio when the API allows it; otherwise uses your{" "}
-            <span className="font-medium text-foreground">browser voice</span> so you can still check wording. Real
-            calls use your Telnyx assistant (see <span className="font-medium text-foreground">Voice &amp; model</span>
+            Uses Telnyx <span className="font-medium text-foreground">POST /text-to-speech/speech</span> with your
+            voice when it succeeds; otherwise your <span className="font-medium text-foreground">browser voice</span>
+            . Live calls use your Telnyx assistant (see <span className="font-medium text-foreground">Voice &amp; model</span>
             ).
           </p>
         </div>

@@ -1,9 +1,7 @@
 // ============================================
 // POST /api/ai-assistant/voice-preview
 // ============================================
-// Tries Telnyx HTTP TTS when available; otherwise tells the client to use browser speechSynthesis.
-// Note: As of 2025–2026, POST /v2/text-to-speech often returns 404 on api.telnyx.com while
-// GET /v2/text-to-speech/voices works — so most users get { mode: "browser" }.
+// Uses Telnyx POST /v2/text-to-speech/speech (binary or JSON base64). Browser fallback only if that fails.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
@@ -77,7 +75,7 @@ export async function POST(req: NextRequest) {
     const payload: VoicePreviewResponse = {
       mode: "browser",
       notice:
-        "Telnyx’s on-demand TTS URL often returns “not found” on public API keys even though Voice AI on calls works. This preview uses your browser’s voice — close enough to check wording; the real line uses your Telnyx assistant on the phone.",
+        "Telnyx TTS could not return audio (voice id, billing, or API error). Using your browser’s voice to check wording — live calls still use your Telnyx assistant.",
     }
     return NextResponse.json(payload, { status: 200, headers: { "Cache-Control": "private, no-store" } })
   }

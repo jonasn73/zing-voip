@@ -293,9 +293,9 @@ export async function telnyxUpdateAssistant(
 const MAX_TTS_PREVIEW_CHARS = 1200
 
 /**
- * One-shot TTS for “preview opening line” in the dashboard.
- * Docs list POST /v2/text-to-speech, but that path often returns HTTP 404 while /v2/text-to-speech/voices works;
- * callers should catch errors and fall back (e.g. browser speechSynthesis).
+ * Telnyx HTTP TTS for dashboard preview.
+ * `POST /v2/text-to-speech` returns 404 on api.telnyx.com; the working route is **`POST /v2/text-to-speech/speech`**
+ * (see Telnyx TTS docs — WebSocket is documented on GET /text-to-speech; HTTP generate uses `/speech`).
  */
 export async function telnyxSynthesizeSpeechPreview(
   text: string,
@@ -305,12 +305,13 @@ export async function telnyxSynthesizeSpeechPreview(
   if (!clipped) {
     throw new Error("No text to speak")
   }
-  const res = await fetch(`${TELNYX_BASE}/text-to-speech`, {
+  const voiceId = voice.trim() || defaultVoice()
+  const res = await fetch(`${TELNYX_BASE}/text-to-speech/speech`, {
     method: "POST",
     headers: telnyxHeaders(),
     body: JSON.stringify({
       text: clipped,
-      voice: voice.trim(),
+      voice: voiceId,
       output_type: "binary_output",
     }),
   })
@@ -326,7 +327,21 @@ export async function telnyxSynthesizeSpeechPreview(
     }
     throw new Error(`Telnyx TTS failed: ${formatTelnyxErrorBody(body, res.status)}`)
   }
+
+  const ct = (res.headers.get("content-type") || "").toLowerCase()
+  if (ct.includes("application/json")) {
+    const j = (await res.json()) as { base64_audio?: string }
+    const b64 = j.base64_audio
+    if (typeof b64 !== "string" || !b64.trim()) {
+      throw new Error("Telnyx TTS returned JSON without base64_audio")
+    }
+    const buf = Buffer.from(b64, "base64")
+    return {
+      buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+      contentType: "audio/mpeg",
+    }
+  }
+
   const buffer = await res.arrayBuffer()
-  const contentType = res.headers.get("content-type") || "audio/mpeg"
-  return { buffer, contentType }
+  return { buffer, contentType: res.headers.get("content-type") || "audio/mpeg" }
 }

@@ -18,6 +18,7 @@ import {
   normalizePhoneNumberE164,
 } from "@/lib/db"
 import { buildSayThenRedirectToAiBridgeTeXML } from "@/lib/telnyx-ai-handoff"
+import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
 export const runtime = "nodejs"
@@ -142,13 +143,15 @@ async function handleIncomingCall(
     const wantsAiAfterNoAnswer = String(routing.fallback_type || "").toLowerCase() === "ai"
     const hasReceptionist = Boolean(routing.selected_receptionist_id && routing.receptionist_phone)
     /**
-     * **Default (AI fallback, no receptionist):** connect **straight to Voice AI** (Say → ai-bridge).
-     * Telnyx often **never requests** the Dial `action` URL (`/fallback`), so ring-then-AI breaks silently.
-     * Set **`ZING_AI_RING_OWNER_FIRST=true`** to ring the owner’s cell first (legacy; requires working Dial `action`).
-     * `ZING_AI_DIRECT_NO_RECEPTIONIST=true` is a no-op alias (kept for old env blocks).
+     * **Default (AI fallback, no receptionist):** return **`<Connect><AIAssistant>`** from `/incoming` (no Say, no Redirect).
+     * Say→Redirect→ai-bridge caused a **repeating hold message** when Telnyx re-fetched `/incoming` on some setups.
+     * Set **`ZING_AI_HANDOFF_TWO_STEP=true`** to restore Say + Redirect → `/ai-bridge` (legacy).
+     * Set **`ZING_AI_RING_OWNER_FIRST=true`** to ring the owner’s cell first (Dial + `/fallback`).
      */
     const ringOwnerFirst =
       process.env.ZING_AI_RING_OWNER_FIRST === "1" || process.env.ZING_AI_RING_OWNER_FIRST === "true"
+    const twoStepAiHandoff =
+      process.env.ZING_AI_HANDOFF_TWO_STEP === "1" || process.env.ZING_AI_HANDOFF_TWO_STEP === "true"
     const useDirectAiWhenNoReceptionist =
       wantsAiAfterNoAnswer && !hasReceptionist && !ringOwnerFirst
 
@@ -165,10 +168,14 @@ async function handleIncomingCall(
           JSON.stringify({
             zing: "telnyx-incoming-ai-direct",
             userId: routing.user_id,
-            note: "Default path: Voice AI without <Dial> to owner (Telnyx Dial action /fallback often not called). Set ZING_AI_RING_OWNER_FIRST=true to ring cell first.",
+            handoff: twoStepAiHandoff ? "say-redirect-ai-bridge" : "connect-aiassistant-in-incoming",
+            note: "No <Dial> to owner unless ZING_AI_RING_OWNER_FIRST. Use ZING_AI_HANDOFF_TWO_STEP for legacy Say+Redirect.",
           })
         )
-        return { kind: "raw", xml: buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) }
+        if (twoStepAiHandoff) {
+          return { kind: "raw", xml: buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) }
+        }
+        return { kind: "raw", xml: buildTelnyxAiAssistantTexml(assistantId) }
       }
       console.warn(
         "[Zing] AI direct path skipped — no assistant id; falling back to <Dial> owner + /fallback webhook."

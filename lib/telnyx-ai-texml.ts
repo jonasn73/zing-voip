@@ -28,8 +28,8 @@ export function normalizeTelnyxAssistantIdForTexml(raw: string): string {
 }
 
 /**
- * TeXML that **only** connects Voice AI (second step after `buildSayThenRedirectToAiBridgeTeXML` Redirect).
- * Do not put `<Say>` in the same `<Response>` — some Telnyx builds skip audio or fail the handoff.
+ * TeXML that **only** connects Voice AI (`<Connect><AIAssistant>` — no `<Say>` in the same `<Response>`).
+ * Used from `/incoming` for direct AI (avoids Say→Redirect loops) and from `/ai-bridge` after legacy two-step handoff.
  */
 export function buildTelnyxAiAssistantTexml(assistantId: string): string {
   const canonical = normalizeTelnyxAssistantIdForTexml(assistantId)

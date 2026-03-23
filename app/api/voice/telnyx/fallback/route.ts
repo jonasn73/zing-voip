@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
-import type { FallbackType } from "@/lib/types"
+import type { FallbackType, RoutingConfig } from "@/lib/types"
 import {
   getRoutingConfig,
   getRoutingConfigForNumber,
@@ -38,21 +38,32 @@ function normalizeFallbackType(v: string | undefined | null): FallbackType {
 }
 
 /**
- * Combine `routing_config` (explicit row) with the incoming-call join row.
- * If either says **ai**, use AI — fixes cases where the default row is still `owner` but the business line has `ai`
- * (common after choosing AI fallback; owner-leg callback used to read only the wrong row → voicemail when you hang up).
+ * Pick effective fallback from DB + live join.
+ * - **Per-number row** (`business_number` set): that line’s settings win vs the global row (multi-number safe),
+ *   but live join can still upgrade to **ai** if it disagrees (cache / shape bugs).
+ * - **No per-number row** (using global default only): merge **global default** + resolved config + live so `ai` wins if any says ai.
  */
 function mergeFallbackType(
-  configFb: string | undefined | null,
+  resolvedConfig: RoutingConfig | null,
   liveFb: string | undefined | null,
+  globalDefaultFb: string | undefined | null,
   useLive: boolean
 ): FallbackType {
-  const c = (configFb || "").toLowerCase().trim()
+  const hasSpecificNumberRow = Boolean(resolvedConfig?.business_number?.trim())
+  const c = (resolvedConfig?.fallback_type || "").toLowerCase().trim()
   const l = useLive && liveFb ? String(liveFb).toLowerCase().trim() : ""
-  if (c === "ai" || l === "ai") return "ai"
-  if (c === "voicemail" || l === "voicemail") return "voicemail"
-  if (l === "owner" || c === "owner") return "owner"
-  return normalizeFallbackType(configFb ?? liveFb)
+  const g = (globalDefaultFb || "").toLowerCase().trim()
+
+  if (hasSpecificNumberRow) {
+    if (c === "ai" || l === "ai") return "ai"
+    if (c === "voicemail" || l === "voicemail") return "voicemail"
+    if (c === "owner" || l === "owner") return "owner"
+    return normalizeFallbackType(resolvedConfig?.fallback_type)
+  }
+
+  if (c === "ai" || l === "ai" || g === "ai") return "ai"
+  if (c === "voicemail" || l === "voicemail" || g === "voicemail") return "voicemail"
+  return normalizeFallbackType(resolvedConfig?.fallback_type ?? liveFb ?? globalDefaultFb)
 }
 
 /**
@@ -173,15 +184,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const [config, user] = await Promise.all([
+    const [config, globalDefaultConfig, user] = await Promise.all([
       effectiveBusinessLine
         ? getRoutingConfigForNumber(userId, effectiveBusinessLine)
         : getRoutingConfig(userId),
+      getRoutingConfig(userId),
       getUser(userId),
     ])
 
     const useLive = Boolean(lr && lr.user_id === userId)
-    const fallbackType = mergeFallbackType(config?.fallback_type, lr?.fallback_type, useLive)
+    let fallbackType = mergeFallbackType(config, lr?.fallback_type, globalDefaultConfig?.fallback_type, useLive)
+
+    // First Dial leg was already the owner’s cell; "owner" fallback cannot ring them again → we used to play voicemail.
+    // If a Telnyx assistant is already linked (user chose AI / provisioning ran), prefer AI over that generic mailbox.
+    if (primaryWasOwner && fallbackType === "owner") {
+      const linkedAssistant =
+        Boolean(user?.telnyx_ai_assistant_id?.trim()) || Boolean(process.env.TELNYX_AI_ASSISTANT_ID?.trim())
+      if (linkedAssistant) {
+        fallbackType = "ai"
+        console.log(
+          JSON.stringify({
+            zing: "telnyx-fallback-promote-ai-after-owner-leg",
+            userId,
+            reason: "owner-fallback-after-owner-dial-but-assistant-linked",
+          })
+        )
+      }
+    }
 
     if (
       useLive &&
@@ -211,6 +240,8 @@ export async function POST(req: NextRequest) {
         hadBnQuery: Boolean(bnFromQuery),
         toField: String(formData.get("To") || ""),
         fallbackFromConfig: config?.fallback_type ?? null,
+        fallbackFromGlobalDefault: globalDefaultConfig?.fallback_type ?? null,
+        resolvedRoutingIsPerNumber: Boolean(config?.business_number?.trim()),
         fallbackFromLiveJoin: useLive ? lr?.fallback_type ?? null : null,
         fallbackType,
         primaryWasOwner,
@@ -282,6 +313,14 @@ export async function POST(req: NextRequest) {
           const ensured = await ensureTelnyxVoiceAiAssistant(userId)
           if (ensured.linked && ensured.assistantId?.trim()) {
             assistantId = ensured.assistantId.trim()
+          } else if (ensured.error) {
+            console.log(
+              JSON.stringify({
+                zing: "telnyx-ai-ensure-failed",
+                userId,
+                error: ensured.error,
+              })
+            )
           }
         }
         if (assistantId) {
@@ -301,6 +340,13 @@ export async function POST(req: NextRequest) {
             headers: { "Content-Type": "text/xml" },
           })
         }
+        console.log(
+          JSON.stringify({
+            zing: "telnyx-ai-fallback-no-assistant",
+            userId,
+            dialStatus: dialStatus || rawStatus || null,
+          })
+        )
         playTelnyxAiUnavailableVoicemail(texml, appUrl, userId, callSid)
         break
       }

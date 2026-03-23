@@ -3,7 +3,7 @@
 // ============================================
 // LeadsPage — AI fallback leads from phone calls
 // ============================================
-// Fetches rows saved when Vapi runs submit_zing_lead (see /api/webhooks/vapi).
+// Fetches AI lead rows from the database (legacy Vapi webhook disabled; future Telnyx tool hooks).
 
 import { useEffect, useState } from "react"
 import { Inbox, Loader2, Phone, MessageSquare } from "lucide-react"

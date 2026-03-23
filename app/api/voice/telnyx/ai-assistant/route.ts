@@ -2,8 +2,7 @@
 // POST /api/voice/telnyx/ai-assistant (legacy URL)
 // ============================================
 // Previously: TeXML <Gather> + Vercel AI SDK loop (generic “receptionist”).
-// Zing now uses Vapi + industry playbooks only. This endpoint remains for old
-// Telnyx webhooks and sends callers straight to voicemail.
+// Legacy URL: forwards to voicemail. Live AI fallback uses Telnyx <AIAssistant> from /api/voice/telnyx/fallback.
 
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"

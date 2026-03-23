@@ -88,7 +88,7 @@ function busyForProfile(profileId: AiIntakeProfileId, cfg: AiIntakeConfig): stri
   }
 }
 
-/** Main entry: full system block for Vapi from resolved profile */
+/** Main entry: full system block for documentation / future use (Telnyx assistant prompts are edited in Mission Control). */
 export function buildIntakeSystemExtension(
   businessName: string,
   ownerPhone: string,

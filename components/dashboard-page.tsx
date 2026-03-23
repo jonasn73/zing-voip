@@ -101,7 +101,7 @@ const fallbackOptions: { id: FallbackOption; label: string; description: string;
   { id: "voicemail", label: "Voicemail", description: "Send caller to voicemail", icon: Voicemail, color: "text-warning", bgColor: "bg-warning/10" },
 ]
 
-/** Shown under AI fallback — matches Vapi intake (not the old generic receptionist list) */
+/** Shown under AI fallback — intake playbook aligns with Telnyx assistant you configure in Mission Control */
 const AI_CAPABILITY_CHIPS = [
   "Industry-smart intake",
   "Captures leads after the call",
@@ -156,7 +156,7 @@ export function DashboardPage() {
   const [deletingRecId, setDeletingRecId] = useState<string | null>(null)
 
   // AI assistant state
-  const [hasVapiAssistant, setHasVapiAssistant] = useState(false)
+  const [hasTelnyxAiAssistant, setHasTelnyxAiAssistant] = useState(false)
   // Business numbers for showing which number routing applies to
   const [businessNumbers, setBusinessNumbers] = useState<{ number: string; status: string }[]>([])
 
@@ -229,7 +229,7 @@ export function DashboardPage() {
               setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
               setFallback(rData.config.fallback_type || "owner")
             }
-            if (aiData?.hasAssistant) setHasVapiAssistant(true)
+            if (aiData?.hasAssistant) setHasTelnyxAiAssistant(true)
           })
           .catch(() => {})
       })
@@ -688,7 +688,7 @@ export function DashboardPage() {
                       </div>
                       <AiIntakeFlowPanel
                         variant="modal"
-                        onHasAssistantChange={(active) => setHasVapiAssistant(active)}
+                        onHasAssistantChange={(active) => setHasTelnyxAiAssistant(active)}
                         onBusyGreetingSavedToRouting={(text) =>
                           saveRouting({ ai_greeting: text }, { quiet: true })
                         }
@@ -828,7 +828,7 @@ export function DashboardPage() {
             AI Assistant
           </h3>
         </div>
-        {hasVapiAssistant ? (
+        {hasTelnyxAiAssistant ? (
           <div className="rounded-xl border border-chart-4/20 bg-chart-4/5 p-4">
             <div className="flex items-center gap-3">
               <IconSurface tone="primary" className="h-10 w-10">

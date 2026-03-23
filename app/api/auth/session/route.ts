@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
             phone: "+15551234567",
             business_name: "My Business",
             industry: "generic",
+            telnyx_ai_assistant_id: null,
             created_at: new Date().toISOString(),
           },
         },

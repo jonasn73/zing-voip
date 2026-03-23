@@ -11,7 +11,8 @@ export interface User {
   business_name: string
   /** Signup industry — default AI fallback playbook when intake has no profileId override */
   industry: string
-  vapi_assistant_id: string | null // Vapi AI voice agent for this business
+  /** Telnyx Mission Control → Voice AI → Assistant id (TeXML AIAssistant verb). */
+  telnyx_ai_assistant_id: string | null
   created_at: string
 }
 
@@ -58,7 +59,7 @@ export interface PhoneNumber {
 // --- Call Logs ---
 export type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
 
-/** Row from ai_leads — captured when Vapi calls submit_zing_lead. */
+/** Row from ai_leads — legacy tool webhooks / future Telnyx lead hooks. */
 export interface AiLead {
   id: string
   user_id: string

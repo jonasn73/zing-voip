@@ -1,7 +1,7 @@
 // ============================================
 // GET /api/ai-leads
 // ============================================
-// Lists AI-captured leads (Vapi submit_zing_lead) for the signed-in user.
+// Lists AI-captured leads for the signed-in user.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"

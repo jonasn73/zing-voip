@@ -1,7 +1,7 @@
 "use client"
 
 // ============================================
-// Playbook + intake + voice (shared: full page or fallback modal)
+// Playbook + intake + Telnyx Voice AI id (shared: full page or fallback modal)
 // ============================================
 
 import { useEffect, useMemo, useState } from "react"
@@ -20,7 +20,6 @@ import {
   isAiIntakeProfileId,
 } from "@/lib/business-industries"
 import { DEFAULT_BUSY_GREETING_LOCKSMITH } from "@/lib/ai-intake-defaults"
-import { AiVoiceAdvancedPanel } from "@/components/ai-voice-advanced-panel"
 
 function buildIntakeBody(
   scriptChoice: "auto" | AiIntakeProfileId,
@@ -60,6 +59,7 @@ export function AiIntakeFlowPanel({
   const [activating, setActivating] = useState(false)
   const [hasAssistant, setHasAssistant] = useState(false)
   const [userIndustry, setUserIndustry] = useState<string>("generic")
+  const [telnyxAssistantId, setTelnyxAssistantId] = useState("")
   const [scriptChoice, setScriptChoice] = useState<"auto" | AiIntakeProfileId>("auto")
   const [aiIntake, setAiIntake] = useState({
     busyGreeting: "",
@@ -96,13 +96,14 @@ export function AiIntakeFlowPanel({
         const has = Boolean(aiData.hasAssistant)
         setHasAssistant(has)
 
+        const aid = typeof aiData.assistantId === "string" ? aiData.assistantId : ""
+        setTelnyxAssistantId(aid)
+
         const stored = aiData.intakeStored as Record<string, unknown> | null | undefined
         const storedPid = stored && typeof stored.profileId === "string" ? stored.profileId : ""
         if (storedPid && isAiIntakeProfileId(storedPid)) setScriptChoice(storedPid)
         else setScriptChoice("auto")
 
-        const config = aiData.assistantConfig as Record<string, unknown> | null
-        const cfgFirst = config ? String(config.firstMessage || "") : ""
         const ic = aiData.intakeConfig as
           | {
               busyGreeting?: string
@@ -115,14 +116,12 @@ export function AiIntakeFlowPanel({
 
         if (ic) {
           setAiIntake({
-            busyGreeting: (ic.busyGreeting && ic.busyGreeting.trim()) || cfgFirst || "",
+            busyGreeting: (ic.busyGreeting && ic.busyGreeting.trim()) || "",
             carKeyNotes: ic.carKeyNotes || "",
             lockoutNotes: ic.lockoutNotes || "",
             otherNotes: ic.otherNotes || "",
             smsNotify: ic.smsNotify !== false,
           })
-        } else if (cfgFirst) {
-          setAiIntake((p) => ({ ...p, busyGreeting: cfgFirst }))
         }
       })
       .catch(() => {})
@@ -145,6 +144,7 @@ export function AiIntakeFlowPanel({
         body: JSON.stringify({
           intake: buildIntakeBody(scriptChoice, aiIntake),
           greeting,
+          telnyxAiAssistantId: telnyxAssistantId.trim(),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -158,6 +158,10 @@ export function AiIntakeFlowPanel({
       })
       const g = aiIntake.busyGreeting.trim()
       if (g) onBusyGreetingSavedToRouting?.(g)
+      if (telnyxAssistantId.trim()) {
+        setHasAssistant(true)
+        onHasAssistantChange?.(true)
+      }
     } finally {
       setSaving(false)
     }
@@ -173,6 +177,7 @@ export function AiIntakeFlowPanel({
         body: JSON.stringify({
           greeting: aiIntake.busyGreeting.trim() || undefined,
           intake: buildIntakeBody(scriptChoice, aiIntake),
+          telnyxAiAssistantId: telnyxAssistantId.trim(),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -183,8 +188,12 @@ export function AiIntakeFlowPanel({
       if (data.assistantId) {
         setHasAssistant(true)
         onHasAssistantChange?.(true)
+        setTelnyxAssistantId(String(data.assistantId))
       }
-      toast({ title: "Voice AI on", description: String(data.message || "Assistant is live for fallback calls.") })
+      toast({
+        title: "Voice AI on",
+        description: String(data.message || "Telnyx assistant linked for fallback calls."),
+      })
       const g = aiIntake.busyGreeting.trim()
       if (g) onBusyGreetingSavedToRouting?.(g)
     } finally {
@@ -223,12 +232,34 @@ export function AiIntakeFlowPanel({
             <div>
               <h1 className="text-lg font-bold text-foreground">AI call flow</h1>
               <p className="text-[11px] text-muted-foreground">
-                Industry intake when nobody answers — branches, fields, and your opening line.
+                Industry intake notes + Telnyx Voice AI on no-answer (same carrier, one stack).
               </p>
             </div>
           </div>
         </div>
       )}
+
+      <section className="space-y-2 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Telnyx Voice AI</p>
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          Create an assistant in{" "}
+          <span className="font-medium text-foreground">Telnyx Mission Control → Voice AI → Assistants</span>, then paste
+          its <span className="font-medium text-foreground">id</span> here. Voice, model, and prompts are edited in
+          Telnyx — Zing hands the live call to that assistant when nobody answers.
+        </p>
+        <input
+          type="text"
+          value={telnyxAssistantId}
+          onChange={(e) => setTelnyxAssistantId(e.target.value)}
+          placeholder="e.g. assistant-776d0d6f-716d-4d8f-b6da-b95181636838"
+          className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+          autoComplete="off"
+        />
+        <p className="text-[10px] text-muted-foreground">
+          Optional: set <span className="font-mono">TELNYX_AI_ASSISTANT_ID</span> in Vercel for a platform default when
+          this field is empty.
+        </p>
+      </section>
 
       <div
         className={cn(
@@ -237,12 +268,12 @@ export function AiIntakeFlowPanel({
         )}
       >
         <p className="text-xs font-semibold text-foreground">
-          {hasAssistant ? "Voice assistant is active" : "Voice assistant not active yet"}
+          {hasAssistant ? "Voice assistant is linked" : "Voice assistant not linked yet"}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground">
           {hasAssistant
-            ? "Fallback → AI uses the playbook below on live calls."
-            : "With AI fallback on, callers need an activated assistant — otherwise they hear voicemail. Save below, then activate."}
+            ? "Fallback → AI connects this Telnyx assistant on the same call."
+            : "With AI fallback on, paste a Telnyx Assistant id above, then Activate (or Save)."}
         </p>
         {!hasAssistant && (
           <button
@@ -252,13 +283,16 @@ export function AiIntakeFlowPanel({
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
           >
             {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {activating ? "Activating…" : "Activate voice assistant"}
+            {activating ? "Linking…" : "Activate voice assistant"}
           </button>
         )}
       </div>
 
       <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Playbook</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Playbook (reference)</p>
+        <p className="text-[10px] text-muted-foreground">
+          Use this as a checklist when writing your assistant instructions in Telnyx.
+        </p>
         <select
           value={scriptChoice}
           onChange={(e) => {
@@ -304,11 +338,9 @@ export function AiIntakeFlowPanel({
 
       <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          What callers hear first
+          What callers hear first (voicemail / routing)
         </p>
-        <p className="text-[10px] text-muted-foreground">
-          High-call-volume tone — syncs to routing and your live assistant when you save.
-        </p>
+        <p className="text-[10px] text-muted-foreground">Saved to routing — not automatically injected into Telnyx AI.</p>
         <textarea
           value={aiIntake.busyGreeting}
           onChange={(e) => setAiIntake((p) => ({ ...p, busyGreeting: e.target.value }))}
@@ -325,7 +357,7 @@ export function AiIntakeFlowPanel({
                 value={aiIntake.carKeyNotes}
                 onChange={(e) => setAiIntake((p) => ({ ...p, carKeyNotes: e.target.value }))}
                 rows={2}
-                className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2 text-sm"
+                className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm"
               />
             </div>
             <div className="space-y-1.5">
@@ -334,7 +366,7 @@ export function AiIntakeFlowPanel({
                 value={aiIntake.lockoutNotes}
                 onChange={(e) => setAiIntake((p) => ({ ...p, lockoutNotes: e.target.value }))}
                 rows={2}
-                className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2 text-sm"
+                className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm"
               />
             </div>
           </>
@@ -346,15 +378,15 @@ export function AiIntakeFlowPanel({
             value={aiIntake.otherNotes}
             onChange={(e) => setAiIntake((p) => ({ ...p, otherNotes: e.target.value }))}
             rows={2}
-            placeholder="Anything you want the AI to always remember for your business"
-            className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2 text-sm"
+            placeholder="Paste into Telnyx assistant instructions as needed"
+            className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm"
           />
         </div>
 
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
           <div>
             <p className="text-xs font-semibold text-foreground">Text me new leads</p>
-            <p className="text-[10px] text-muted-foreground">SMS when a lead is saved (needs Telnyx messaging env).</p>
+            <p className="text-[10px] text-muted-foreground">SMS when a lead is saved (Telnyx messaging env).</p>
           </div>
           <Switch
             checked={aiIntake.smsNotify}
@@ -363,8 +395,6 @@ export function AiIntakeFlowPanel({
           />
         </div>
       </section>
-
-      <AiVoiceAdvancedPanel assistantActive={hasAssistant} />
 
       {variant === "modal" ? (
         <div className="border-t border-border pt-3">

@@ -1,23 +1,23 @@
-# AI receptionist (platform model)
+# AI receptionist (Telnyx Voice AI)
 
-End users **never** add Vapi or ElevenLabs keys in the app. Zing runs voice + preview on the server using **your** environment variables.
+Zing uses **Telnyx** for telephony and **Telnyx Voice AI** for the no-answer fallback. There is **no Vapi or ElevenLabs** in the app path.
 
-## Operator (Vercel) environment
+## What the business owner does
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `VAPI_API_KEY` | Yes (for AI calls) | Create/update assistants, live agent on fallback calls |
-| `ELEVENLABS_API_KEY` | Strongly recommended | Voice preview + `/api/ai-assistant/voices` premade catalog (same IDs as live TTS) |
-| `ZING_AI_LLM_MODEL` | No | OpenAI model id (default `gpt-4o`). Set `gpt-4o-mini` to reduce cost |
+1. In **Telnyx Mission Control**, create/configure a **Voice AI Assistant** (voice, model, instructions, tools).
+2. Copy the assistant **id** (UUID-style string).
+3. In Zing → **AI call flow**, paste the id and tap **Activate** (or **Save**).
 
-## Voice list behavior
+## Optional platform default
 
-- `GET /api/ai-assistant/voices` uses the **platform** ElevenLabs key to **match labels** to Zing’s **curated premade ID list** only.
-- Extra premades returned by ElevenLabs are **not** exposed in the app — many are “library” voices that **fail in-app preview** on free API tiers while still confusing users in the dropdown.
-- If the key is missing or the API fails, the UI uses the full curated list from `lib/ai-voice-catalog.ts`.
+Set **`TELNYX_AI_ASSISTANT_ID`** in Vercel if you want a single assistant used when a user has not saved their own id.
 
-## Quality defaults
+## API notes
 
-- Assistants use `gpt-4o` by default (override with `ZING_AI_LLM_MODEL`).
-- ElevenLabs block uses tuned `stability` / `similarityBoost` for natural phone speech.
-- System prompt emphasizes concise speech, confirming numbers, and no “I’m an AI” language.
+- `GET /api/ai-assistant` returns `hasAssistant`, `assistantId` (Telnyx id), and saved intake JSON for your in-app playbook copy.
+- `POST /api/ai-assistant` links `telnyxAiAssistantId` + saves intake.
+- `GET /api/ai-assistant/voices` returns an empty list — voice selection is **in Telnyx**, not Zing.
+
+## Database
+
+Run **`scripts/012-telnyx-ai-assistant.sql`** in Neon so `users.telnyx_ai_assistant_id` exists.

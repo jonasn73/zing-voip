@@ -40,7 +40,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
 
   // Step 3 -- Configure AI fallback
   const [aiEnabled, setAiEnabled] = useState(true)
-  const [aiGreeting, setAiGreeting] = useState(DEFAULT_BUSY_GENERIC) // Same default as dashboard / Vapi so onboarding matches the live product
+  const [aiGreeting, setAiGreeting] = useState(DEFAULT_BUSY_GENERIC) // Same default as dashboard / AI flow
 
   const availableNumbers = [
     { number: `(${areaCode || "555"}) 100-4001`, type: "Local", price: "$2.99/mo" },

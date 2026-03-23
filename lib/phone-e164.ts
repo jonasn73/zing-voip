@@ -1,7 +1,7 @@
 // ============================================
 // US-focused E.164 helper (callbacks / SMS)
 // ============================================
-// Turns common US phone inputs into +1… format for Telnyx / Vapi.
+// Turns common US phone inputs into +1… format for Telnyx.
 
 /**
  * Normalize a phone string to E.164 for US numbers when possible.

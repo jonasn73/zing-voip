@@ -1,7 +1,7 @@
 // ============================================
 // AI intake — human-readable flow for the dashboard
 // ============================================
-// These summaries mirror the Vapi system prompts in ai-intake-defaults.ts
+// These summaries mirror the intake playbooks in ai-intake-defaults.ts (reference for Telnyx assistant setup).
 // and ai-intake-field-registry.ts so the UI can show branches without parsing markdown.
 
 import type { AiIntakeProfileId } from "@/lib/business-industries"

@@ -17,6 +17,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { IconSurface } from "@/components/ui/icon-surface"
+import { useOperationsData, type UiCallRecord } from "@/lib/hooks/use-operations-data"
 
 interface DailyBreakdown {
   day: string
@@ -188,7 +189,10 @@ export function AnalyticsPage() {
   const { calls: liveCalls, loading: liveCallsLoading } = useOperationsData()
   const liveTotalCalls = liveCalls.length
   const liveTotalMinutes = useMemo(
-    () => Math.floor(liveCalls.reduce((sum, c) => sum + (c.durationSeconds || 0), 0) / 60),
+    () =>
+      Math.floor(
+        liveCalls.reduce((sum: number, c: UiCallRecord) => sum + (c.durationSeconds || 0), 0) / 60
+      ),
     [liveCalls]
   )
 

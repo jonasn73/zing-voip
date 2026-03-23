@@ -331,7 +331,7 @@ export async function getAuthUserByEmail(email: string): Promise<(User & { passw
   const sql = getSql()
   try {
     const rows = await sql`
-      SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, password_hash, created_at
+      SELECT id, email, name, phone, business_name, industry, telnyx_ai_assistant_id, password_hash, created_at
       FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
     `
     const row = rows[0]
@@ -343,7 +343,7 @@ export async function getAuthUserByEmail(email: string): Promise<(User & { passw
   } catch (e) {
     if (!isMissingIndustryColumnError(e)) throw e
     const rows = await sql`
-      SELECT id, email, name, phone, business_name, vapi_assistant_id, password_hash, created_at
+      SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, password_hash, created_at
       FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
     `
     const row = rows[0]
@@ -390,7 +390,7 @@ export async function createUser(params: {
     phone: params.phone,
     business_name: params.business_name,
     industry,
-    vapi_assistant_id: null,
+    telnyx_ai_assistant_id: null,
     created_at: new Date().toISOString(),
   }
 }
@@ -403,7 +403,7 @@ function parseUserRow(row: Record<string, unknown>): User {
     phone: String(row.phone),
     business_name: String(row.business_name ?? "My Business"),
     industry: row.industry != null ? String(row.industry) : "generic",
-    vapi_assistant_id: row.vapi_assistant_id ? String(row.vapi_assistant_id) : null,
+    telnyx_ai_assistant_id: row.telnyx_ai_assistant_id ? String(row.telnyx_ai_assistant_id) : null,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
 }
@@ -413,7 +413,7 @@ export async function getUserByPhoneNumber(toNumber: string): Promise<User | nul
   const sql = getSql()
   try {
     const rows = await sql`
-      SELECT u.id, u.email, u.name, u.phone, u.business_name, u.industry, u.vapi_assistant_id, u.created_at
+      SELECT u.id, u.email, u.name, u.phone, u.business_name, u.industry, u.telnyx_ai_assistant_id, u.created_at
       FROM users u
       JOIN phone_numbers pn ON pn.user_id = u.id
       WHERE pn.number = ${toNumber} AND pn.status = 'active'
@@ -423,7 +423,7 @@ export async function getUserByPhoneNumber(toNumber: string): Promise<User | nul
   } catch (e) {
     if (!isMissingIndustryColumnError(e)) throw e
     const rows = await sql`
-      SELECT u.id, u.email, u.name, u.phone, u.business_name, u.vapi_assistant_id, u.created_at
+      SELECT u.id, u.email, u.name, u.phone, u.business_name, u.telnyx_ai_assistant_id, u.created_at
       FROM users u
       JOIN phone_numbers pn ON pn.user_id = u.id
       WHERE pn.number = ${toNumber} AND pn.status = 'active'
@@ -533,14 +533,14 @@ export async function getUser(userId: string): Promise<User | null> {
   const sql = getSql()
   try {
     const rows = await sql`
-      SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
+      SELECT id, email, name, phone, business_name, industry, telnyx_ai_assistant_id, created_at
       FROM users WHERE id = ${userId} LIMIT 1
     `
     return rows[0] ? parseUserRow(rows[0]) : null
   } catch (e) {
     if (!isMissingIndustryColumnError(e)) throw e
     const rows = await sql`
-      SELECT id, email, name, phone, business_name, vapi_assistant_id, created_at
+      SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, created_at
       FROM users WHERE id = ${userId} LIMIT 1
     `
     return rows[0] ? parseUserRow(rows[0]) : null
@@ -555,7 +555,7 @@ export async function updateUser(
     name?: string
     business_name?: string
     industry?: string
-    vapi_assistant_id?: string | null
+    telnyx_ai_assistant_id?: string | null
   }
 ): Promise<void> {
   const sql = getSql()
@@ -576,8 +576,8 @@ export async function updateUser(
       /* DB not migrated — ignore industry update until scripts/011-user-industry.sql is run */
     }
   }
-  if (updates.vapi_assistant_id !== undefined) {
-    await sql`UPDATE users SET vapi_assistant_id = ${updates.vapi_assistant_id} WHERE id = ${userId}`
+  if (updates.telnyx_ai_assistant_id !== undefined) {
+    await sql`UPDATE users SET telnyx_ai_assistant_id = ${updates.telnyx_ai_assistant_id} WHERE id = ${userId}`
   }
 }
 
@@ -1257,21 +1257,22 @@ export async function updateAiAssistantPreset(params: {
   }
 }
 
-// --- AI intake config (per user) + leads from Vapi tool ---
+// --- AI intake config (per user) + leads ---
 
-export async function getUserByVapiAssistantId(vapiAssistantId: string): Promise<User | null> {
+/** Resolve owner by Telnyx Voice AI assistant id (e.g. future tool / webhook integrations). */
+export async function getUserByTelnyxAssistantId(telnyxAssistantId: string): Promise<User | null> {
   const sql = getSql()
   try {
     const rows = await sql`
-      SELECT id, email, name, phone, business_name, industry, vapi_assistant_id, created_at
-      FROM users WHERE vapi_assistant_id = ${vapiAssistantId} LIMIT 1
+      SELECT id, email, name, phone, business_name, industry, telnyx_ai_assistant_id, created_at
+      FROM users WHERE telnyx_ai_assistant_id = ${telnyxAssistantId} LIMIT 1
     `
     return rows[0] ? parseUserRow(rows[0]) : null
   } catch (e) {
     if (!isMissingIndustryColumnError(e)) throw e
     const rows = await sql`
-      SELECT id, email, name, phone, business_name, vapi_assistant_id, created_at
-      FROM users WHERE vapi_assistant_id = ${vapiAssistantId} LIMIT 1
+      SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, created_at
+      FROM users WHERE telnyx_ai_assistant_id = ${telnyxAssistantId} LIMIT 1
     `
     return rows[0] ? parseUserRow(rows[0]) : null
   }

@@ -14,7 +14,7 @@ This is the single source of truth for how voice currently works in Zing.
 - No-answer fallback: `/api/voice/telnyx/fallback`
 - Call status callbacks: `/api/voice/telnyx/status`
 - Recording callbacks: `/api/voice/telnyx/recording-status`
-- Legacy URL (voicemail after recording): `/api/voice/telnyx/ai-assistant` (no longer runs TeXML + LLM; industry AI is Vapi-only)
+- Legacy URL (voicemail after recording): `/api/voice/telnyx/ai-assistant` (voicemail stub; live AI uses Telnyx `<AIAssistant>` from fallback)
 - Voicemail after record: `/api/voice/telnyx/voicemail-complete`
 
 Legacy routes under `/api/voice/*` are adapters and should not be used for new integrations.
@@ -28,7 +28,7 @@ Legacy routes under `/api/voice/*` are adapters and should not be used for new i
 5. If dial leg is not completed, Telnyx calls `/api/voice/telnyx/fallback`.
 6. Fallback behavior uses routing setting:
    - owner
-   - ai → **Vapi** industry assistant when `vapi_assistant_id` exists; otherwise **voicemail** (legacy TeXML AI removed)
+   - ai → **Telnyx Voice AI** TeXML `<Connect><AIAssistant id="…"/></Connect>` when `users.telnyx_ai_assistant_id` or `TELNYX_AI_ASSISTANT_ID` is set; otherwise **voicemail**
    - voicemail
 7. Status and recording callbacks update call logs and quality metrics.
 

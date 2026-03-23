@@ -8,7 +8,7 @@ For the app to work in production (sign up, login, settings, call routing), you 
 2. In the Neon dashboard, open **SQL Editor** and run these in order:
    - Copy/paste and run **`scripts/001-create-schema.sql`**
    - Then run **`scripts/002-add-password-hash.sql`**
-   - Run any other numbered scripts in `scripts/` you have not applied yet, e.g. **`scripts/010-ai-leads-intake.sql`** (AI lead capture) and **`scripts/011-user-industry.sql`** (signup industry → default AI script).
+   - Run any other numbered scripts in `scripts/` you have not applied yet, e.g. **`scripts/010-ai-leads-intake.sql`**, **`scripts/011-user-industry.sql`**, **`scripts/012-telnyx-ai-assistant.sql`** (column for Telnyx Voice AI assistant id).
 3. In Neon, go to **Connection details** and copy the connection string (URI). It looks like:
    `postgresql://USER:PASSWORD@ep-xxx.region.aws.neon.tech/neondb?sslmode=require`
 
@@ -21,19 +21,17 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `DATABASE_URL`     | The Neon connection string from step 1. |
 | `SESSION_SECRET`   | Random string for signing cookies (e.g. run `openssl rand -base64 32` and paste). |
 | `TELNYX_API_KEY`   | Your Telnyx API key (for numbers and voice). |
-| `VAPI_API_KEY`     | Your Vapi **private** API key (AI receptionist on fallback / assistant). |
-| `ELEVENLABS_API_KEY` | **Platform** ElevenLabs key — powers voice **preview** and the **voice picker** (premade catalog). Customers do not enter this. |
-| `NEXT_PUBLIC_APP_URL` | Your live site base URL (e.g. `https://your-app.vercel.app`) — used for Vapi tool webhooks. |
-| `VAPI_WEBHOOK_SECRET` | Optional: random string; append `?s=YOUR_SECRET` to the Server URL you configure on the Vapi assistant (must match). |
+| `NEXT_PUBLIC_APP_URL` | Your live site base URL (e.g. `https://your-app.vercel.app`) — used for Telnyx voice webhooks. |
+| `TELNYX_AI_ASSISTANT_ID` | Optional platform default: Telnyx **Voice AI → Assistant** id when a user has not saved their own in the app. |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
 
 Save and **redeploy** the project (Deployments → … → Redeploy).
 
-### AI receptionist (optional tuning)
+### AI receptionist (Telnyx Voice AI)
 
-- Default assistant LLM is **`gpt-4o`** for best spoken quality. To save cost, set `ZING_AI_LLM_MODEL=gpt-4o-mini` in Vercel and redeploy.
-- See **`docs/AI-RECEPTIONIST.md`** for how voices and preview work.
-- **Lead capture:** the assistant calls your app at **`/api/webhooks/vapi`** when a caller’s details are saved. Run **`scripts/010-ai-leads-intake.sql`**, set `NEXT_PUBLIC_APP_URL`, and (recommended) `VAPI_WEBHOOK_SECRET`. For SMS alerts, set `TELNYX_MESSAGING_FROM_E164` and turn on **Text me new leads** in Settings → AI Receptionist.
+- Create an assistant in **Telnyx Mission Control → Voice AI → Assistants**; owners paste the assistant **id** in **AI call flow** (or set `TELNYX_AI_ASSISTANT_ID` for a default).
+- On **no answer**, Zing returns TeXML `<Connect><AIAssistant id="…"/></Connect>` on the **same** call (no second carrier).
+- See **`docs/AI-RECEPTIONIST.md`**. Lead webhooks from tools are **not** wired to Vapi anymore; use Telnyx tool/webhook features when you need structured lead capture.
 
 ## 3. Sign up on the live site
 

@@ -16,6 +16,7 @@ import {
   ensureCallLogForInboundLeg,
   normalizePhoneNumberE164,
 } from "@/lib/db"
+import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -50,15 +51,15 @@ function resolveBusinessLineE164(bnFromQuery: string, formData: FormData): strin
   return ""
 }
 
-/** Zing no longer uses the legacy TeXML + LLM loop; if Vapi cannot run, send callers to voicemail. */
-function playIndustryAiUnavailableVoicemail(
+/** No Telnyx AI assistant id — offer voicemail instead. */
+function playTelnyxAiUnavailableVoicemail(
   texml: InstanceType<typeof VoiceResponse>, // Same TeXML builder type as `new VoiceResponse()` in this file
   appUrl: string,
   userId: string,
   callSid: string
 ) {
   texml.say(
-    "Thanks for calling. Our automated assistant is not available on this line right now. Please leave your name, phone number, and what you need after the tone and we will get back to you."
+    "Thanks for calling. Our voice assistant is not set up on this line yet. Please leave your name, phone number, and what you need after the tone and we will get back to you."
   )
   texml.record({
     maxLength: 120,
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
         hadBnQuery: Boolean(bnFromQuery),
         toField: String(formData.get("To") || ""),
         fallbackType,
-        hasVapiAssistant: Boolean(user?.vapi_assistant_id),
+        hasTelnyxAiAssistant: Boolean(user?.telnyx_ai_assistant_id?.trim()),
         dialStatus: dialStatus || rawStatus || null,
       })
     )
@@ -205,29 +206,26 @@ export async function POST(req: NextRequest) {
       }
 
       case "ai": {
-        // Industry playbook runs only on Vapi — legacy TeXML + LLM path has been removed.
-        if (user?.vapi_assistant_id) {
-          try {
-            const { createVapiCall } = await import("@/lib/vapi")
-            const callerNumber = (formData.get("From") as string) || ""
-            if (callerNumber) {
-              await createVapiCall({
-                assistantId: user.vapi_assistant_id,
-                customerNumber: callerNumber,
-              })
-              texml.say("Please hold while I connect you with our assistant.")
-              texml.pause({ length: 2 })
-              texml.hangup()
-            } else {
-              playIndustryAiUnavailableVoicemail(texml, appUrl, userId, callSid)
-            }
-          } catch (vapiErr) {
-            console.error("[Telnyx] Vapi call failed, using voicemail:", vapiErr)
-            playIndustryAiUnavailableVoicemail(texml, appUrl, userId, callSid)
+        const assistantId =
+          user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
+        if (assistantId) {
+          if (callSid && !answeredAndHadConversation) {
+            void updateCallLog(callSid, {
+              call_type: "incoming",
+              status: dialStatus || rawStatus || "ai-handoff",
+            }).catch((e) => console.error("[Zing] Call log update (AI handoff):", e))
           }
-        } else {
-          playIndustryAiUnavailableVoicemail(texml, appUrl, userId, callSid)
+          console.log(
+            JSON.stringify({
+              zing: "telnyx-ai-fallback",
+              assistantIdLen: assistantId.length,
+            })
+          )
+          return new NextResponse(buildTelnyxAiAssistantTexml(assistantId), {
+            headers: { "Content-Type": "text/xml" },
+          })
         }
+        playTelnyxAiUnavailableVoicemail(texml, appUrl, userId, callSid)
         break
       }
 

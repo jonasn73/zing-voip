@@ -62,6 +62,29 @@ function telnyxErrorMessage(body: unknown): string {
   return JSON.stringify(body).slice(0, 500)
 }
 
+/**
+ * POST /v2/ai/assistants success body varies: OpenAPI shows the assistant at the JSON root (`{ id, name, … }`);
+ * some responses may still wrap with `{ data: { id } }`.
+ */
+function extractAssistantIdFromCreateResponse(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null
+  const o = body as Record<string, unknown>
+  if (typeof o.id === "string" && o.id.trim()) return o.id.trim()
+  if (typeof o.assistant_id === "string" && o.assistant_id.trim()) return o.assistant_id.trim()
+  const data = o.data
+  if (data && typeof data === "object") {
+    const inner = data as Record<string, unknown>
+    if (typeof inner.id === "string" && inner.id.trim()) return inner.id.trim()
+    if (typeof inner.assistant_id === "string" && inner.assistant_id.trim()) return inner.assistant_id.trim()
+    const nested = inner.data
+    if (nested && typeof nested === "object" && typeof (nested as { id?: unknown }).id === "string") {
+      const nid = String((nested as { id: string }).id).trim()
+      if (nid) return nid
+    }
+  }
+  return null
+}
+
 export type CreateTelnyxAssistantParams = {
   /** Shown in Telnyx dashboard lists. */
   name: string
@@ -99,11 +122,14 @@ export async function telnyxCreateAssistant(params: CreateTelnyxAssistantParams)
         voice_settings: { voice },
       }),
     })
-    const body = (await res.json().catch(() => ({}))) as { data?: { id?: string } }
+    const body = (await res.json().catch(() => ({}))) as unknown
     if (res.ok) {
-      const id = body?.data?.id
-      if (!id || typeof id !== "string") {
-        throw new Error("Telnyx create assistant succeeded but no data.id returned")
+      const id = extractAssistantIdFromCreateResponse(body)
+      if (!id) {
+        console.error("[Zing] Telnyx create assistant 200 but unparseable id:", JSON.stringify(body).slice(0, 2500))
+        throw new Error(
+          "Telnyx create assistant succeeded but the response did not include an assistant id (unexpected JSON shape)."
+        )
       }
       if (model !== primary) {
         console.log(`[Zing] Telnyx assistant created with fallback model "${model}" (primary "${primary}" was rejected).`)

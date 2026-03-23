@@ -21,6 +21,9 @@ import {
 } from "@/lib/business-industries"
 import { DEFAULT_BUSY_GREETING_LOCKSMITH } from "@/lib/ai-intake-defaults"
 
+/** Tiny labels at bottom of fallback modal — not primary setup. */
+const VOICE_AI_FOOTER_CHIPS = ["Industry intake", "Leads", "SMS alerts", "Business hours"] as const
+
 function buildIntakeBody(
   scriptChoice: "auto" | AiIntakeProfileId,
   aiIntake: {
@@ -278,204 +281,18 @@ export function AiIntakeFlowPanel({
         </div>
       )}
 
-      <div
-        className={cn(
-          "rounded-2xl border px-4 py-3",
-          assistantReady
-            ? "border-success/30 bg-success/5"
-            : aiNoAnswerSelected
-              ? "border-primary/25 bg-primary/5"
-              : "border-border/80 bg-secondary/30"
-        )}
-      >
-        <p className="text-xs font-semibold text-foreground">
-          {assistantReady
-            ? "AI receptionist is on"
-            : aiNoAnswerSelected
-              ? "You’re set to use AI when no one answers"
-              : "Turn on AI for no-answer calls"}
-        </p>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          {assistantReady
-            ? "Save below whenever you change the script or greeting — we apply it for you."
-            : aiNoAnswerSelected
-              ? "No extra step — Zing wires up the assistant for you. Adjust the script below and tap Save; reopen this panel if the status looks slow to update."
-              : "On the main dashboard, open fallback options and pick AI receptionist. Everything else happens here in Zing."}
-        </p>
-        {assistantReady && telnyxAssistantId.trim() ? (
-          <p className="mt-2 text-[9px] text-muted-foreground">
-            <span className="font-medium text-foreground/90">Assistant ID (for support tickets):</span>{" "}
-            <span className="break-all font-mono">{telnyxAssistantId.trim()}</span>
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => setShowAdvancedAssistantId((v) => !v)}
-          className="mt-2 text-[10px] font-medium text-primary underline-offset-2 hover:underline"
-        >
-          {showAdvancedAssistantId ? "Hide" : "Having trouble? Link a specific assistant ID"}
-        </button>
-        {showAdvancedAssistantId && (
-          <div className="mt-2 space-y-1.5 rounded-lg border border-border/60 bg-secondary/40 p-2">
-            <p className="text-[10px] leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Almost never needed.</span> Zing creates an assistant for
-              you. Only paste a different ID if support told you to (they may copy it from the phone carrier’s admin
-              console — e.g. Telnyx Mission Control → Voice AI → Assistants). Leave empty for normal use.
-            </p>
-            <input
-              type="text"
-              value={telnyxAssistantId}
-              onChange={(e) => setTelnyxAssistantId(e.target.value)}
-              placeholder="Paste ID only if support told you to"
-              className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-              autoComplete="off"
-            />
-            <p className="text-[10px] text-muted-foreground">
-              If you paste an ID here, Save will use that assistant instead of the one Zing created.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setShowAdvancedAi((v) => !v)}
-          className="flex w-full items-start justify-between gap-2 text-left"
-        >
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Voice &amp; model (power users)
-            </p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">
-              Optional LLM, speaking voice, and extra instructions — applied when you Save.
-            </p>
-          </div>
-          <ChevronDown
-            className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform", showAdvancedAi && "rotate-180")}
-            aria-hidden
-          />
-        </button>
-        {showAdvancedAi && (
-          <div className="space-y-3 border-t border-border/60 pt-3">
-            {catalogLoading ? (
-              <p className="text-[10px] text-muted-foreground">Loading model and voice suggestions…</p>
-            ) : null}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${modelListId}-input`}>
-                LLM model
-              </label>
-              <input
-                id={`${modelListId}-input`}
-                type="text"
-                list={modelListId}
-                value={aiAdvanced.telnyxModel}
-                onChange={(e) => setAiAdvanced((p) => ({ ...p, telnyxModel: e.target.value }))}
-                placeholder="Empty = platform default (see Vercel TELNYX_AI_DEFAULT_MODEL)"
-                className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                autoComplete="off"
-              />
-              <datalist id={modelListId}>
-                {modelOptions.map((m) => (
-                  <option key={m.id} value={m.id} />
-                ))}
-              </datalist>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${voiceListId}-input`}>
-                Speaking voice
-              </label>
-              <input
-                id={`${voiceListId}-input`}
-                type="text"
-                list={voiceListId}
-                value={aiAdvanced.telnyxVoice}
-                onChange={(e) => setAiAdvanced((p) => ({ ...p, telnyxVoice: e.target.value }))}
-                placeholder="Empty = platform default (TELNYX_AI_VOICE)"
-                className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                autoComplete="off"
-              />
-              <datalist id={voiceListId}>
-                {voiceOptions.map((v) => (
-                  <option key={v.id} value={v.id} label={v.label} />
-                ))}
-              </datalist>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-muted-foreground">Extra instructions for the AI</label>
-              <textarea
-                value={aiAdvanced.extraAiInstructions}
-                onChange={(e) => setAiAdvanced((p) => ({ ...p, extraAiInstructions: e.target.value }))}
-                rows={4}
-                placeholder="Anything else the assistant must follow (policies, pricing tone, languages, tools you use in Telnyx, etc.)"
-                className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-              />
-            </div>
-            <p className="text-[9px] leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Simple:</span> leave blank — defaults apply.{" "}
-              <span className="font-medium text-foreground">More control:</span> set model/voice/text here.{" "}
-              <span className="font-medium text-foreground">Full Telnyx UI:</span> use &quot;Advanced — link an existing
-              assistant id&quot; above.
-            </p>
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Playbook (reference)</p>
-        <p className="text-[10px] text-muted-foreground">
-          This is what we send as your assistant&apos;s instructions when you activate or save.
-        </p>
-        <select
-          value={scriptChoice}
-          onChange={(e) => {
-            const v = e.target.value
-            setScriptChoice(v === "auto" ? "auto" : (v as AiIntakeProfileId))
-          }}
-          className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-        >
-          <option value="auto">Auto — match my industry ({industryLabel(userIndustry)})</option>
-          {AI_INTAKE_PROFILE_IDS.map((id) => (
-            <option key={id} value={id}>
-              {INDUSTRY_CATALOG.find((r) => r.id === id)?.label ?? id}
-            </option>
-          ))}
-        </select>
-
-        <div className="rounded-xl bg-primary/5 px-3 py-2">
-          <p className="text-[10px] font-medium text-primary">Flow preview — {flow.label}</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{flow.goal}</p>
-        </div>
-
-        <div className="space-y-2">
-          {flow.branches.map((b, idx) => (
-            <div
-              key={`${b.intent_slug}-${idx}`}
-              className="rounded-xl border border-border/60 bg-secondary/40 px-3 py-2.5"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-xs font-semibold text-foreground">{b.title}</p>
-                <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
-                  {b.intent_slug}
-                </span>
-              </div>
-              <ul className="mt-2 list-inside list-disc space-y-0.5 text-[11px] text-muted-foreground">
-                {b.bullets.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
+      {/* 1 — Opening line first (what callers hear) */}
+      <section className="space-y-2 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          What callers hear first (voicemail / routing)
+          {variant === "modal" ? "Opening line" : "What callers hear first"}
         </p>
-        <p className="text-[10px] text-muted-foreground">
-          Also used as the first thing the Voice AI says when fallback picks up — synced to Telnyx on Save/Activate.
-        </p>
+        {variant === "modal" ? (
+          <p className="text-[9px] text-muted-foreground">First thing the AI says. Tap Save when you change it.</p>
+        ) : (
+          <p className="text-[10px] text-muted-foreground">
+            Also used when the AI picks up after a no-answer — synced when you Save.
+          </p>
+        )}
         <textarea
           value={aiIntake.busyGreeting}
           onChange={(e) => setAiIntake((p) => ({ ...p, busyGreeting: e.target.value }))}
@@ -512,8 +329,8 @@ export function AiIntakeFlowPanel({
           <textarea
             value={aiIntake.otherNotes}
             onChange={(e) => setAiIntake((p) => ({ ...p, otherNotes: e.target.value }))}
-            rows={2}
-            placeholder="Paste into Telnyx assistant instructions as needed"
+            rows={variant === "modal" ? 2 : 2}
+            placeholder="Optional notes for the AI script"
             className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm"
           />
         </div>
@@ -521,7 +338,7 @@ export function AiIntakeFlowPanel({
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
           <div>
             <p className="text-xs font-semibold text-foreground">Text me new leads</p>
-            <p className="text-[10px] text-muted-foreground">SMS when a lead is saved (Telnyx messaging env).</p>
+            <p className="text-[10px] text-muted-foreground">SMS when a lead is saved (if messaging is enabled).</p>
           </div>
           <Switch
             checked={aiIntake.smsNotify}
@@ -529,6 +346,154 @@ export function AiIntakeFlowPanel({
             aria-label="SMS lead notifications"
           />
         </div>
+      </section>
+
+      {/* 2 — Industry / playbook */}
+      <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {variant === "modal" ? "Industry script" : "Playbook (reference)"}
+        </p>
+        {variant !== "modal" ? (
+          <p className="text-[10px] text-muted-foreground">
+            We send this as instructions when you Save (plus your opening line above).
+          </p>
+        ) : null}
+        <select
+          value={scriptChoice}
+          onChange={(e) => {
+            const v = e.target.value
+            setScriptChoice(v === "auto" ? "auto" : (v as AiIntakeProfileId))
+          }}
+          className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+        >
+          <option value="auto">Auto — match my industry ({industryLabel(userIndustry)})</option>
+          {AI_INTAKE_PROFILE_IDS.map((id) => (
+            <option key={id} value={id}>
+              {INDUSTRY_CATALOG.find((r) => r.id === id)?.label ?? id}
+            </option>
+          ))}
+        </select>
+
+        {variant === "modal" ? (
+          <details className="rounded-lg border border-border/50 bg-secondary/30 px-3 py-2 text-[10px] text-muted-foreground">
+            <summary className="cursor-pointer font-medium text-foreground">Flow outline — {flow.label}</summary>
+            <p className="mt-2 leading-relaxed">{flow.goal}</p>
+            <ul className="mt-2 list-inside list-disc space-y-1">
+              {flow.branches.map((b) => (
+                <li key={b.intent_slug}>
+                  <span className="font-medium text-foreground">{b.title}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : (
+          <>
+            <div className="rounded-xl bg-primary/5 px-3 py-2">
+              <p className="text-[10px] font-medium text-primary">Flow preview — {flow.label}</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{flow.goal}</p>
+            </div>
+            <div className="space-y-2">
+              {flow.branches.map((b, idx) => (
+                <div
+                  key={`${b.intent_slug}-${idx}`}
+                  className="rounded-xl border border-border/60 bg-secondary/40 px-3 py-2.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold text-foreground">{b.title}</p>
+                    <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                      {b.intent_slug}
+                    </span>
+                  </div>
+                  <ul className="mt-2 list-inside list-disc space-y-0.5 text-[11px] text-muted-foreground">
+                    {b.bullets.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* 3 — Optional voice/model */}
+      <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowAdvancedAi((v) => !v)}
+          className="flex w-full items-start justify-between gap-2 text-left"
+        >
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Voice &amp; model {variant === "modal" ? "" : "(optional)"}
+            </p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">Skip unless you need a specific AI model or voice.</p>
+          </div>
+          <ChevronDown
+            className={cn("mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform", showAdvancedAi && "rotate-180")}
+            aria-hidden
+          />
+        </button>
+        {showAdvancedAi && (
+          <div className="space-y-3 border-t border-border/60 pt-3">
+            {catalogLoading ? (
+              <p className="text-[10px] text-muted-foreground">Loading suggestions…</p>
+            ) : null}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${modelListId}-input`}>
+                LLM model
+              </label>
+              <input
+                id={`${modelListId}-input`}
+                type="text"
+                list={modelListId}
+                value={aiAdvanced.telnyxModel}
+                onChange={(e) => setAiAdvanced((p) => ({ ...p, telnyxModel: e.target.value }))}
+                placeholder="Platform default if empty"
+                className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                autoComplete="off"
+              />
+              <datalist id={modelListId}>
+                {modelOptions.map((m) => (
+                  <option key={m.id} value={m.id} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground" htmlFor={`${voiceListId}-input`}>
+                Speaking voice
+              </label>
+              <input
+                id={`${voiceListId}-input`}
+                type="text"
+                list={voiceListId}
+                value={aiAdvanced.telnyxVoice}
+                onChange={(e) => setAiAdvanced((p) => ({ ...p, telnyxVoice: e.target.value }))}
+                placeholder="Platform default if empty"
+                className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                autoComplete="off"
+              />
+              <datalist id={voiceListId}>
+                {voiceOptions.map((v) => (
+                  <option key={v.id} value={v.id} label={v.label} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-muted-foreground">Extra instructions</label>
+              <textarea
+                value={aiAdvanced.extraAiInstructions}
+                onChange={(e) => setAiAdvanced((p) => ({ ...p, extraAiInstructions: e.target.value }))}
+                rows={variant === "modal" ? 3 : 4}
+                placeholder="Policies, tone, languages…"
+                className="w-full resize-none rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              />
+            </div>
+            <p className="text-[9px] text-muted-foreground">
+              Rare: use Support → link assistant ID at the bottom of this screen instead of Zing&apos;s auto-created one.
+            </p>
+          </div>
+        )}
       </section>
 
       {variant === "modal" ? (
@@ -544,6 +509,55 @@ export function AiIntakeFlowPanel({
           </button>
         </div>
       ) : null}
+
+      {/* Status, support, tiny tags — after Save in modal so setup + save stay on top */}
+      <div className="space-y-2 border-t border-border/60 pt-3">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+          {assistantReady ? (
+            <span className="font-semibold text-success">AI ready</span>
+          ) : aiNoAnswerSelected ? (
+            <span>Tap Save above to apply changes</span>
+          ) : (
+            <span>Choose AI receptionist in Fallback Settings on the dashboard first</span>
+          )}
+          {assistantReady && telnyxAssistantId.trim() ? (
+            <span className="break-all font-mono text-[9px] opacity-80" title="For support">
+              {telnyxAssistantId.trim()}
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAdvancedAssistantId((v) => !v)}
+          className="text-[10px] font-medium text-primary underline-offset-2 hover:underline"
+        >
+          {showAdvancedAssistantId ? "Hide" : "Support — link a different assistant ID"}
+        </button>
+        {showAdvancedAssistantId && (
+          <div className="space-y-1.5 rounded-lg border border-border/60 bg-secondary/40 p-2">
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              Only if support gave you an ID to use. Leave empty otherwise.
+            </p>
+            <input
+              type="text"
+              value={telnyxAssistantId}
+              onChange={(e) => setTelnyxAssistantId(e.target.value)}
+              placeholder="Paste ID if support told you to"
+              className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              autoComplete="off"
+            />
+          </div>
+        )}
+        {variant === "modal" ? (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {VOICE_AI_FOOTER_CHIPS.map((c) => (
+              <span key={c} className="rounded-full bg-muted/80 px-2 py-0.5 text-[9px] text-muted-foreground">
+                {c}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </>
   )
 

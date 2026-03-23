@@ -101,14 +101,6 @@ const fallbackOptions: { id: FallbackOption; label: string; description: string;
   { id: "voicemail", label: "Voicemail", description: "Send caller to voicemail", icon: Voicemail, color: "text-warning", bgColor: "bg-warning/10" },
 ]
 
-/** Shown under AI fallback — playbook is synced to the Telnyx assistant Zing creates for you */
-const AI_CAPABILITY_CHIPS = [
-  "Industry-smart intake",
-  "Captures leads after the call",
-  "Optional SMS to your cell",
-  "Business hours when asked",
-] as const
-
 export function DashboardPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -693,22 +685,7 @@ export function DashboardPage() {
 
                   {/* AI: playbook, opening line, voice — same sheet (no separate AI tab). */}
                   {fallback === "ai" && (
-                    <div className="space-y-3 border-t border-border px-4 py-3">
-                      <div className="flex flex-col gap-1.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                          With voice AI on
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {AI_CAPABILITY_CHIPS.map((capability) => (
-                            <span
-                              key={capability}
-                              className="rounded-full bg-chart-4/10 px-2.5 py-1 text-[10px] font-medium text-chart-4"
-                            >
-                              {capability}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                    <div className="border-t border-border px-4 py-3">
                       <AiIntakeFlowPanel
                         variant="modal"
                         aiNoAnswerSelected={fallback === "ai"}

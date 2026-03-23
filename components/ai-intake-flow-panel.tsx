@@ -293,9 +293,7 @@ export function AiIntakeFlowPanel({
           })
           return
         }
-        if (data.notice) {
-          toast({ title: "Approximate preview", description: data.notice })
-        }
+        // No toast here — Telnyx HTTP TTS is often unavailable; the short note under “Play preview” explains browser vs phone.
         window.speechSynthesis.cancel()
         const utter = new SpeechSynthesisUtterance(line)
         utter.lang = "en-US"

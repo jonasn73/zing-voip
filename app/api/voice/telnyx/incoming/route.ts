@@ -201,10 +201,13 @@ async function handleIncomingCall(
           if (incomingHitCount <= 1) {
             handoff = "say-redirect-ai-bridge" // First hit: full hold line + GET /ai-bridge
             xml = buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // TeXML with Say + Pause + Redirect
+          } else if (incomingHitCount === 2) {
+            // Only the **first** repeat /incoming gets spoken audio — avoids “One moment” every ~2s forever.
+            handoff = "short-say-redirect-ai-bridge-repeat" // Telnyx rejects <Connect> on repeat /incoming (application error)
+            xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // One-time short line + Redirect
           } else {
-            // Repeat /incoming: do NOT emit <Connect> here — Telnyx plays generic “application error” for that.
-            handoff = "short-say-redirect-ai-bridge-repeat" // Short line + Redirect → /ai-bridge again
-            xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid)
+            handoff = "redirect-silent-ai-bridge-repeat" // Hit 3+: silent Redirect only (still not <Connect> on /incoming)
+            xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Same URL as first hit; no repeated TTS
           }
         } else if (connectDirectIncoming) {
           handoff = "connect-aiassistant-in-incoming" // Log label: experimental single-step Connect
@@ -212,9 +215,12 @@ async function handleIncomingCall(
         } else if (incomingHitCount <= 1) {
           handoff = "redirect-silent-ai-bridge" // First POST this call_sid — silent Redirect → /ai-bridge
           xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Telnyx GETs /ai-bridge for <Connect>
-        } else {
-          handoff = "short-say-redirect-ai-bridge-repeat" // Second+ POST: Say + Redirect (not <Connect> on /incoming)
+        } else if (incomingHitCount === 2) {
+          handoff = "short-say-redirect-ai-bridge-repeat" // First repeat only — satisfies Telnyx without looping TTS
           xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid)
+        } else {
+          handoff = "redirect-silent-ai-bridge-repeat" // Hit 3+: silent redirect (no repeated “One moment”)
+          xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid)
         }
         console.log(
           JSON.stringify({
@@ -222,8 +228,8 @@ async function handleIncomingCall(
             userId: routing.user_id, // Which business user this call belongs to
             handoff, // Which branch above ran
             callStatus: callStatus || null, // Raw normalized status from webhook (empty on first ring sometimes)
-            incomingHitCount, // 1 = first /incoming; 2+ = repeat (Say+Redirect to /ai-bridge, not <Connect> on /incoming)
-            note: "014 incoming_hits: repeat /incoming uses Say+Redirect; <Connect> on /incoming triggers Telnyx application error.",
+            incomingHitCount, // 2 = only hit that plays “One moment”; 3+ = silent redirect to /ai-bridge
+            note: "Hit 2: short Say+Redirect once. Hit 3+: silent Redirect. <Connect> on /incoming → Telnyx application error.",
           })
         )
         return { kind: "raw", xml } // Bypass VoiceResponse builder because helpers return full XML strings

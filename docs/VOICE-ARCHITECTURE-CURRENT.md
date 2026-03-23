@@ -11,7 +11,7 @@ This is the single source of truth for how voice currently works in Zing.
 ## Canonical webhook routes
 
 - Incoming call: `/api/voice/telnyx/incoming`
-- No-answer fallback: `/api/voice/telnyx/fallback`
+- No-answer fallback: `/api/voice/telnyx/fallback/u/{userId}?callSid=…&bn=…` (path userId so Telnyx cannot drop `userId` query param). Legacy: `/api/voice/telnyx/fallback`.
 - Call status callbacks: `/api/voice/telnyx/status`
 - Recording callbacks: `/api/voice/telnyx/recording-status`
 - Legacy URL (voicemail after recording): `/api/voice/telnyx/ai-assistant` (voicemail stub; live AI uses Telnyx `<AIAssistant>` from fallback)
@@ -25,7 +25,7 @@ Legacy routes under `/api/voice/*` are adapters and should not be used for new i
 2. Telnyx requests `/api/voice/telnyx/incoming`.
 3. Incoming handler resolves user + per-number routing config.
 4. Handler returns TeXML `<Dial>` (receptionist or owner).
-5. If dial leg is not completed, Telnyx calls `/api/voice/telnyx/fallback`.
+5. If dial leg is not completed, Telnyx calls `/api/voice/telnyx/fallback/u/{userId}` (POST or GET).
 6. Fallback behavior uses routing setting:
    - owner
    - ai → **Telnyx Voice AI** TeXML `<Connect><AIAssistant id="…"/></Connect>` when `users.telnyx_ai_assistant_id` or `TELNYX_AI_ASSISTANT_ID` is set; otherwise **voicemail**

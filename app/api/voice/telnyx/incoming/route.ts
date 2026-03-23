@@ -140,7 +140,7 @@ async function handleIncomingCall(
         // the mid-ring tone change from early answer + handoff.
         answerOnBridge: true,
         timeout: routing.ring_timeout_seconds || 20,
-        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}&bn=${encodeURIComponent(businessLineE164)}`,
+        action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}?callSid=${encodeURIComponent(callSid)}&bn=${encodeURIComponent(businessLineE164)}`,
         method: "POST",
       })
       dial.number(recPhone)
@@ -152,7 +152,7 @@ async function handleIncomingCall(
         callerId: calledNumber,
         answerOnBridge: true,
         timeout: routing.ring_timeout_seconds || 30,
-        action: `${appUrl}/api/voice/telnyx/fallback?userId=${routing.user_id}&callSid=${callSid}&primary=owner&bn=${encodeURIComponent(businessLineE164)}`,
+        action: `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}?callSid=${encodeURIComponent(callSid)}&primary=owner&bn=${encodeURIComponent(businessLineE164)}`,
         method: "POST",
       })
       dial.number(ownerPhone)

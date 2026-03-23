@@ -5,7 +5,7 @@
 // ============================================
 
 import { useEffect, useId, useMemo, useState } from "react"
-import { Bot, ChevronDown, Loader2, Save, Sparkles } from "lucide-react"
+import { Bot, ChevronDown, Loader2, Save } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { Switch } from "@/components/ui/switch"
@@ -51,16 +51,18 @@ export function AiIntakeFlowPanel({
   variant = "page",
   onHasAssistantChange,
   onBusyGreetingSavedToRouting,
+  /** Dashboard sets this when /api/routing auto-provisions after choosing AI fallback (panel may not refetch yet). */
+  externalAssistantLinked,
 }: {
   variant?: AiIntakeFlowPanelVariant
   onHasAssistantChange?: (active: boolean) => void
   onBusyGreetingSavedToRouting?: (text: string) => void
+  externalAssistantLinked?: boolean
 }) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [activating, setActivating] = useState(false)
   const [hasAssistant, setHasAssistant] = useState(false)
   const [userIndustry, setUserIndustry] = useState<string>("generic")
   /** Optional override — Zing normally creates the Telnyx assistant for you (see Advanced). */
@@ -94,6 +96,8 @@ export function AiIntakeFlowPanel({
   )
   const flow = useMemo(() => getIntakeFlowSummary(previewProfileId), [previewProfileId])
   const showLocksmithExtras = previewProfileId === "locksmith"
+  /** True when GET /api/ai-assistant said linked or parent just provisioned via routing. */
+  const assistantReady = hasAssistant || Boolean(externalAssistantLinked)
 
   useEffect(() => {
     let cancelled = false
@@ -217,41 +221,6 @@ export function AiIntakeFlowPanel({
     }
   }
 
-  async function handleActivate() {
-    setActivating(true)
-    try {
-      const res = await fetch("/api/ai-assistant", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          greeting: aiIntake.busyGreeting.trim() || undefined,
-          intake: buildIntakeBody(scriptChoice, aiIntake, aiAdvanced),
-          // Empty string → server creates a new Telnyx assistant via API (no Mission Control).
-          telnyxAiAssistantId: telnyxAssistantId.trim() || undefined,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({ title: "Activate failed", description: String(data.error || res.statusText), variant: "destructive" })
-        return
-      }
-      if (data.assistantId) {
-        setHasAssistant(true)
-        onHasAssistantChange?.(true)
-        setTelnyxAssistantId(String(data.assistantId))
-      }
-      toast({
-        title: "Voice AI on",
-        description: String(data.message || "Telnyx assistant linked for fallback calls."),
-      })
-      const g = aiIntake.busyGreeting.trim()
-      if (g) onBusyGreetingSavedToRouting?.(g)
-    } finally {
-      setActivating(false)
-    }
-  }
-
   if (loading) {
     return (
       <div
@@ -293,9 +262,9 @@ export function AiIntakeFlowPanel({
       <section className="space-y-2 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Telnyx Voice AI</p>
         <p className="text-[10px] leading-relaxed text-muted-foreground">
-          You don&apos;t need Telnyx Mission Control. Tap <span className="font-medium text-foreground">Activate voice assistant</span>{" "}
-          below and Zing will create an assistant on your account from your playbook and greeting. When you save changes
-          later, we update that same assistant for you.
+          When you choose <span className="font-medium text-foreground">AI receptionist</span> in Fallback Settings, Zing
+          creates the assistant on your account automatically — no extra step. Saving here updates how it talks and what
+          it collects.
         </p>
         <button
           type="button"
@@ -324,28 +293,17 @@ export function AiIntakeFlowPanel({
       <div
         className={cn(
           "rounded-2xl border px-4 py-3",
-          hasAssistant ? "border-success/30 bg-success/5" : "border-warning/30 bg-warning/10"
+          assistantReady ? "border-success/30 bg-success/5" : "border-border/80 bg-secondary/30"
         )}
       >
         <p className="text-xs font-semibold text-foreground">
-          {hasAssistant ? "Voice assistant is linked" : "Voice assistant not linked yet"}
+          {assistantReady ? "Voice assistant is active" : "Voice assistant will turn on with AI fallback"}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          {hasAssistant
-            ? "Fallback → AI connects this Telnyx assistant on the same call."
-            : "Turn on “If no answer: AI” on the dashboard, then tap Activate here — no external setup."}
+          {assistantReady
+            ? "No-answer calls connect to this Telnyx assistant on the same line. Use Save below to push script changes."
+            : "Select AI receptionist in Fallback Settings on the dashboard — Zing creates your assistant automatically. Then refine the playbook here."}
         </p>
-        {!hasAssistant && (
-          <button
-            type="button"
-            disabled={activating}
-            onClick={() => void handleActivate()}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-          >
-            {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {activating ? "Linking…" : "Activate voice assistant"}
-          </button>
-        )}
       </div>
 
       <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm">

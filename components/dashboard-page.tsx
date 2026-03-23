@@ -101,7 +101,7 @@ const fallbackOptions: { id: FallbackOption; label: string; description: string;
   { id: "voicemail", label: "Voicemail", description: "Send caller to voicemail", icon: Voicemail, color: "text-warning", bgColor: "bg-warning/10" },
 ]
 
-/** Shown under AI fallback — intake playbook aligns with Telnyx assistant you configure in Mission Control */
+/** Shown under AI fallback — playbook is synced to the Telnyx assistant Zing creates for you */
 const AI_CAPABILITY_CHIPS = [
   "Industry-smart intake",
   "Captures leads after the call",
@@ -255,21 +255,44 @@ export function DashboardPage() {
   const hasReceptionists = receptionists.length > 0
   const isSetupComplete = hasBusinessNumbers && (hasReceptionists || Boolean(mainLinePhone))
 
-  // Save routing for the primary business number (or default if none)
-  function saveRouting(updates: Record<string, unknown>, opts?: { quiet?: boolean }) {
+  // Save routing for the primary business number (or default if none).
+  // When fallback_type is "ai", the API auto-provisions Telnyx Voice AI and returns voiceAi.
+  function saveRouting(updates: Record<string, unknown>, opts?: { quiet?: boolean }): Promise<void> {
     const primaryNumber = businessNumbers[0]?.number || null
-    fetch("/api/routing", {
+    return fetch("/api/routing", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ ...updates, business_number: primaryNumber }),
     })
-      .then((res) => {
-        if (res.ok && !opts?.quiet) {
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as {
+          voiceAi?: { linked?: boolean; provisioned?: boolean; error?: string }
+        }
+        if (res.ok && data.voiceAi?.linked) {
+          setHasTelnyxAiAssistant(true)
+        }
+        if (res.ok && data.voiceAi?.error) {
           toast({
-            title: "Routing updated",
-            description: "Incoming calls will follow your new routing rule.",
+            title: "Voice AI could not be created",
+            description: String(data.voiceAi.error),
+            variant: "destructive",
           })
+        }
+        if (res.ok && !opts?.quiet) {
+          if (data.voiceAi?.error) {
+            /* destructive toast already shown */
+          } else if (updates.fallback_type === "ai" && data.voiceAi?.provisioned) {
+            toast({
+              title: "AI receptionist ready",
+              description: "Your voice assistant was created automatically. Tune the script below anytime.",
+            })
+          } else {
+            toast({
+              title: "Routing updated",
+              description: "Incoming calls will follow your new routing rule.",
+            })
+          }
         }
       })
       .catch(() => {})
@@ -640,7 +663,7 @@ export function DashboardPage() {
                           key={option.id}
                           onClick={() => {
                             setFallback(option.id)
-                            saveRouting({ fallback_type: option.id })
+                            void saveRouting({ fallback_type: option.id })
                           }}
                           className={cn(
                             "flex items-center gap-3 rounded-lg px-3 py-3 text-left transition-all",
@@ -688,6 +711,7 @@ export function DashboardPage() {
                       </div>
                       <AiIntakeFlowPanel
                         variant="modal"
+                        externalAssistantLinked={hasTelnyxAiAssistant}
                         onHasAssistantChange={(active) => setHasTelnyxAiAssistant(active)}
                         onBusyGreetingSavedToRouting={(text) =>
                           saveRouting({ ai_greeting: text }, { quiet: true })

@@ -7,8 +7,13 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { getRoutingConfig, getRoutingConfigForNumber, getAllRoutingConfigs, updateRoutingConfig } from "@/lib/db"
+import { getUser, getRoutingConfig, getRoutingConfigForNumber, getAllRoutingConfigs, updateRoutingConfig } from "@/lib/db"
 import type { UpdateRoutingRequest } from "@/lib/types"
+import {
+  ensureTelnyxVoiceAiAssistant,
+  syncTelnyxAssistantFromIntake,
+  type EnsureTelnyxVoiceAiResult,
+} from "@/lib/telnyx-ai-assistant-lifecycle"
 
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -66,7 +71,27 @@ export async function PUT(req: NextRequest) {
       ? await getRoutingConfigForNumber(userId, businessNumber)
       : await getRoutingConfig(userId)
 
-    return NextResponse.json({ config: updated })
+    let voiceAi: EnsureTelnyxVoiceAiResult | undefined
+    const shouldProvisionVoiceAi =
+      updated?.fallback_type === "ai" &&
+      (body.fallback_type === "ai" || body.ai_greeting !== undefined)
+    if (shouldProvisionVoiceAi) {
+      voiceAi = await ensureTelnyxVoiceAiAssistant(userId, {
+        greeting: typeof body.ai_greeting === "string" ? body.ai_greeting : undefined,
+      })
+      if (typeof body.ai_greeting === "string") {
+        const u = await getUser(userId)
+        if (u?.telnyx_ai_assistant_id?.trim()) {
+          try {
+            await syncTelnyxAssistantFromIntake(userId)
+          } catch (e) {
+            console.error("[PUT /api/routing] Telnyx sync after greeting:", e)
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ config: updated, ...(voiceAi ? { voiceAi } : {}) })
   } catch (error) {
     console.error("[Zing] Error updating routing config:", error)
     return NextResponse.json({ error: "Failed to update routing config" }, { status: 500 })

@@ -20,7 +20,11 @@ import {
 import { normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
 import { buildSayThenRedirectToAiBridgeTeXML } from "@/lib/telnyx-ai-handoff"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
-import { maybeLogTelnyxFallbackDiagnostic } from "@/lib/telnyx-fallback-diagnostics"
+import {
+  maybeLogTelnyxFallbackDiagnostic,
+  maybeLogTelnyxFallbackDiagnosticEntry,
+  maybeLogTelnyxFallbackDiagnosticEarly,
+} from "@/lib/telnyx-fallback-diagnostics"
 
 /** Build FormData from a Telnyx Dial callback (POST body and/or GET query). */
 async function getDialCallbackFormData(req: NextRequest): Promise<FormData> {
@@ -316,9 +320,28 @@ export async function handleTelnyxFallbackDialEnded(
     // DialCallStatus=completed when the callee rejects — with no DialBridgedTo — and DialCallDuration
     // can still be large in some builds; treating that as "had conversation" wrongly hung up on the caller.
     const bridgedToDigits = String(formData.get("DialBridgedTo") || "").replace(/\D/g, "").length
+    maybeLogTelnyxFallbackDiagnosticEntry({
+      pathname: url.pathname,
+      method: req.method,
+      pathUserId: pathUserId?.trim() || null,
+      pathFallbackMode: pathFallbackMode ?? null,
+      dialStatus,
+      rawDialStatus: rawStatus,
+      dialDurationSec,
+      bridgedToDigits,
+      callSid,
+      virtualFbAi,
+      primaryWasOwner,
+      formData,
+    })
     const answeredAndHadConversation =
       dialStatus === "completed" && dialDurationSec >= 120 && bridgedToDigits >= 10
     if (answeredAndHadConversation) {
+      maybeLogTelnyxFallbackDiagnosticEarly("long-bridged-hangup", {
+        dialDurationSec,
+        bridgedToDigits,
+        dialStatus,
+      })
       texml.hangup()
       return new NextResponse(texml.toString(), {
         headers: { "Content-Type": "text/xml" },
@@ -359,6 +382,11 @@ export async function handleTelnyxFallbackDialEnded(
           callSid: callSid || null,
         })
       )
+      maybeLogTelnyxFallbackDiagnosticEarly("missing-userid", {
+        pathUserId: pathUserId || "",
+        pathname: url.pathname,
+        callSid,
+      })
       texml.say("We're sorry, this call could not be completed. Please try again later.")
       texml.hangup()
       return new NextResponse(texml.toString(), {

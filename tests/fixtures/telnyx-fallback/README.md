@@ -2,6 +2,15 @@
 
 Use these to **replay** a real callback without guessing what Telnyx sends.
 
+## Vercel: why you might see nothing
+
+- **`telnyx-fallback-diagnostic` is only logged when Telnyx calls `/api/voice/telnyx/fallback/...`** (the Dial `action` after your cell ring ends). It is **not** logged for **`/api/voice/telnyx/incoming`** alone.
+- In **Logs**, set the filter so **Request** contains **`fallback`** (or `telnyx/fallback`), then make a test call. If **no row** appears, Telnyx is not hitting your app for no-answer — check the TeXML `action` URL in Telnyx / `NEXT_PUBLIC_APP_URL`.
+- Search **without** wrapping in quotes: `telnyx-fallback-diagnostic` (not `"telnyx-fallback-diagnostic"` — some UIs treat quotes as literal).
+- After adding `ZING_TELNYX_FALLBACK_DIAGNOSTIC`, **redeploy** so the running build has the env var and the latest logging code.
+
+With diagnostics on, you should see **`phase":"entry"`** as soon as `/fallback` runs, then **`phase":"full"`** after routing (or **`phase":"early-exit"`** if we hang up early).
+
 ## 1. Capture one failing call
 
 1. In **Vercel** → your project → **Logs**, find the request to  

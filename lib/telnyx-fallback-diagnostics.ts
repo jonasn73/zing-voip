@@ -50,6 +50,61 @@ export type TelnyxFallbackDiagnosticSnapshot = {
 }
 
 /**
+ * First line per fallback request — proves Telnyx hit `/api/voice/telnyx/fallback/...`
+ * (not the same as `/incoming`). Search Vercel for `telnyx-fallback-diagnostic` or filter Request by `fallback`.
+ */
+export function maybeLogTelnyxFallbackDiagnosticEntry(args: {
+  pathname: string
+  method: string
+  pathUserId: string | null
+  pathFallbackMode: string | null
+  dialStatus: string
+  rawDialStatus: string
+  dialDurationSec: number
+  bridgedToDigits: number
+  callSid: string
+  virtualFbAi: boolean
+  primaryWasOwner: boolean
+  formData: FormData
+}): void {
+  if (!isTelnyxFallbackDiagnosticEnabled()) return
+  console.log(
+    JSON.stringify({
+      zing: "telnyx-fallback-diagnostic",
+      phase: "entry",
+      pathname: args.pathname,
+      method: args.method,
+      pathUserId: args.pathUserId,
+      pathFallbackMode: args.pathFallbackMode,
+      dialStatus: args.dialStatus,
+      rawDialStatus: args.rawDialStatus,
+      dialDurationSec: args.dialDurationSec,
+      bridgedToDigits: args.bridgedToDigits,
+      callSid: args.callSid,
+      virtualFbAi: args.virtualFbAi,
+      primaryWasOwner: args.primaryWasOwner,
+      formRedacted: redactDialCallbackFormFields(args.formData),
+    })
+  )
+}
+
+/** Log when we return before the full routing snapshot (hangup / error). */
+export function maybeLogTelnyxFallbackDiagnosticEarly(
+  reason: string,
+  extra: Record<string, string | number | boolean | null>
+): void {
+  if (!isTelnyxFallbackDiagnosticEnabled()) return
+  console.log(
+    JSON.stringify({
+      zing: "telnyx-fallback-diagnostic",
+      phase: "early-exit",
+      reason,
+      ...extra,
+    })
+  )
+}
+
+/**
  * Logs a single JSON line: `zing: telnyx-fallback-diagnostic` when env is set.
  * Includes redacted form fields + decision snapshot so you can compare to tests/fixtures.
  */
@@ -70,6 +125,7 @@ export function maybeLogTelnyxFallbackDiagnostic(args: {
   console.log(
     JSON.stringify({
       zing: "telnyx-fallback-diagnostic",
+      phase: "full",
       method: args.method,
       pathname,
       formRedacted: redactDialCallbackFormFields(args.formData),

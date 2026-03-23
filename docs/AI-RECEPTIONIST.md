@@ -4,10 +4,9 @@ Zing uses **Telnyx** for telephony and **Telnyx Voice AI** for the no-answer fal
 
 ## What the business owner does (in Zing only)
 
-1. Set the dashboard to **If no answer: AI receptionist** (when you want the AI to pick up).
-2. Open **AI call flow**, fill in the playbook / greeting, and tap **Activate voice assistant**.
-3. Zing calls **Telnyx `POST /v2/ai/assistants`** with your **platform** `TELNYX_API_KEY`, stores the returned id on the user, and uses TeXML `<Connect><AIAssistant id="…"/></Connect>` on no-answer.
-4. **Save** on that page later pushes updated instructions + greeting to the same assistant (`POST /v2/ai/assistants/{id}`).
+1. In **Fallback Settings**, choose **AI receptionist**. Zing immediately calls **Telnyx `POST /v2/ai/assistants`** (via `PUT /api/routing`), stores the assistant id, and returns `voiceAi` in the JSON response — **no separate “Activate” step**.
+2. Open **AI call flow** (same sheet or full page) to tune the playbook, greeting, and optional **Voice & model** — **Save** pushes updates to Telnyx (`POST /v2/ai/assistants/{id}`).
+3. No-answer calls use TeXML `<Connect><AIAssistant id="…"/></Connect>` on the same leg.
 
 No Telnyx Mission Control account is required for the business owner.
 

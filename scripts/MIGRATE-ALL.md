@@ -16,6 +16,7 @@ Zing cannot update your Neon database from Git or Vercel automatically. After pu
 | 10 | `010-ai-leads-intake.sql` | **`user_ai_intake`** + **`ai_leads`** (required for **Save call flow** / AI intake) |
 | 11 | `011-user-industry.sql` | **`users.industry`** |
 | 12 | `012-telnyx-ai-assistant.sql` | **`users.telnyx_ai_assistant_id`** (Telnyx Voice AI) |
+| 13 | `013-telnyx-ai-incoming-handoff.sql` | **`telnyx_ai_incoming_handoff`** — stops Telnyx **redirect loops** on direct AI (`/incoming` ↔ `/ai-bridge`) |
 
 ## If “Save call flow” fails
 

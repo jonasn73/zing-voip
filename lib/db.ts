@@ -1478,6 +1478,34 @@ export async function listAiLeadsForUser(userId: string, limit = 50): Promise<
   }
 }
 
+/**
+ * Telnyx may POST `/incoming` repeatedly for one call. Returning `<Redirect>` every time
+ * can loop with `<Connect>` from `/ai-bridge` (caller: one ring, then silence).
+ * First INSERT for this `call_sid` wins → return `true` (emit Redirect to ai-bridge).
+ * Later POSTs conflict → return `false` (emit `<Connect><AIAssistant>` on `/incoming`).
+ */
+export async function tryConsumeTelnyxAiIncomingRedirectSlot(callSid: string): Promise<boolean> {
+  const sid = callSid.trim()
+  if (!sid) return true
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      INSERT INTO telnyx_ai_incoming_handoff (call_sid) VALUES (${sid})
+      ON CONFLICT (call_sid) DO NOTHING
+      RETURNING call_sid
+    `
+    return Array.isArray(rows) && rows.length > 0
+  } catch (e) {
+    if (isUndefinedRelationError(e, "telnyx_ai_incoming_handoff")) {
+      console.warn(
+        "[db] telnyx_ai_incoming_handoff missing — run scripts/013-telnyx-ai-incoming-handoff.sql in Neon. Until then, Telnyx may redirect-loop on AI calls."
+      )
+      return true
+    }
+    throw e
+  }
+}
+
 // Get talk time analytics for a date range
 export async function getAgentTalkTime(
   userId: string,

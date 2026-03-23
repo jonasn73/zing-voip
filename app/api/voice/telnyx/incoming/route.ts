@@ -16,6 +16,7 @@ import {
   getUser,
   insertCallLog,
   normalizePhoneNumberE164,
+  tryConsumeTelnyxAiIncomingRedirectSlot,
 } from "@/lib/db"
 import {
   buildRedirectOnlyToAiBridgeTeXML,
@@ -184,18 +185,28 @@ async function handleIncomingCall(
         if (ensured.linked && ensured.assistantId?.trim()) assistantId = ensured.assistantId.trim() // Use newly created id
       }
       if (assistantId) {
+        /** When false, Telnyx has already hit /incoming for this call_sid — return <Connect> here to stop redirect↔ai-bridge loops (see scripts/013). */
+        const redirectSlotAvailable =
+          connectDirectIncoming ? true : await tryConsumeTelnyxAiIncomingRedirectSlot(callSid)
         let handoff: string // Short label for logs so you can see which branch ran
         let xml: string // TeXML string we return to Telnyx
         if (twoStepAiHandoff) {
-          handoff = "say-redirect-ai-bridge" // Log label: spoken line then GET /ai-bridge
-          xml = buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // TeXML with Say + Pause + Redirect
+          if (!redirectSlotAvailable) {
+            handoff = "connect-aiassistant-after-say-loop" // Repeat /incoming after Say+Redirect path — connect only (no second Say)
+            xml = buildTelnyxAiAssistantTexml(assistantId) // Break loop: <Connect> on /incoming
+          } else {
+            handoff = "say-redirect-ai-bridge" // Log label: spoken line then GET /ai-bridge
+            xml = buildSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid) // TeXML with Say + Pause + Redirect
+          }
         } else if (connectDirectIncoming) {
           handoff = "connect-aiassistant-in-incoming" // Log label: experimental single-step Connect
           xml = buildTelnyxAiAssistantTexml(assistantId) // Only <Connect><AIAssistant> — may dead-air on first hit
+        } else if (!redirectSlotAvailable) {
+          handoff = "connect-aiassistant-loop-break" // Second+ POST /incoming for same call — DB dedupe
+          xml = buildTelnyxAiAssistantTexml(assistantId) // Stops Telnyx redirect loop; same assistant id as /ai-bridge
         } else {
-          // Always redirect here (never <Connect> on /incoming) unless two-step or ZING_AI_CONNECT_DIRECT — avoids quiet line when Telnyx’s first webhook already says in-progress/answered.
-          handoff = "redirect-silent-ai-bridge" // Log label: default — no speech, just redirect
-          xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Silent Redirect → /ai-bridge (recommended default)
+          handoff = "redirect-silent-ai-bridge" // First POST this call_sid — silent Redirect → /ai-bridge
+          xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid) // Telnyx GETs /ai-bridge for <Connect>
         }
         console.log(
           JSON.stringify({
@@ -203,7 +214,8 @@ async function handleIncomingCall(
             userId: routing.user_id, // Which business user this call belongs to
             handoff, // Which branch above ran
             callStatus: callStatus || null, // Raw normalized status from webhook (empty on first ring sometimes)
-            note: "Default: silent Redirect→ai-bridge. ZING_AI_CONNECT_DIRECT for Connect on first hit.",
+            redirectSlotAvailable, // false = repeat /incoming for this call_sid (loop break path)
+            note: "013 telnyx_ai_incoming_handoff: first POST redirects; later POSTs return Connect on /incoming.",
           })
         )
         return { kind: "raw", xml } // Bypass VoiceResponse builder because helpers return full XML strings

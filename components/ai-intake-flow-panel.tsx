@@ -53,11 +53,14 @@ export function AiIntakeFlowPanel({
   onBusyGreetingSavedToRouting,
   /** Dashboard sets this when /api/routing auto-provisions after choosing AI fallback (panel may not refetch yet). */
   externalAssistantLinked,
+  /** True when this panel is shown under “AI receptionist” in Fallback Settings — don’t tell the user to pick AI again. */
+  aiNoAnswerSelected,
 }: {
   variant?: AiIntakeFlowPanelVariant
   onHasAssistantChange?: (active: boolean) => void
   onBusyGreetingSavedToRouting?: (text: string) => void
   externalAssistantLinked?: boolean
+  aiNoAnswerSelected?: boolean
 }) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -98,6 +101,22 @@ export function AiIntakeFlowPanel({
   const showLocksmithExtras = previewProfileId === "locksmith"
   /** True when GET /api/ai-assistant said linked or parent just provisioned via routing. */
   const assistantReady = hasAssistant || Boolean(externalAssistantLinked)
+  useEffect(() => {
+    if (!aiNoAnswerSelected) return
+    let cancelled = false
+    fetch("/api/ai-assistant", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.hasAssistant) return
+        setHasAssistant(true)
+        onHasAssistantChange?.(true)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // Intentionally omit onHasAssistantChange — parent may pass an inline function and would retrigger every render.
+  }, [aiNoAnswerSelected])
 
   useEffect(() => {
     let cancelled = false
@@ -262,36 +281,51 @@ export function AiIntakeFlowPanel({
       <div
         className={cn(
           "rounded-2xl border px-4 py-3",
-          assistantReady ? "border-success/30 bg-success/5" : "border-border/80 bg-secondary/30"
+          assistantReady
+            ? "border-success/30 bg-success/5"
+            : aiNoAnswerSelected
+              ? "border-primary/25 bg-primary/5"
+              : "border-border/80 bg-secondary/30"
         )}
       >
         <p className="text-xs font-semibold text-foreground">
-          {assistantReady ? "AI receptionist is on" : "Turn on AI for no-answer calls"}
+          {assistantReady
+            ? "AI receptionist is on"
+            : aiNoAnswerSelected
+              ? "You’re set to use AI when no one answers"
+              : "Turn on AI for no-answer calls"}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground">
           {assistantReady
             ? "Save below whenever you change the script or greeting — we apply it for you."
-            : "On the main dashboard, open fallback options and pick AI receptionist. Everything else happens here — no other app or site."}
+            : aiNoAnswerSelected
+              ? "No extra step — Zing wires up the assistant for you. Adjust the script below and tap Save; reopen this panel if the status looks slow to update."
+              : "On the main dashboard, open fallback options and pick AI receptionist. Everything else happens here in Zing."}
         </p>
         <button
           type="button"
           onClick={() => setShowAdvancedAssistantId((v) => !v)}
           className="mt-2 text-[10px] font-medium text-primary underline-offset-2 hover:underline"
         >
-          {showAdvancedAssistantId ? "Hide support option" : "Support only — paste an existing assistant id"}
+          {showAdvancedAssistantId ? "Hide" : "Having trouble? Link a specific assistant ID"}
         </button>
         {showAdvancedAssistantId && (
-          <div className="mt-2 space-y-1">
+          <div className="mt-2 space-y-1.5 rounded-lg border border-border/60 bg-secondary/40 p-2">
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Almost never needed.</span> Zing creates an assistant for
+              you. Use this only if support or onboarding gave you an ID to use instead (for example moving from another
+              phone setup). Leave it empty for normal use.
+            </p>
             <input
               type="text"
               value={telnyxAssistantId}
               onChange={(e) => setTelnyxAssistantId(e.target.value)}
-              placeholder="Only if support gave you an id"
+              placeholder="Paste ID only if support told you to"
               className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
               autoComplete="off"
             />
             <p className="text-[10px] text-muted-foreground">
-              If set, Save uses this id instead of the one Zing created for you.
+              If you paste an ID here, Save will use that assistant instead of the one Zing created.
             </p>
           </div>
         )}

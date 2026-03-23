@@ -711,6 +711,7 @@ export function DashboardPage() {
                       </div>
                       <AiIntakeFlowPanel
                         variant="modal"
+                        aiNoAnswerSelected={fallback === "ai"}
                         externalAssistantLinked={hasTelnyxAiAssistant}
                         onHasAssistantChange={(active) => setHasTelnyxAiAssistant(active)}
                         onBusyGreetingSavedToRouting={(text) =>

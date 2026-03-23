@@ -1179,6 +1179,16 @@ export async function getPhoneNumbers(userId: string): Promise<PhoneNumber[]> {
   return rows.map(parsePhoneNumberRow)
 }
 
+/**
+ * First active business DID for this user — used when Telnyx Dial `action` webhook loses `bn` or sends `To` as the owner’s cell (so per-number AI fallback was misread as default voicemail).
+ */
+export async function getPrimaryActiveBusinessNumberE164(userId: string): Promise<string | null> {
+  const list = await getPhoneNumbers(userId)
+  const row = list.find((p) => p.status === "active") ?? list[0]
+  if (!row?.number?.trim()) return null
+  return normalizePhoneNumberE164(row.number)
+}
+
 // Insert a phone number (after purchase or port)
 export async function insertPhoneNumber(params: {
   user_id: string

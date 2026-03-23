@@ -12,11 +12,13 @@ import {
   getRoutingConfigForNumber,
   getIncomingRoutingByNumber,
   getUser,
+  getPrimaryActiveBusinessNumberE164,
   updateCallLog,
   ensureCallLogForInboundLeg,
   normalizePhoneNumberE164,
 } from "@/lib/db"
 import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
+import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -42,7 +44,18 @@ function normalizeFallbackType(v: string | undefined | null): FallbackType {
 function resolveBusinessLineE164(bnFromQuery: string, formData: FormData): string {
   const q = bnFromQuery.trim()
   if (q) return toE164(q)
-  const keys = ["To", "Called", "called", "OriginalCalledNumber", "DialedNumber"]
+  const keys = [
+    "To",
+    "Called",
+    "called",
+    "OriginalCalledNumber",
+    "DialedNumber",
+    "DialCalledNumber",
+    "dialed_number",
+    "CallerDestination",
+    "ForwardedFrom",
+    "SipHeader_X-Telnyx-OriginalCalledNumber",
+  ]
   for (const k of keys) {
     const raw = formData.get(k)
     const s = raw != null ? String(raw).trim() : ""
@@ -122,17 +135,31 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const [config, user, liveRouting] = await Promise.all([
-      businessLineE164
-        ? getRoutingConfigForNumber(userId, businessLineE164)
+    // Dial `action` often drops `bn` from the query string; `To` may be the owner’s cell, not the business DID.
+    // Resolve live routing against the real business line so per-number `fallback_type: ai` is not skipped.
+    let effectiveBusinessLine = businessLineE164
+    let lr =
+      effectiveBusinessLine.length > 0
+        ? await getIncomingRoutingByNumber(effectiveBusinessLine, { bypassCache: true })
+        : null
+    if (userId && (!lr || lr.user_id !== userId)) {
+      const primary = await getPrimaryActiveBusinessNumberE164(userId)
+      if (primary) {
+        const retry = await getIncomingRoutingByNumber(primary, { bypassCache: true })
+        if (retry?.user_id === userId) {
+          lr = retry
+          effectiveBusinessLine = primary
+        }
+      }
+    }
+
+    const [config, user] = await Promise.all([
+      effectiveBusinessLine
+        ? getRoutingConfigForNumber(userId, effectiveBusinessLine)
         : getRoutingConfig(userId),
       getUser(userId),
-      businessLineE164.length > 0
-        ? getIncomingRoutingByNumber(businessLineE164, { bypassCache: true })
-        : Promise.resolve(null),
     ])
 
-    const lr = liveRouting
     const useLive = Boolean(lr && lr.user_id === userId)
     const fallbackType = normalizeFallbackType(
       useLive && lr ? lr.fallback_type : config?.fallback_type
@@ -161,6 +188,7 @@ export async function POST(req: NextRequest) {
         zing: "telnyx-fallback",
         userId,
         businessLineE164: businessLineE164 || null,
+        effectiveBusinessLine: effectiveBusinessLine || null,
         hadBnQuery: Boolean(bnFromQuery),
         toField: String(formData.get("To") || ""),
         fallbackType,
@@ -175,6 +203,7 @@ export async function POST(req: NextRequest) {
       String(formData.get("From") || formData.get("Caller") || formData.get("RemoteParty") || "").trim() ||
       "Unknown"
     const toDial =
+      effectiveBusinessLine ||
       businessLineE164 ||
       resolveBusinessLineE164(bnFromQuery, formData) ||
       String(formData.get("To") || formData.get("Called") || "").trim()
@@ -184,8 +213,7 @@ export async function POST(req: NextRequest) {
         providerCallSid: callSid,
         fromNumber: fromDial === "Unknown" ? fromDial : normalizePhoneNumberE164(fromDial),
         toNumber: toDial ? normalizePhoneNumberE164(toDial) : "Unknown",
-        routedToReceptionistId:
-          liveRouting && liveRouting.user_id === userId ? liveRouting.selected_receptionist_id : null,
+        routedToReceptionistId: lr && lr.user_id === userId ? lr.selected_receptionist_id : null,
       }).catch((err) => console.error("[Zing] ensureCallLogForInboundLeg failed:", err))
     }
 
@@ -225,8 +253,15 @@ export async function POST(req: NextRequest) {
       }
 
       case "ai": {
-        const assistantId =
+        let assistantId =
           user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
+        // Race: user just chose AI; provisioning may not have finished before this webhook.
+        if (!assistantId && userId) {
+          const ensured = await ensureTelnyxVoiceAiAssistant(userId)
+          if (ensured.linked && ensured.assistantId?.trim()) {
+            assistantId = ensured.assistantId.trim()
+          }
+        }
         if (assistantId) {
           if (callSid && !answeredAndHadConversation) {
             void updateCallLog(callSid, {

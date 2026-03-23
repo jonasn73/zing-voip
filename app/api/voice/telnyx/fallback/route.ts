@@ -38,6 +38,24 @@ function normalizeFallbackType(v: string | undefined | null): FallbackType {
 }
 
 /**
+ * Combine `routing_config` (explicit row) with the incoming-call join row.
+ * If either says **ai**, use AI — fixes cases where the default row is still `owner` but the business line has `ai`
+ * (common after choosing AI fallback; owner-leg callback used to read only the wrong row → voicemail when you hang up).
+ */
+function mergeFallbackType(
+  configFb: string | undefined | null,
+  liveFb: string | undefined | null,
+  useLive: boolean
+): FallbackType {
+  const c = (configFb || "").toLowerCase().trim()
+  const l = useLive && liveFb ? String(liveFb).toLowerCase().trim() : ""
+  if (c === "ai" || l === "ai") return "ai"
+  if (c === "voicemail" || l === "voicemail") return "voicemail"
+  if (l === "owner" || c === "owner") return "owner"
+  return normalizeFallbackType(configFb ?? liveFb)
+}
+
+/**
  * Telnyx sometimes POSTs to the Dial `action` URL without preserving query params (`bn` lost).
  * The parent inbound leg usually still includes the business DID in `To` (TwiML-compatible).
  */
@@ -87,6 +105,8 @@ function parseDialDurationSeconds(formData: FormData): number {
   const raw =
     (formData.get("DialCallDuration") as string) ||
     (formData.get("DialCallDurationSeconds") as string) ||
+    (formData.get("DialBridgedDuration") as string) ||
+    (formData.get("CallDuration") as string) ||
     ""
   let n = parseInt(String(raw).trim(), 10)
   if (!Number.isFinite(n) || n < 0) return 0
@@ -124,10 +144,10 @@ export async function POST(req: NextRequest) {
   const appUrl = getAppUrl()
 
   try {
-    // "completed" = dialed party answered, then the bridged leg ended (TwiML semantics).
-    // If they only picked up briefly or declined oddly, duration is often short — still run AI/voicemail.
-    // After a real conversation (long bridged time), end the caller's session so we don't stack AI on top.
-    const answeredAndHadConversation = dialStatus === "completed" && dialDurationSec >= 8
+    // "completed" + long duration can mean a real answered call — skip stacking AI on top.
+    // Use a **high** threshold: ring time alone is often reported as "completed" with 10–30+ seconds on some carriers,
+    // which wrongly skipped AI/voicemail after the owner declined or hung up quickly.
+    const answeredAndHadConversation = dialStatus === "completed" && dialDurationSec >= 120
     if (answeredAndHadConversation) {
       texml.hangup()
       return new NextResponse(texml.toString(), {
@@ -161,11 +181,8 @@ export async function POST(req: NextRequest) {
     ])
 
     const useLive = Boolean(lr && lr.user_id === userId)
-    const fallbackType = normalizeFallbackType(
-      useLive && lr ? lr.fallback_type : config?.fallback_type
-    )
+    const fallbackType = mergeFallbackType(config?.fallback_type, lr?.fallback_type, useLive)
 
-    // Two routing_config rows for the same DID (different string shapes) can make the join pick one fallback while the dashboard row shows another — log to debug "always voicemail".
     if (
       useLive &&
       lr &&
@@ -177,8 +194,10 @@ export async function POST(req: NextRequest) {
           zing: "telnyx-fallback-routing-mismatch",
           userId,
           businessLineE164: businessLineE164 || null,
+          effectiveBusinessLine: effectiveBusinessLine || null,
           fromIncomingJoin: lr.fallback_type,
           fromConfigQuery: config.fallback_type,
+          mergedFallback: fallbackType,
         })
       )
     }
@@ -191,8 +210,11 @@ export async function POST(req: NextRequest) {
         effectiveBusinessLine: effectiveBusinessLine || null,
         hadBnQuery: Boolean(bnFromQuery),
         toField: String(formData.get("To") || ""),
+        fallbackFromConfig: config?.fallback_type ?? null,
+        fallbackFromLiveJoin: useLive ? lr?.fallback_type ?? null : null,
         fallbackType,
         primaryWasOwner,
+        dialDurationSec,
         hasTelnyxAiAssistant: Boolean(user?.telnyx_ai_assistant_id?.trim()),
         dialStatus: dialStatus || rawStatus || null,
       })

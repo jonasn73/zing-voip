@@ -336,11 +336,19 @@ export async function handleTelnyxFallbackDialEnded(
     })
     const answeredAndHadConversation =
       dialStatus === "completed" && dialDurationSec >= 120 && bridgedToDigits >= 10
-    if (answeredAndHadConversation) {
+    /**
+     * "Ring my phone first" uses path mode `owner-ai`: after your cell leg ends — decline, voicemail pickup,
+     * short answer then hang-up, or long conversation — callers should reach **Voice AI** on `/fallback`.
+     * The old behavior hung up on the caller after 2+ min bridged; owners expect AI to take over when they hang up.
+     * Receptionist-first AI (`recv-ai`) still uses early hang-up so a long front-desk call does not restart AI.
+     */
+    const skipLongBridgedHangupForOwnerFirstAi = pathFallbackMode === "owner-ai"
+    if (answeredAndHadConversation && !skipLongBridgedHangupForOwnerFirstAi) {
       maybeLogTelnyxFallbackDiagnosticEarly("long-bridged-hangup", {
         dialDurationSec,
         bridgedToDigits,
         dialStatus,
+        pathFallbackMode: pathFallbackMode ?? null,
       })
       texml.hangup()
       return new NextResponse(texml.toString(), {

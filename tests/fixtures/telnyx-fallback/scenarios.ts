@@ -140,8 +140,9 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
     },
   },
   {
-    id: "long-bridged-call-early-hangup",
-    description: "Real 2+ minute bridged conversation → hang up (no AI replay)",
+    id: "owner-ai-long-bridged-still-hands-off-to-ai",
+    description:
+      "Owner-first AI path: even 2+ min bridged owner leg → Voice AI (owner hang-up should not drop caller)",
     method: "POST",
     url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/owner-ai?callSid=CA_fixture_long",
     form: {
@@ -165,6 +166,41 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       },
       routingForNumber: baseRouting({ fallback_type: "ai" }),
       globalRouting: baseRouting({ business_number: null, fallback_type: "ai", id: "rc-g3" }),
+      user: baseUser({}),
+      primaryBusinessE164: "+15551110001",
+    },
+    expect: {
+      bodyContains: ["ai-bridge"],
+      bodyNotContains: ["</Hangup>"],
+      contentType: "text/xml",
+    },
+  },
+  {
+    id: "recv-ai-long-bridged-early-hangup",
+    description: "Receptionist-first AI: 2+ min bridged recv leg → hang up caller (no AI after long desk call)",
+    method: "POST",
+    url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/recv-ai?callSid=CA_fixture_recv_long",
+    form: {
+      DialCallStatus: "completed",
+      DialCallDuration: "130",
+      DialBridgedTo: "+15558887766",
+      CallSid: "CA_fixture_recv_long",
+      To: "+15558887766",
+    },
+    mocks: {
+      incomingRouting: {
+        user_id: "11111111-1111-1111-1111-111111111111",
+        user_name: "Fixture User",
+        owner_phone: "+15551110002",
+        selected_receptionist_id: "recv-1",
+        fallback_type: "ai",
+        ring_timeout_seconds: 22,
+        ai_ring_owner_first: false,
+        receptionist_name: "Desk",
+        receptionist_phone: "+15558887766",
+      },
+      routingForNumber: baseRouting({ fallback_type: "ai", selected_receptionist_id: "recv-1" }),
+      globalRouting: baseRouting({ business_number: null, fallback_type: "ai", id: "rc-g5" }),
       user: baseUser({}),
       primaryBusinessE164: "+15551110001",
     },

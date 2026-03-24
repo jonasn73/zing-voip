@@ -187,6 +187,20 @@ async function handleIncomingCall(
     const useDirectAiWhenNoReceptionist =
       wantsAiAfterNoAnswer && !hasReceptionist && !ringOwnerFirst // AI fallback with nobody to Dial first
 
+    console.log(
+      JSON.stringify({
+        zing: "telnyx-incoming-routing-flags",
+        userId: routing.user_id,
+        wantsAiAfterNoAnswer,
+        hasReceptionist,
+        aiRingOwnerFirstFromDefaultRow: routing.ai_ring_owner_first,
+        ringOwnerFirstEffective: ringOwnerFirst,
+        useDirectAiWhenNoReceptionist,
+        envRingFirst:
+          process.env.ZING_AI_RING_OWNER_FIRST === "1" || process.env.ZING_AI_RING_OWNER_FIRST === "true",
+      })
+    )
+
     const callStatusRaw = pickField(webhookFields, [
       // Telnyx may use different key names; try each until one has a value
       "CallStatus",

@@ -63,6 +63,7 @@ export async function PUT(req: NextRequest) {
         fallback_type: body.fallback_type,
         ai_greeting: body.ai_greeting,
         ring_timeout_seconds: body.ring_timeout_seconds,
+        ai_ring_owner_first: body.ai_ring_owner_first,
       },
       businessNumber
     )

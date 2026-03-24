@@ -40,6 +40,8 @@ export interface RoutingConfig {
   fallback_type: FallbackType
   ai_greeting: string
   ring_timeout_seconds: number // how long to ring before fallback
+  /** When AI fallback + no receptionist: ring owner's cell first, then Voice AI on no-answer. */
+  ai_ring_owner_first: boolean
   updated_at: string
 }
 
@@ -133,6 +135,7 @@ export interface UpdateRoutingRequest {
   fallback_type?: FallbackType
   ai_greeting?: string
   ring_timeout_seconds?: number
+  ai_ring_owner_first?: boolean
   business_number?: string | null // E.164 number for per-number routing; omit or null for the default config
 }
 

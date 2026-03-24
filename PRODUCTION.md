@@ -5,7 +5,7 @@ For the app to work in production (sign up, login, settings, call routing), you 
 ## 1. Database (Neon)
 
 1. Go to [neon.tech](https://neon.tech) and create a project (free tier is fine).
-2. In the Neon dashboard, open **SQL Editor** and run migrations **in order**. See **`scripts/MIGRATE-ALL.md`** for the full checklist (001 → 014). At minimum for a new project: **`001`**, **`002`**, then **`010`**, **`011`**, **`012`**, **`013`**, **`014`** if you use Telnyx Voice AI direct-to-assistant (013 + 014 fix redirect loops and repeat-`/incoming` behavior).
+2. In the Neon dashboard, open **SQL Editor** and run migrations **in order**. See **`scripts/MIGRATE-ALL.md`** for the full checklist (001 → 015). At minimum for a new project: **`001`**, **`002`**, then **`010`**, **`011`**, **`012`**, **`013`**, **`014`**, **`015`** if you use Telnyx Voice AI and the dashboard **“Ring my phone first”** toggle (015 adds `ai_ring_owner_first`).
 3. In Neon, go to **Connection details** and copy the connection string (URI). It looks like:
    `postgresql://USER:PASSWORD@ep-xxx.region.aws.neon.tech/neondb?sslmode=require`
 
@@ -23,7 +23,7 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `TELNYX_AI_DEFAULT_MODEL` | Optional: LLM id for auto-created assistants (default `openai/gpt-4o`). List: Telnyx **GET /v2/ai/models**. Avoid `openai/gpt-4o-mini` if Telnyx says it is not available for AI assistants. |
 | `TELNYX_AI_VOICE` | Optional: Telnyx TTS voice string for new assistants (default `Telnyx.KokoroTTS.af_heart`). |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |
-| `ZING_AI_RING_OWNER_FIRST` | Optional. If `true` / `1`: when **AI fallback** is on and there is **no receptionist**, **ring your cell first** and use the Dial `action` URL (`/fallback`) for Voice AI after no-answer. **Default (unset):** connect **straight to Voice AI** (no ring) — recommended because Telnyx often **does not call** `/fallback`, so ring-first + AI appears “stuck” on voicemail. |
+| `ZING_AI_RING_OWNER_FIRST` | Optional global override. If `true` / `1`: same as dashboard **Ring my phone first** — when **AI fallback** is on and there is **no receptionist**, **ring your cell first**, then `/fallback` for Voice AI. Prefer the **Fallback Settings** toggle in the app (stored per account) after you run **`015-routing-ai-ring-owner-first.sql`**. **Default:** straight to Voice AI when the toggle is off and this env is unset. |
 | `ZING_AI_HANDOFF_TWO_STEP` | Optional. If `true` / `1`: **Say + Pause + Redirect** to **`/ai-bridge`** from `/incoming`. Default is a **silent** Redirect (no Say) to **`/ai-bridge`** — avoids **dead air** from `<Connect>` on the first `/incoming` response and avoids a **repeating hold line** if Telnyx re-requests `/incoming`. |
 | `ZING_AI_CONNECT_DIRECT` | Optional. If `true` / `1`: return **`<Connect><AIAssistant>`** on **`/incoming`** (skip silent redirect). **Experimental** — Telnyx may go **quiet**; prefer unset (default). |
 | `ZING_AI_LAST_RESORT_CONNECT_HIT` | Optional. **Default: unset (= off).** If set to e.g. **`5`**, on that **`/incoming`** POST count Zing returns **`<Connect><AIAssistant>`** on `/incoming` (experimental — Telnyx often plays **“application error, goodbye”** instead of attaching AI). **`0`** / **`false`** explicitly disables. When off, when **`incomingHitCount` > 8** (9th POST onward) Zing plays its **own** give-up message (not Telnyx’s error). |

@@ -77,6 +77,7 @@ function parseRoutingRow(row: Record<string, unknown>): RoutingConfig {
     fallback_type: row.fallback_type as RoutingConfig["fallback_type"],
     ai_greeting: String(row.ai_greeting ?? ""),
     ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
+    ai_ring_owner_first: row.ai_ring_owner_first === true,
     updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
   }
 }
@@ -91,6 +92,7 @@ type IncomingRoutingByNumber =
     selected_receptionist_id: string | null
     fallback_type: RoutingConfig["fallback_type"]
     ring_timeout_seconds: number
+    ai_ring_owner_first: boolean
     receptionist_name: string | null
     receptionist_phone: string | null
   }
@@ -152,7 +154,7 @@ async function findPerNumberRoutingConfigId(userId: string, businessNumber: stri
 export async function getRoutingConfig(userId: string): Promise<RoutingConfig | null> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, ai_ring_owner_first, updated_at
     FROM routing_config WHERE user_id = ${userId} AND business_number IS NULL LIMIT 1
   `
   return rows[0] ? parseRoutingRow(rows[0]) : null
@@ -164,14 +166,14 @@ export async function getRoutingConfigForNumber(userId: string, businessNumber: 
   const digitKey = phoneDigitsKey(businessNumber)
   // Exact match first (fast path)
   const specificExact = await sql`
-    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, ai_ring_owner_first, updated_at
     FROM routing_config WHERE user_id = ${userId} AND business_number = ${businessNumber} LIMIT 1
   `
   if (specificExact[0]) return parseRoutingRow(specificExact[0])
   if (digitKey.length < 10) return getRoutingConfig(userId)
   // Digit match: per-number rows saved as a different string shape than TeXML sends (+1 vs 10-digit US).
   const specificLoose = await sql`
-    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, ai_ring_owner_first, updated_at
     FROM routing_config
     WHERE user_id = ${userId}
       AND business_number IS NOT NULL
@@ -193,7 +195,7 @@ export async function getRoutingConfigForNumber(userId: string, businessNumber: 
 export async function getAllRoutingConfigs(userId: string): Promise<RoutingConfig[]> {
   const sql = getSql()
   const rows = await sql`
-    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at
+    SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, ai_ring_owner_first, updated_at
     FROM routing_config WHERE user_id = ${userId} ORDER BY business_number NULLS FIRST
   `
   return rows.map(parseRoutingRow)
@@ -203,7 +205,9 @@ export async function getAllRoutingConfigs(userId: string): Promise<RoutingConfi
 // If businessNumber is provided, updates (or creates) the config for that number
 export async function updateRoutingConfig(
   userId: string,
-  updates: Partial<Pick<RoutingConfig, "selected_receptionist_id" | "fallback_type" | "ai_greeting" | "ring_timeout_seconds">>,
+  updates: Partial<
+    Pick<RoutingConfig, "selected_receptionist_id" | "fallback_type" | "ai_greeting" | "ring_timeout_seconds" | "ai_ring_owner_first">
+  >,
   businessNumber?: string | null
 ): Promise<void> {
   const sql = getSql()
@@ -228,10 +232,14 @@ export async function updateRoutingConfig(
         updates.ring_timeout_seconds !== undefined
           ? updates.ring_timeout_seconds
           : defaults?.ring_timeout_seconds ?? 30
+      const ai_ring_owner_first =
+        updates.ai_ring_owner_first !== undefined
+          ? updates.ai_ring_owner_first
+          : Boolean(defaults?.ai_ring_owner_first)
 
       await sql`
-        INSERT INTO routing_config (id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
-        VALUES (${crypto.randomUUID()}, ${userId}, ${normalizedBn}, ${selected_receptionist_id}, ${fallback_type}, ${ai_greeting}, ${ring_timeout_seconds}, now())
+        INSERT INTO routing_config (id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, ai_ring_owner_first, updated_at)
+        VALUES (${crypto.randomUUID()}, ${userId}, ${normalizedBn}, ${selected_receptionist_id}, ${fallback_type}, ${ai_greeting}, ${ring_timeout_seconds}, ${ai_ring_owner_first}, now())
       `
       clearIncomingRoutingCache()
       return
@@ -250,6 +258,9 @@ export async function updateRoutingConfig(
     }
     if (updates.ring_timeout_seconds !== undefined) {
       await sql`UPDATE routing_config SET ring_timeout_seconds = ${updates.ring_timeout_seconds}, updated_at = now() WHERE ${whereClause}`
+    }
+    if (updates.ai_ring_owner_first !== undefined) {
+      await sql`UPDATE routing_config SET ai_ring_owner_first = ${updates.ai_ring_owner_first}, updated_at = now() WHERE ${whereClause}`
     }
 
     clearIncomingRoutingCache()
@@ -270,6 +281,9 @@ export async function updateRoutingConfig(
   }
   if (updates.ring_timeout_seconds !== undefined) {
     await sql`UPDATE routing_config SET ring_timeout_seconds = ${updates.ring_timeout_seconds}, updated_at = now() WHERE ${whereClause}`
+  }
+  if (updates.ai_ring_owner_first !== undefined) {
+    await sql`UPDATE routing_config SET ai_ring_owner_first = ${updates.ai_ring_owner_first}, updated_at = now() WHERE ${whereClause}`
   }
 
   clearIncomingRoutingCache()
@@ -508,6 +522,7 @@ export async function getIncomingRoutingByNumber(
   selected_receptionist_id: string | null
   fallback_type: RoutingConfig["fallback_type"]
   ring_timeout_seconds: number
+  ai_ring_owner_first: boolean
   receptionist_name: string | null
   receptionist_phone: string | null
 } | null> {
@@ -537,6 +552,10 @@ export async function getIncomingRoutingByNumber(
         CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.ring_timeout_seconds ELSE rc_def.ring_timeout_seconds END,
         30
       ) AS ring_timeout_seconds,
+      COALESCE(
+        CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.ai_ring_owner_first ELSE rc_def.ai_ring_owner_first END,
+        false
+      ) AS ai_ring_owner_first,
       CASE WHEN rc_spec.id IS NOT NULL THEN rs.name ELSE rd.name END AS receptionist_name,
       CASE WHEN rc_spec.id IS NOT NULL THEN rs.phone ELSE rd.phone END AS receptionist_phone
     FROM phone_numbers pn
@@ -583,6 +602,7 @@ export async function getIncomingRoutingByNumber(
     selected_receptionist_id: row.selected_receptionist_id ? String(row.selected_receptionist_id) : null,
     fallback_type: (row.fallback_type as RoutingConfig["fallback_type"]) || "owner",
     ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
+    ai_ring_owner_first: row.ai_ring_owner_first === true,
     receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
     receptionist_phone: row.receptionist_phone ? String(row.receptionist_phone) : null,
   }

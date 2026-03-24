@@ -14,6 +14,7 @@ export type TelnyxFallbackFixtureMocks = {
     selected_receptionist_id: string | null
     fallback_type: FallbackType
     ring_timeout_seconds: number
+    ai_ring_owner_first: boolean
     receptionist_name: string | null
     receptionist_phone: string | null
   } | null
@@ -61,6 +62,7 @@ const baseRouting = (over: Partial<RoutingConfig>): RoutingConfig => ({
   fallback_type: "ai",
   ai_greeting: "Hi",
   ring_timeout_seconds: 30,
+  ai_ring_owner_first: false,
   updated_at: "2020-01-01T00:00:00.000Z",
   ...over,
 })
@@ -84,6 +86,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
         selected_receptionist_id: null,
         fallback_type: "ai",
         ring_timeout_seconds: 22,
+        ai_ring_owner_first: true,
         receptionist_name: null,
         receptionist_phone: null,
       },
@@ -121,6 +124,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
         selected_receptionist_id: null,
         fallback_type: "ai",
         ring_timeout_seconds: 22,
+        ai_ring_owner_first: true,
         receptionist_name: null,
         receptionist_phone: null,
       },
@@ -155,6 +159,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
         selected_receptionist_id: null,
         fallback_type: "ai",
         ring_timeout_seconds: 22,
+        ai_ring_owner_first: true,
         receptionist_name: null,
         receptionist_phone: null,
       },
@@ -187,6 +192,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
         selected_receptionist_id: null,
         fallback_type: "ai",
         ring_timeout_seconds: 22,
+        ai_ring_owner_first: true,
         receptionist_name: null,
         receptionist_phone: null,
       },

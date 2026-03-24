@@ -170,14 +170,16 @@ async function handleIncomingCall(
      * Putting `<Connect>` on the first `/incoming` response often goes **dead-air** on Telnyx.
      * **`ZING_AI_HANDOFF_TWO_STEP`:** Say + Redirect (repeats if Telnyx re-fetches `/incoming` — avoid unless needed).
      * **`ZING_AI_CONNECT_DIRECT`:** `<Connect>` on `/incoming` only (experimental).
-     * **`ZING_AI_RING_OWNER_FIRST`:** `<Dial>` owner + `/fallback`.
+     * **`ZING_AI_RING_OWNER_FIRST` or dashboard “Ring my phone first”:** `<Dial>` owner + `/fallback` before AI.
      *
      * **Do not** skip the redirect when `CallStatus` looks “live” on the **first** `/incoming` request —
      * Telnyx sometimes sends `in-progress` / `answered` while fetching TeXML; `<Connect>` on that first
      * response often goes **dead-air** (one ring, then silence).
      */
     const ringOwnerFirst =
-      process.env.ZING_AI_RING_OWNER_FIRST === "1" || process.env.ZING_AI_RING_OWNER_FIRST === "true" // true = Dial cell first, then /fallback
+      process.env.ZING_AI_RING_OWNER_FIRST === "1" ||
+      process.env.ZING_AI_RING_OWNER_FIRST === "true" ||
+      routing.ai_ring_owner_first === true // DB toggle (Fallback Settings) or env — Dial cell first, then /fallback for AI
     const twoStepAiHandoff =
       process.env.ZING_AI_HANDOFF_TWO_STEP === "1" || process.env.ZING_AI_HANDOFF_TWO_STEP === "true" // true = play “please hold” then redirect
     const connectDirectIncoming =

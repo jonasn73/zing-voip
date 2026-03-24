@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { EmptyState } from "@/components/ui/empty-state"
 import { IconSurface } from "@/components/ui/icon-surface"
+import { Switch } from "@/components/ui/switch"
 import { AiIntakeFlowPanel } from "@/components/ai-intake-flow-panel"
 import { useOperationsData } from "@/lib/hooks/use-operations-data"
 import type { PhoneNumberRoutingSummary } from "@/lib/types"
@@ -144,6 +145,8 @@ export function DashboardPage() {
   const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(null)
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [fallback, setFallback] = useState<FallbackOption>("owner")
+  /** AI fallback + no receptionist: ring owner cell before Voice AI (see Fallback Settings). */
+  const [aiRingOwnerFirst, setAiRingOwnerFirst] = useState(false)
   const [showFallbackSettings, setShowFallbackSettings] = useState(false)
 
   // Add receptionist state
@@ -229,6 +232,7 @@ export function DashboardPage() {
             if (rData?.config) {
               setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
               setFallback(rData.config.fallback_type || "owner")
+              setAiRingOwnerFirst(Boolean(rData.config.ai_ring_owner_first))
             }
             if (aiData?.hasAssistant) setHasTelnyxAiAssistant(true)
           })
@@ -269,6 +273,7 @@ export function DashboardPage() {
       .then(async (res) => {
         const data = (await res.json().catch(() => ({}))) as {
           error?: string
+          config?: { fallback_type?: string; ai_ring_owner_first?: boolean }
           voiceAi?: { linked?: boolean; provisioned?: boolean; error?: string }
         }
         if (!res.ok) {
@@ -287,8 +292,14 @@ export function DashboardPage() {
             .then((r) => (r.ok ? r.json() : null))
             .then((rData) => {
               if (rData?.config?.fallback_type) setFallback(rData.config.fallback_type || "owner")
+              if (rData?.config?.ai_ring_owner_first !== undefined) {
+                setAiRingOwnerFirst(Boolean(rData.config.ai_ring_owner_first))
+              }
             })
           return
+        }
+        if (data.config?.ai_ring_owner_first !== undefined) {
+          setAiRingOwnerFirst(Boolean(data.config.ai_ring_owner_first))
         }
         if (data.voiceAi?.linked) {
           setHasTelnyxAiAssistant(true)
@@ -312,7 +323,7 @@ export function DashboardPage() {
             toast({
               title: "AI fallback saved",
               description:
-                "Your assistant is linked — callers get Voice AI on AI fallback (default: straight to assistant; optional ring-your-cell-first in PRODUCTION.md).",
+                "Your assistant is linked. Use “Ring my phone first” in Fallback Settings if you want your cell to ring before Voice AI.",
             })
           } else {
             toast({
@@ -506,7 +517,7 @@ export function DashboardPage() {
                       <span className="text-xs font-medium text-primary">{formatPhoneDisplay(bn.number)}</span>
                       {rs?.ai_fallback_live ? (
                         <span
-                          title="AI fallback is on and your assistant is linked — callers should reach Voice AI (default connects directly; optional ring cell first via ZING_AI_RING_OWNER_FIRST)."
+                          title="AI fallback is on and your assistant is linked — callers should reach Voice AI. Use Fallback Settings → Ring my phone first to ring your cell before the assistant."
                           className="inline-flex items-center gap-0.5 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success"
                         >
                           <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
@@ -771,6 +782,40 @@ export function DashboardPage() {
                   {/* AI: playbook, opening line, voice — same sheet (no separate AI tab). */}
                   {fallback === "ai" && (
                     <div className="border-t border-border px-4 py-3">
+                      {isRoutingToOwner ? (
+                        <div className="mb-3 flex gap-3 rounded-xl border border-border/70 bg-secondary/25 p-3">
+                          <Switch
+                            id="zing-ai-ring-owner-first"
+                            checked={aiRingOwnerFirst}
+                            onCheckedChange={(on) => {
+                              setAiRingOwnerFirst(on)
+                              void saveRouting({ ai_ring_owner_first: on }, { quiet: true })
+                            }}
+                            className="mt-0.5 shrink-0"
+                            aria-labelledby="zing-ai-ring-owner-first-label"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <label
+                              id="zing-ai-ring-owner-first-label"
+                              htmlFor="zing-ai-ring-owner-first"
+                              className="text-xs font-semibold text-foreground"
+                            >
+                              Ring my phone first
+                            </label>
+                            <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                              Callers hear normal ringing on your business line, then your cell rings for up to your ring
+                              time. If you don&apos;t answer, Voice AI takes over — good for testing the full flow. Turn
+                              off to connect straight to the assistant (default).
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mb-3 text-[10px] text-muted-foreground">
+                          Calls ring <span className="font-medium text-foreground">{selectedReceptionist?.name}</span>{" "}
+                          first; if they don&apos;t answer, Voice AI runs. To ring your own phone before AI, clear the
+                          active receptionist above.
+                        </p>
+                      )}
                       <AiIntakeFlowPanel
                         variant="modal"
                         aiNoAnswerSelected={fallback === "ai"}

@@ -24,6 +24,10 @@ import { DEFAULT_BUSY_GREETING_LOCKSMITH } from "@/lib/ai-intake-defaults"
 /** Tiny labels at bottom of fallback modal — not primary setup. */
 const VOICE_AI_FOOTER_CHIPS = ["Industry intake", "Leads", "SMS alerts", "Business hours"] as const
 
+/** Fixed line used when you tap “Sample” next to a catalog voice so every voice is compared fairly. */
+const VOICE_CATALOG_SAMPLE_LINE =
+  "Hi, this is a quick sample of how I will sound when answering your business line."
+
 function buildIntakeBody(
   scriptChoice: "auto" | AiIntakeProfileId,
   aiIntake: {
@@ -294,10 +298,9 @@ export function AiIntakeFlowPanel({
   }
 
   /**
-   * Server may return Telnyx MP3 (base64) or ask us to use the browser’s SpeechSynthesis (Telnyx HTTP TTS is often 404).
+   * Ask the server for TTS (Telnyx MP3 or browser fallback) and play `text` with optional `voiceId`.
    */
-  async function playVoicePreview() {
-    const line = aiIntake.busyGreeting.trim() || DEFAULT_BUSY_GREETING_LOCKSMITH
+  async function runVoicePreview(text: string, voiceId?: string) {
     setPreviewLoading(true)
     try {
       const res = await fetch("/api/ai-assistant/voice-preview", {
@@ -305,8 +308,8 @@ export function AiIntakeFlowPanel({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: line,
-          voice: aiAdvanced.telnyxVoice.trim() || undefined,
+          text,
+          voice: voiceId?.trim() || undefined,
         }),
       })
       const data = (await res.json().catch(() => null)) as
@@ -333,9 +336,8 @@ export function AiIntakeFlowPanel({
           })
           return
         }
-        // No toast here — Telnyx HTTP TTS is often unavailable; the short note under “Play preview” explains browser vs phone.
         window.speechSynthesis.cancel()
-        const utter = new SpeechSynthesisUtterance(line)
+        const utter = new SpeechSynthesisUtterance(text)
         utter.lang = "en-US"
         utter.rate = 0.95
         window.speechSynthesis.speak(utter)
@@ -367,6 +369,17 @@ export function AiIntakeFlowPanel({
     } finally {
       setPreviewLoading(false)
     }
+  }
+
+  /** Preview the opening-line text with the Speaking voice field (or platform default). */
+  async function playVoicePreview() {
+    const line = aiIntake.busyGreeting.trim() || DEFAULT_BUSY_GREETING_LOCKSMITH
+    await runVoicePreview(line, aiAdvanced.telnyxVoice.trim() || undefined)
+  }
+
+  /** Preview one catalog voice with a fixed sample sentence so you can compare voices. */
+  async function playCatalogVoiceSample(voiceId: string) {
+    await runVoicePreview(VOICE_CATALOG_SAMPLE_LINE, voiceId)
   }
 
   if (loading) {
@@ -651,6 +664,45 @@ export function AiIntakeFlowPanel({
                   <option key={v.id} value={v.id} label={v.label} />
                 ))}
               </datalist>
+              {!catalogLoading && voiceOptions.length > 0 ? (
+                <div className="mt-2 space-y-1.5 rounded-xl border border-border/60 bg-secondary/30 p-2">
+                  <p className="text-[9px] font-medium text-muted-foreground">
+                    Review voices — same sample line for each (Telnyx audio when API allows; else browser).
+                  </p>
+                  <ul className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                    {voiceOptions.slice(0, 50).map((v) => (
+                      <li
+                        key={v.id}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-card/60 px-2 py-1.5 text-[10px]"
+                      >
+                        <span className="min-w-0 truncate font-mono text-[9px] text-foreground" title={v.id}>
+                          {v.label || v.id}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={previewLoading}
+                            onClick={() => void playCatalogVoiceSample(v.id)}
+                            className="rounded-md border border-primary/35 bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary hover:bg-primary/15 disabled:opacity-50"
+                          >
+                            Sample
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAiAdvanced((p) => ({ ...p, telnyxVoice: v.id }))}
+                            className="rounded-md border border-border/70 px-2 py-0.5 text-[9px] font-semibold text-muted-foreground hover:bg-muted/50"
+                          >
+                            Use
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {voiceOptions.length > 50 ? (
+                    <p className="text-[9px] text-muted-foreground">Showing first 50 — type in the box to find more.</p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             {!catalogLoading && modelOptions.length === 0 && voiceOptions.length === 0 && !catalogError ? (
               <p className="text-[10px] text-muted-foreground">

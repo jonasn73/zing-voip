@@ -253,11 +253,20 @@ export function AiIntakeFlowPanel({
         typeof (data as { telnyxSyncError?: unknown }).telnyxSyncError === "string"
           ? String((data as { telnyxSyncError: string }).telnyxSyncError).trim()
           : ""
+      const recreated = Boolean((data as { telnyxAssistantRecreated?: unknown }).telnyxAssistantRecreated)
       if (syncErr) {
         toast({
           title: "Saved locally — Telnyx sync failed",
           description: `${syncErr} Fix the error, then Save again before testing calls.`,
           variant: "destructive",
+        })
+      } else if (recreated) {
+        toast({
+          title: "Saved — new assistant linked",
+          description: String(
+            data.message ||
+              "Telnyx no longer had your old assistant; we created a new one. Try a test call."
+          ),
         })
       } else {
         toast({

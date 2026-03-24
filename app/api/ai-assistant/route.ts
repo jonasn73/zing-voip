@@ -17,7 +17,7 @@ import {
 import { normalizeIntakeConfig, type AiIntakeConfig } from "@/lib/ai-intake-defaults"
 import {
   mergeIntakeConfigForAi,
-  syncTelnyxAssistantFromIntake,
+  syncTelnyxAssistantFromIntakeOrRecover,
   ensureTelnyxVoiceAiAssistant,
 } from "@/lib/telnyx-ai-assistant-lifecycle"
 
@@ -173,13 +173,13 @@ export async function PATCH(req: NextRequest) {
     const fresh = await getUser(userId)
     const linked = fresh?.telnyx_ai_assistant_id?.trim()
     let telnyxSyncError: string | null = null
+    let telnyxAssistantRecreated = false
     if (linked && (hasIntake || hasGreeting || (assistantIdSent && Boolean(telnyxAiAssistantId.trim())))) {
-      try {
-        await syncTelnyxAssistantFromIntake(userId)
-      } catch (e) {
-        console.error("[PATCH /api/ai-assistant] Telnyx assistant sync failed:", e)
-        telnyxSyncError =
-          e instanceof Error && e.message.trim() ? e.message.trim() : "Telnyx rejected the assistant update."
+      const syncResult = await syncTelnyxAssistantFromIntakeOrRecover(userId)
+      telnyxSyncError = syncResult.error
+      if (!syncResult.error && syncResult.recreatedAssistant) telnyxAssistantRecreated = true
+      if (syncResult.error) {
+        console.error("[PATCH /api/ai-assistant] Telnyx assistant sync failed:", syncResult.error)
       }
     }
 
@@ -187,9 +187,12 @@ export async function PATCH(req: NextRequest) {
       success: true,
       message: telnyxSyncError
         ? "Saved in Zing — Telnyx did not confirm the assistant update (see telnyxSyncError)."
-        : "Saved.",
+        : telnyxAssistantRecreated
+          ? "Saved. Your old assistant was missing in Telnyx — we created a new one and synced your call flow."
+          : "Saved.",
       provider: "telnyx",
       telnyxSyncError,
+      telnyxAssistantRecreated: Boolean(!telnyxSyncError && telnyxAssistantRecreated),
     })
   } catch (error) {
     console.error("[PATCH /api/ai-assistant] failed:", error)

@@ -76,6 +76,67 @@ export async function syncTelnyxAssistantFromIntake(userId: string): Promise<voi
   await telnyxUpdateAssistant(aid, updates)
 }
 
+/** True when Telnyx says the assistant id no longer exists (stale DB link). */
+function isAssistantNotFoundError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase()
+  return (
+    msg.includes("404") ||
+    msg.includes("not found") ||
+    msg.includes("10005") ||
+    msg.includes("resource not found")
+  )
+}
+
+export type SyncTelnyxAssistantFromIntakeResult = {
+  /** Null when sync succeeded. */
+  error: string | null
+  /** True when we cleared a missing id and created a new Telnyx assistant. */
+  recreatedAssistant: boolean
+}
+
+/**
+ * Push intake to Telnyx. If the stored assistant id returns 404, clear it and create a new assistant
+ * when routing fallback is `ai`, then sync again.
+ */
+export async function syncTelnyxAssistantFromIntakeOrRecover(userId: string): Promise<SyncTelnyxAssistantFromIntakeResult> {
+  try {
+    await syncTelnyxAssistantFromIntake(userId)
+    return { error: null, recreatedAssistant: false }
+  } catch (e) {
+    if (!isAssistantNotFoundError(e)) {
+      return {
+        error: e instanceof Error && e.message.trim() ? e.message.trim() : "Telnyx rejected the assistant update.",
+        recreatedAssistant: false,
+      }
+    }
+    await updateUser(userId, { telnyx_ai_assistant_id: null })
+    const rc = await getRoutingConfig(userId)
+    if (rc?.fallback_type !== "ai") {
+      return {
+        error:
+          "The Voice AI assistant saved in Zing no longer exists in Telnyx (404). Turn on AI fallback in Routing again, or paste a valid assistant id under Support.",
+        recreatedAssistant: false,
+      }
+    }
+    const ensured = await ensureTelnyxVoiceAiAssistant(userId)
+    if (!ensured.linked || !ensured.assistantId) {
+      return {
+        error: ensured.error || "Could not create a replacement Telnyx assistant.",
+        recreatedAssistant: false,
+      }
+    }
+    try {
+      await syncTelnyxAssistantFromIntake(userId)
+      return { error: null, recreatedAssistant: true }
+    } catch (e2) {
+      return {
+        error: e2 instanceof Error && e2.message.trim() ? e2.message.trim() : String(e2),
+        recreatedAssistant: true,
+      }
+    }
+  }
+}
+
 export type EnsureTelnyxVoiceAiOptions = {
   intake?: Record<string, unknown>
   greeting?: string

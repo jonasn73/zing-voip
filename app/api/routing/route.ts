@@ -11,7 +11,7 @@ import { getUser, getRoutingConfig, getRoutingConfigForNumber, getAllRoutingConf
 import type { UpdateRoutingRequest } from "@/lib/types"
 import {
   ensureTelnyxVoiceAiAssistant,
-  syncTelnyxAssistantFromIntake,
+  syncTelnyxAssistantFromIntakeOrRecover,
   type EnsureTelnyxVoiceAiResult,
 } from "@/lib/telnyx-ai-assistant-lifecycle"
 
@@ -83,11 +83,8 @@ export async function PUT(req: NextRequest) {
       if (typeof body.ai_greeting === "string") {
         const u = await getUser(userId)
         if (u?.telnyx_ai_assistant_id?.trim()) {
-          try {
-            await syncTelnyxAssistantFromIntake(userId)
-          } catch (e) {
-            console.error("[PUT /api/routing] Telnyx sync after greeting:", e)
-          }
+          const syncR = await syncTelnyxAssistantFromIntakeOrRecover(userId)
+          if (syncR.error) console.error("[PUT /api/routing] Telnyx sync after greeting:", syncR.error)
         }
       }
     }

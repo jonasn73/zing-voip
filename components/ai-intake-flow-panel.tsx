@@ -249,10 +249,22 @@ export function AiIntakeFlowPanel({
         toast({ title: "Could not save", description: String(data.error || res.statusText), variant: "destructive" })
         return
       }
-      toast({
-        title: "Saved",
-        description: String(data.message || "Call flow and intake settings updated."),
-      })
+      const syncErr =
+        typeof (data as { telnyxSyncError?: unknown }).telnyxSyncError === "string"
+          ? String((data as { telnyxSyncError: string }).telnyxSyncError).trim()
+          : ""
+      if (syncErr) {
+        toast({
+          title: "Saved locally — Telnyx sync failed",
+          description: `${syncErr} Fix the error, then Save again before testing calls.`,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Saved",
+          description: String(data.message || "Call flow and intake settings updated."),
+        })
+      }
       const g = aiIntake.busyGreeting.trim()
       if (g) onBusyGreetingSavedToRouting?.(g)
       if (telnyxAssistantId.trim()) {

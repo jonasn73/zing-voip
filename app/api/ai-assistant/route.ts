@@ -172,18 +172,24 @@ export async function PATCH(req: NextRequest) {
 
     const fresh = await getUser(userId)
     const linked = fresh?.telnyx_ai_assistant_id?.trim()
+    let telnyxSyncError: string | null = null
     if (linked && (hasIntake || hasGreeting || (assistantIdSent && Boolean(telnyxAiAssistantId.trim())))) {
       try {
         await syncTelnyxAssistantFromIntake(userId)
       } catch (e) {
         console.error("[PATCH /api/ai-assistant] Telnyx assistant sync failed:", e)
+        telnyxSyncError =
+          e instanceof Error && e.message.trim() ? e.message.trim() : "Telnyx rejected the assistant update."
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: "Saved.",
+      message: telnyxSyncError
+        ? "Saved in Zing — Telnyx did not confirm the assistant update (see telnyxSyncError)."
+        : "Saved.",
       provider: "telnyx",
+      telnyxSyncError,
     })
   } catch (error) {
     console.error("[PATCH /api/ai-assistant] failed:", error)

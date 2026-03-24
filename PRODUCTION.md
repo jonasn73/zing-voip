@@ -19,7 +19,7 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `SESSION_SECRET`   | Random string for signing cookies (e.g. run `openssl rand -base64 32` and paste). |
 | `TELNYX_API_KEY`   | Your Telnyx API key (for numbers and voice). |
 | `NEXT_PUBLIC_APP_URL` | Your live site base URL (e.g. `https://your-app.vercel.app`) — used for Telnyx voice webhooks. |
-| `TELNYX_AI_ASSISTANT_ID` | Optional **fallback** only: shared assistant id if **creating** an assistant via API fails (prefer fixing API access). |
+| `TELNYX_AI_ASSISTANT_ID` | Optional **fallback** only if **creating** an assistant via API fails. **Remove it** (or update it) if that id was **deleted** in Telnyx — otherwise Save call flow can keep re-linking a **404** assistant. Prefer leaving unset so Zing creates per-user assistants. |
 | `TELNYX_AI_DEFAULT_MODEL` | Optional: LLM id for auto-created assistants (default `openai/gpt-4o`). List: Telnyx **GET /v2/ai/models**. Avoid `openai/gpt-4o-mini` if Telnyx says it is not available for AI assistants. |
 | `TELNYX_AI_VOICE` | Optional: Telnyx TTS voice string for new assistants (default `Telnyx.KokoroTTS.af_heart`). |
 | `TELNYX_MESSAGING_FROM_E164` | Optional: your Telnyx number in E.164, enabled for **outbound SMS** — sends **AI lead** alerts to the owner’s main line. |

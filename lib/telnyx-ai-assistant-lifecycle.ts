@@ -118,7 +118,7 @@ export async function syncTelnyxAssistantFromIntakeOrRecover(userId: string): Pr
         recreatedAssistant: false,
       }
     }
-    const ensured = await ensureTelnyxVoiceAiAssistant(userId)
+    const ensured = await ensureTelnyxVoiceAiAssistant(userId, { skipEnvAssistantFallback: true })
     if (!ensured.linked || !ensured.assistantId) {
       return {
         error: ensured.error || "Could not create a replacement Telnyx assistant.",
@@ -141,6 +141,11 @@ export type EnsureTelnyxVoiceAiOptions = {
   intake?: Record<string, unknown>
   greeting?: string
   telnyxAiAssistantId?: string
+  /**
+   * When true, Telnyx create failure will **not** fall back to `TELNYX_AI_ASSISTANT_ID` env.
+   * Used after we detect a stale assistant (404) so we never re-link the same dead id.
+   */
+  skipEnvAssistantFallback?: boolean
 }
 
 /**
@@ -207,7 +212,8 @@ export async function ensureTelnyxVoiceAiAssistant(
     assistantId = created.id
     provisioned = true
   } catch (e) {
-    if (fromEnv) {
+    const allowEnv = Boolean(fromEnv) && opts?.skipEnvAssistantFallback !== true
+    if (allowEnv) {
       assistantId = fromEnv
       console.error("[ensureTelnyxVoiceAiAssistant] Telnyx create failed, using TELNYX_AI_ASSISTANT_ID:", e)
     } else {

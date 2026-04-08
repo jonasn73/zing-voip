@@ -850,9 +850,16 @@ export function SettingsPage() {
           ) : null}
           {portingNumbers.map((p) => {
             const isComplete = p.status === "ported"
-            const isError = p.status === "exception"
+            const isError =
+              p.status === "exception" || p.status === "rejected" || p.status === "failed"
             const isCancelled = p.status === "cancelled" || p.status === "cancel-pending"
-            const canCancel = !isComplete && p.status !== "in-process" && p.status !== "submitted" && p.status !== "port-activating"
+            const canCancel =
+              !isComplete &&
+              !isError &&
+              !isCancelled &&
+              p.status !== "in-process" &&
+              p.status !== "submitted" &&
+              p.status !== "port-activating"
             const badgeColor = isComplete ? "bg-success/10 text-success" : isError ? "bg-destructive/10 text-destructive" : isCancelled ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning"
             const iconBg = isComplete ? "bg-success/10" : isError ? "bg-destructive/10" : "bg-warning/10"
             const iconColor = isComplete ? "text-success" : isError ? "text-destructive" : "text-warning"

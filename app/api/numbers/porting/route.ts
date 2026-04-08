@@ -25,23 +25,34 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Processing",
   "in-process": "Transfer in progress",
   submitted: "Transfer in progress",
-  exception: "Action needed",
+  exception: "Rejected or action needed",
   ported: "Completed",
   cancelled: "Cancelled",
   "cancel-pending": "Cancellation pending",
   "port-activating": "Activating",
+  rejected: "Rejected by carrier",
+  failed: "Transfer failed",
 }
 
+/**
+ * Higher = “more final / further along” for picking **one** row per phone number.
+ * **Critical:** `draft` must stay **below** `cancelled` / `exception` — otherwise a stale
+ * draft order hides the real outcome when Telnyx returns multiple orders per number.
+ */
 const STATUS_PRIORITY: Record<string, number> = {
-  ported: 6,
-  "port-activating": 5,
-  "in-process": 4,
-  submitted: 3,
-  exception: 2,
-  draft: 1,
-  cancelled: 0,
-  "cancel-pending": 0,
+  ported: 100,
+  "port-activating": 85,
+  "in-process": 70,
+  submitted: 65,
+  exception: 55,
+  cancelled: 50,
+  "cancel-pending": 45,
+  rejected: 52,
+  failed: 48,
+  draft: 10,
 }
+
+const DEFAULT_PRIORITY_UNKNOWN = 30
 
 export async function GET(req: NextRequest) {
   // Get current user so we can save completed ported numbers to their account
@@ -71,8 +82,10 @@ export async function GET(req: NextRequest) {
 
     for (const order of orders) {
       const id = order.id ?? ""
-      const rawStatus = order.porting_order_status ?? "draft"
-      const statusLabel = STATUS_LABELS[rawStatus] || rawStatus
+      const rawStatus = String(order.porting_order_status ?? "draft")
+        .toLowerCase()
+        .trim()
+      const statusLabel = STATUS_LABELS[rawStatus] || rawStatus.replace(/-/g, " ")
       const createdAt = order.created_at ?? ""
       const customerRef = order.customer_reference ?? ""
       const numbers: { phone_number?: string }[] = order.phone_numbers ?? []
@@ -83,19 +96,29 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const bestPerNumber = new Map<string, typeof allEntries[0]>()
+    const bestPerNumber = new Map<string, (typeof allEntries)[0]>()
+    function priorityOf(status: string): number {
+      return STATUS_PRIORITY[status] ?? DEFAULT_PRIORITY_UNKNOWN
+    }
+    function pickBetter(a: (typeof allEntries)[0], b: (typeof allEntries)[0]): (typeof allEntries)[0] {
+      const pa = priorityOf(a.status)
+      const pb = priorityOf(b.status)
+      if (pa !== pb) return pa > pb ? a : b
+      const ta = new Date(a.createdAt).getTime()
+      const tb = new Date(b.createdAt).getTime()
+      return ta >= tb ? a : b
+    }
     for (const entry of allEntries) {
       const existing = bestPerNumber.get(entry.number)
-      const entryPri = STATUS_PRIORITY[entry.status] ?? 1
-      const existingPri = existing ? (STATUS_PRIORITY[existing.status] ?? 1) : -1
-
-      if (!existing || entryPri > existingPri) {
-        if (existing && existing.status === "draft" && existing.id !== entry.id) {
-          staleDraftIds.push(existing.id)
-        }
+      if (!existing) {
         bestPerNumber.set(entry.number, entry)
-      } else if (entry.status === "draft" && entry.id !== existing.id) {
-        staleDraftIds.push(entry.id)
+        continue
+      }
+      const winner = pickBetter(existing, entry)
+      bestPerNumber.set(entry.number, winner)
+      const loser = winner.id === existing.id ? entry : existing
+      if (loser.status === "draft" && loser.id !== winner.id) {
+        staleDraftIds.push(loser.id)
       }
     }
 
@@ -150,9 +173,15 @@ export async function GET(req: NextRequest) {
       })()
     }
 
-    const list = [...bestPerNumber.values()]
-      .filter((e) => e.status !== "cancelled" && e.status !== "cancel-pending")
-      .map(({ id, number, status, statusLabel, createdAt }) => ({ id, number, status, statusLabel, createdAt }))
+    // Show cancelled / rejected rows so users see the real outcome (do not hide them
+    // and leave a stale draft as the only visible row).
+    const list = [...bestPerNumber.values()].map(({ id, number, status, statusLabel, createdAt }) => ({
+      id,
+      number,
+      status,
+      statusLabel,
+      createdAt,
+    }))
 
     return NextResponse.json({ porting: list })
   } catch (error: unknown) {

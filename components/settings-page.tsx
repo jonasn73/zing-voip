@@ -127,6 +127,11 @@ export function SettingsPage() {
   const [buyLoading, setBuyLoading] = useState(false)
   const [portingNumbers, setPortingNumbers] = useState<{ id: string; number: string; status: string; statusLabel?: string }[]>([])
   const [portingLoading, setPortingLoading] = useState(false)
+  /** Telnyx porting webhook → in-app (see `016-porting-notifications.sql`). */
+  const [portingNotifs, setPortingNotifs] = useState<
+    { id: string; title: string; body: string; created_at: string; read_at: string | null }[]
+  >([])
+  const [portingNotifsUnread, setPortingNotifsUnread] = useState(0)
   const [portSubmitLoading, setPortSubmitLoading] = useState(false)
   const [portError, setPortError] = useState<string | null>(null)
   // Port multi-step: 1 = number, 2 = account info, 3 = address
@@ -232,18 +237,47 @@ export function SettingsPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Load porting orders so dashboard shows progress
+  // Load porting orders + in-app porting notifications (carrier / Telnyx updates)
   useEffect(() => {
     let cancelled = false
     setPortingLoading(true)
-    fetch("/api/numbers/porting", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : { porting: [] }))
-      .then((data) => {
-        if (!cancelled && Array.isArray(data.porting)) setPortingNumbers(data.porting)
+    Promise.all([
+      fetch("/api/numbers/porting", { credentials: "include" }).then((res) =>
+        res.ok ? res.json() : { porting: [] }
+      ),
+      fetch("/api/notifications/porting", { credentials: "include" }).then((res) =>
+        res.ok ? res.json() : { data: { notifications: [], unreadCount: 0 } }
+      ),
+    ])
+      .then(([portData, notifRes]) => {
+        if (cancelled) return
+        if (Array.isArray(portData.porting)) setPortingNumbers(portData.porting)
+        const n = notifRes?.data?.notifications
+        if (Array.isArray(n)) {
+          setPortingNotifs(
+            n.map((x: Record<string, unknown>) => ({
+              id: String(x.id ?? ""),
+              title: String(x.title ?? "Update"),
+              body: String(x.body ?? ""),
+              created_at: String(x.created_at ?? ""),
+              read_at: x.read_at != null ? String(x.read_at) : null,
+            }))
+          )
+        }
+        setPortingNotifsUnread(Number(notifRes?.data?.unreadCount ?? 0))
       })
-      .catch(() => { if (!cancelled) setPortingNumbers([]) })
-      .finally(() => { if (!cancelled) setPortingLoading(false) })
-    return () => { cancelled = true }
+      .catch(() => {
+        if (!cancelled) {
+          setPortingNumbers([])
+          setPortingNotifs([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPortingLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const [availableNumbers, setAvailableNumbers] = useState<{ number: string; friendly: string; type: string; price: string }[]>([])
@@ -376,9 +410,26 @@ export function SettingsPage() {
         title: "Port request submitted",
         description: "We started your transfer and will keep status updated here.",
       })
-      const portingRes = await fetch("/api/numbers/porting", { credentials: "include" })
+      const [portingRes, notifRes] = await Promise.all([
+        fetch("/api/numbers/porting", { credentials: "include" }),
+        fetch("/api/notifications/porting", { credentials: "include" }),
+      ])
       const portingData = await portingRes.json()
+      const notifData = await notifRes.json().catch(() => ({}))
       if (Array.isArray(portingData.porting)) setPortingNumbers(portingData.porting)
+      const n = notifData?.data?.notifications
+      if (Array.isArray(n)) {
+        setPortingNotifs(
+          n.map((x: Record<string, unknown>) => ({
+            id: String(x.id ?? ""),
+            title: String(x.title ?? "Update"),
+            body: String(x.body ?? ""),
+            created_at: String(x.created_at ?? ""),
+            read_at: x.read_at != null ? String(x.read_at) : null,
+          }))
+        )
+      }
+      setPortingNotifsUnread(Number(notifData?.data?.unreadCount ?? 0))
     } catch {
       setPortError("Failed to start port. Try again.")
     } finally {
@@ -401,6 +452,31 @@ export function SettingsPage() {
       setPortInvoiceBase64(base64)
     }
     reader.readAsDataURL(file)
+  }
+
+  function formatPortingNotifTime(iso: string) {
+    try {
+      const d = new Date(iso)
+      const diff = Date.now() - d.getTime()
+      const days = Math.floor(diff / 86_400_000)
+      if (days === 0) return "Today"
+      if (days === 1) return "Yesterday"
+      if (days < 14) return `${days} days ago`
+      return d.toLocaleDateString()
+    } catch {
+      return ""
+    }
+  }
+
+  async function markAllPortingNotifsRead() {
+    await fetch("/api/notifications/porting", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markAllRead: true }),
+    })
+    setPortingNotifs((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })))
+    setPortingNotifsUnread(0)
   }
 
   function resetPortForm() {
@@ -843,6 +919,49 @@ export function SettingsPage() {
               </Wrapper>
             )
           })}
+
+          {portingNotifs.length > 0 ? (
+            <div className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Transfer updates</p>
+                    <p className="text-xs text-muted-foreground">
+                      Messages from carriers and Telnyx about your port — same type of updates as the Telnyx dashboard inbox, shown here in Zing.
+                    </p>
+                  </div>
+                </div>
+                {portingNotifsUnread > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => void markAllPortingNotifsRead()}
+                    className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/20"
+                  >
+                    Mark all read
+                  </button>
+                ) : null}
+              </div>
+              <ul className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+                {portingNotifs.slice(0, 15).map((n) => (
+                  <li
+                    key={n.id}
+                    className={cn(
+                      "rounded-xl border border-border/50 bg-background/60 px-3 py-2 text-xs",
+                      !n.read_at && "border-primary/25 bg-primary/[0.04]"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium text-foreground">{n.title}</span>
+                      {!n.read_at ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden /> : null}
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{n.body}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{formatPortingNotifTime(n.created_at)}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           <button
             onClick={() => { setShowNumberModal(true); setNumberTab("buy"); setBuyStep("search"); setSelectedAreaCode(""); resetPortForm() }}

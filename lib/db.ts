@@ -12,6 +12,7 @@ import type {
   User,
   CallLog,
   PhoneNumber,
+  PortingNotification,
 } from "./types"
 import { defaultProfileFromUserIndustry } from "./business-industries"
 
@@ -1559,6 +1560,126 @@ export async function bumpTelnyxAiIncomingHitCount(callSid: string): Promise<num
         return 1
       }
     }
+    throw e
+  }
+}
+
+/**
+ * Insert a Telnyx porting webhook event for the user (idempotent on `telnyx_event_id`).
+ * Returns `true` if a new row was inserted.
+ */
+export async function insertPortingNotificationIfNew(params: {
+  userId: string
+  telnyxEventId: string
+  portingOrderId: string | null
+  eventType: string
+  title: string
+  body: string
+  rawPayload: unknown
+}): Promise<boolean> {
+  const sql = getSql()
+  const rawJson = JSON.stringify(params.rawPayload ?? null)
+  try {
+    const rows = await sql`
+      INSERT INTO porting_notifications (
+        user_id, telnyx_event_id, porting_order_id, event_type, title, body, raw_payload
+      ) VALUES (
+        ${params.userId},
+        ${params.telnyxEventId},
+        ${params.portingOrderId},
+        ${params.eventType},
+        ${params.title},
+        ${params.body},
+        ${rawJson}::jsonb
+      )
+      ON CONFLICT (telnyx_event_id) DO NOTHING
+      RETURNING id
+    `
+    return Array.isArray(rows) && rows.length > 0
+  } catch (e) {
+    if (isUndefinedRelationError(e, "porting_notifications")) {
+      console.warn("[db] porting_notifications missing — run scripts/016-porting-notifications.sql in Neon.")
+      return false
+    }
+    throw e
+  }
+}
+
+export async function listPortingNotifications(
+  userId: string,
+  limit: number = 50
+): Promise<PortingNotification[]> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT id, user_id, telnyx_event_id, porting_order_id, event_type, title, body, read_at, created_at
+      FROM porting_notifications
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+      LIMIT ${Math.min(Math.max(limit, 1), 100)}
+    `
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id),
+      user_id: String(row.user_id),
+      telnyx_event_id: String(row.telnyx_event_id),
+      porting_order_id: row.porting_order_id != null ? String(row.porting_order_id) : null,
+      event_type: String(row.event_type ?? ""),
+      title: String(row.title ?? ""),
+      body: String(row.body ?? ""),
+      read_at: row.read_at instanceof Date ? row.read_at.toISOString() : row.read_at != null ? String(row.read_at) : null,
+      created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ""),
+    }))
+  } catch (e) {
+    if (isUndefinedRelationError(e, "porting_notifications")) {
+      console.warn("[db] porting_notifications missing — run scripts/016-porting-notifications.sql in Neon.")
+      return []
+    }
+    throw e
+  }
+}
+
+export async function countUnreadPortingNotifications(userId: string): Promise<number> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT count(*)::int AS c FROM porting_notifications
+      WHERE user_id = ${userId} AND read_at IS NULL
+    `
+    const row = rows[0] as { c?: number } | undefined
+    return row?.c != null ? Number(row.c) : 0
+  } catch (e) {
+    if (isUndefinedRelationError(e, "porting_notifications")) return 0
+    throw e
+  }
+}
+
+export async function markPortingNotificationsRead(userId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const sql = getSql()
+  try {
+    for (const id of ids) {
+      await sql`
+        UPDATE porting_notifications
+        SET read_at = now()
+        WHERE user_id = ${userId} AND id = ${id}
+      `
+    }
+  } catch (e) {
+    if (isUndefinedRelationError(e, "porting_notifications")) return
+    throw e
+  }
+}
+
+export async function markAllPortingNotificationsRead(userId: string): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE porting_notifications
+      SET read_at = now()
+      WHERE user_id = ${userId} AND read_at IS NULL
+    `
+  } catch (e) {
+    if (isUndefinedRelationError(e, "porting_notifications")) return
     throw e
   }
 }

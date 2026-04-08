@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
+import { getAppUrl } from "@/lib/telnyx"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
 
@@ -194,6 +195,21 @@ export async function POST(req: NextRequest) {
       }),
     })
     console.log(`[Zing] End-user info filled for order ${orderId}`)
+
+    // Telnyx POSTs port-in events (status changes, comments) to this URL so users see updates in Zing, not only in the Telnyx dashboard inbox.
+    const portingWebhookUrl = `${getAppUrl().replace(/\/$/, "")}/api/webhooks/telnyx/porting`
+    try {
+      await telnyxFetch(`/porting_orders/${orderId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ webhook_url: portingWebhookUrl }),
+      })
+      console.log(`[Zing] Porting webhook_url set for order ${orderId}`)
+    } catch (whErr) {
+      console.warn(
+        `[Zing] Could not set webhook_url on port order ${orderId} (check Telnyx API / plan):`,
+        whErr instanceof Error ? whErr.message : whErr
+      )
+    }
 
     // ── Step 3b: Set FOC date (activation_settings, separate PATCH) ──
     // FOC = Firm Order Commitment — the requested date for the port to go live.

@@ -69,6 +69,19 @@ export interface PhoneNumberRoutingSummary {
   ai_fallback_live: boolean
 }
 
+/** In-app row from Telnyx porting webhooks (`016-porting-notifications.sql`). */
+export interface PortingNotification {
+  id: string
+  user_id: string
+  telnyx_event_id: string
+  porting_order_id: string | null
+  event_type: string
+  title: string
+  body: string
+  read_at: string | null
+  created_at: string
+}
+
 // --- Call Logs ---
 export type CallType = "incoming" | "outgoing" | "missed" | "voicemail"
 

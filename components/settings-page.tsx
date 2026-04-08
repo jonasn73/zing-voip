@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { displayPortingMessageBody } from "@/lib/porting-display"
 import { useToast } from "@/hooks/use-toast"
 import { IconSurface } from "@/components/ui/icon-surface"
 import { SIGNUP_INDUSTRY_OPTIONS } from "@/lib/business-industries"
@@ -539,7 +540,7 @@ export function SettingsPage() {
       return {
         label: "AI fallback live",
         tone: "success",
-        title: "This line uses AI after no answer and your Telnyx assistant is linked.",
+        title: "This line uses AI after no answer and your voice assistant is connected.",
       }
     }
     if (fb === "ai" && !telnyxAssistantLinked) {
@@ -797,9 +798,9 @@ export function SettingsPage() {
             Business numbers
           </h3>
           <p className="text-xs text-muted-foreground">
-            Numbers your customers call (buy or port). Calls ring your main line or receptionist. For ports in
-            progress, use <span className="font-medium text-foreground">Messages</span> to read and reply to Telnyx
-            (PIN fixes, deadlines) — same thread as in Telnyx Mission Control.
+            Numbers your customers call (buy or port). Calls ring your main line or receptionist. For transfers in
+            progress, use <span className="font-medium text-foreground">Messages</span> for updates from the porting team
+            (PIN fixes, deadlines) and to send replies.
           </p>
         </div>
         <div className="flex flex-col gap-2">
@@ -965,7 +966,7 @@ export function SettingsPage() {
                   <div>
                     <p className="text-sm font-semibold text-foreground">Transfer updates</p>
                     <p className="text-xs text-muted-foreground">
-                      Messages from carriers and Telnyx about your port — same type of updates as the Telnyx dashboard inbox, shown here in Zing.
+                      Updates from carriers and the porting team about your transfer — we surface them here so you do not miss deadlines or PIN requests.
                     </p>
                   </div>
                 </div>
@@ -989,10 +990,10 @@ export function SettingsPage() {
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-foreground">{n.title}</span>
+                      <span className="font-medium text-foreground">{displayPortingMessageBody(n.title)}</span>
                       {!n.read_at ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden /> : null}
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{n.body}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{displayPortingMessageBody(n.body)}</p>
                     <p className="mt-1 text-[10px] text-muted-foreground">{formatPortingNotifTime(n.created_at)}</p>
                   </li>
                 ))}

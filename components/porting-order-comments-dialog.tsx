@@ -1,9 +1,8 @@
 "use client"
 
 // ============================================
-// Telnyx porting “Communications” — read + reply in Zing
+// Number transfer thread — read + reply (vendor-backed; UI stays Zing-branded)
 // ============================================
-// Same thread as Mission Control → port order → Communications.
 
 import { useState, useEffect } from "react"
 import {
@@ -16,13 +15,14 @@ import {
 import { Button } from "@/components/ui/button"
 import { Loader2, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { displayPortingMessageBody } from "@/lib/porting-display"
 
 type CommentRow = { id: string; body: string; user_type: string; created_at: string }
 
 function labelForUserType(t: string): string {
-  if (t === "admin") return "Telnyx"
+  if (t === "admin") return "Porting team"
   if (t === "user") return "You"
-  if (t === "system") return "System"
+  if (t === "system") return "Notice"
   return t
 }
 
@@ -106,8 +106,8 @@ export function PortingOrderCommentsDialog({
             Transfer messages
           </DialogTitle>
           <DialogDescription className="text-left text-xs">
-            {phoneLabel} — same thread as Telnyx Mission Control → Communications. Reply here so the porting team
-            gets your PIN updates and questions without logging into Telnyx.
+            {phoneLabel} — updates from the people handling your transfer (PIN, deadlines, carrier questions). Replies
+            you send here are delivered to that team through Zing.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -141,7 +141,7 @@ export function PortingOrderCommentsDialog({
                         : ""}
                     </span>
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap text-foreground">{c.body}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-foreground">{displayPortingMessageBody(c.body)}</p>
                 </li>
               ))}
             </ul>
@@ -151,7 +151,7 @@ export function PortingOrderCommentsDialog({
         {allowReply ? (
           <div className="border-t border-border/70 p-4">
             <label className="sr-only" htmlFor="porting-reply">
-              Reply to Telnyx
+              Reply to porting team
             </label>
             <textarea
               id="porting-reply"
@@ -168,15 +168,14 @@ export function PortingOrderCommentsDialog({
                   Sending…
                 </>
               ) : (
-                "Send to Telnyx"
+                "Send reply"
               )}
             </Button>
           </div>
         ) : (
           <p className="border-t border-border/70 px-4 py-3 text-center text-xs text-muted-foreground">
-            No reply box here because this transfer is <span className="font-medium text-foreground">finished or cancelled</span> on
-            Telnyx — they usually stop accepting comments on that order. You can still read the thread above. If you need to
-            continue, open Telnyx Mission Control and submit a new port request when that is an option.
+            No reply box because this transfer is <span className="font-medium text-foreground">finished or cancelled</span>. You can
+            still read the messages above. To move a number again, start a new transfer from Settings when you are ready.
           </p>
         )}
       </DialogContent>

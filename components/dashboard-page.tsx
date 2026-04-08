@@ -1008,7 +1008,7 @@ export function DashboardPage() {
         </div>
         <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
           These four tiles count your most recent call-log rows (up to 100). If you still see all zeros after real calls,
-          your business line may not be hitting Zing (check Telnyx → number → voice URL) or the DB insert failed (see
+          your business line may not be hitting Zing (check number voice settings in your carrier or Zing setup) or the DB insert failed (see
           server logs for <span className="font-mono text-[10px]">Call log insert failed</span>).
         </p>
         {opsLoadError ? (

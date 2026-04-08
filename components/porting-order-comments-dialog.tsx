@@ -174,8 +174,9 @@ export function PortingOrderCommentsDialog({
           </div>
         ) : (
           <p className="border-t border-border/70 px-4 py-3 text-center text-xs text-muted-foreground">
-            This transfer is closed — you can read past messages but not reply. Submit a new port in Telnyx if
-            needed.
+            No reply box here because this transfer is <span className="font-medium text-foreground">finished or cancelled</span> on
+            Telnyx — they usually stop accepting comments on that order. You can still read the thread above. If you need to
+            continue, open Telnyx Mission Control and submit a new port request when that is an option.
           </p>
         )}
       </DialogContent>

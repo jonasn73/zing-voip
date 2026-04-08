@@ -908,10 +908,12 @@ export function SettingsPage() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
+                        // Reply whenever the order is still “open” on Telnyx — not finished or cancelled.
+                        // Do not treat exception/rejected/failed as read-only: those are often when Telnyx asks for PIN fixes.
                         setPortingMsgs({
                           id: p.id,
                           number: p.number,
-                          allowReply: !isComplete && !isCancelled && !isError,
+                          allowReply: !isComplete && !isCancelled,
                         })
                       }}
                       className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10"

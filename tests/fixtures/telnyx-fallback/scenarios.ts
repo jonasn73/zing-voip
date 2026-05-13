@@ -114,7 +114,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyContains: ["ai-bridge", "Redirect"],
       bodyNotContains: ["<Record"],
       contentType: "text/xml",
     },
@@ -177,7 +177,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["ai-bridge"],
+      bodyContains: ["ai-bridge", "Redirect"],
       bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
@@ -185,7 +185,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
   {
     id: "owner-ai-long-bridged-owner-hangup-ends-caller",
     description:
-      "Owner-first AI path: after a real PSTN bridge the caller should reach Voice AI (Say + Redirect to ai-bridge), not hang up",
+      "Owner-first AI path: after a real PSTN bridge the caller should reach Voice AI via silent Redirect to ai-bridge, not hang up",
     method: "POST",
     url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/owner-ai?callSid=CA_fixture_long&primary=owner&leg=owner-first",
     form: {
@@ -203,7 +203,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyContains: ["ai-bridge", "Redirect"],
       bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
@@ -229,7 +229,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyContains: ["ai-bridge", "Redirect"],
       bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
@@ -370,7 +370,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
   {
     id: "recv-ai-long-bridged-early-hangup",
     description:
-      "Receptionist-first AI: long bridged recv leg → hand caller to Voice AI (Say + Redirect to ai-bridge)",
+      "Receptionist-first AI: long bridged recv leg → hand caller to Voice AI via silent Redirect to ai-bridge",
     method: "POST",
     url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/recv-ai?callSid=CA_fixture_recv_long",
     form: {
@@ -393,7 +393,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyContains: ["ai-bridge", "Redirect"],
       bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
@@ -424,7 +424,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyContains: ["ai-bridge", "Redirect"],
       bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },

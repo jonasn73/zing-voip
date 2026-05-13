@@ -19,7 +19,10 @@ import {
   markTelnyxInboundDialCallerLegDone,
 } from "@/lib/db"
 import { normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
-import { buildSayThenRedirectToAiBridgeTeXML } from "@/lib/telnyx-ai-handoff"
+import {
+  buildRedirectOnlyToAiBridgeTeXML,
+  buildSayThenRedirectToAiBridgeTeXML,
+} from "@/lib/telnyx-ai-handoff"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 import {
   maybeLogTelnyxFallbackDiagnostic,
@@ -289,15 +292,21 @@ async function tryBuildAiAssistantResponse(args: {
         status: dialStatus || rawStatus || "ai-handoff",
       }).catch((e) => console.error("[Zing] Call log update (AI handoff):", e))
     }
+    const spokenDialFallbackHandoff =
+      process.env.ZING_AI_FALLBACK_SPOKEN_HANDOFF === "1" ||
+      process.env.ZING_AI_FALLBACK_SPOKEN_HANDOFF === "true"
+    const handoffXml = spokenDialFallbackHandoff
+      ? buildSayThenRedirectToAiBridgeTeXML(userId, callSid || undefined)
+      : buildRedirectOnlyToAiBridgeTeXML(userId, callSid || undefined)
     console.log(
       JSON.stringify({
         zing: "telnyx-ai-fallback",
         assistantIdLen: forTexml.length,
         texmlIdStartsWithAssistant: forTexml.toLowerCase().startsWith("assistant-"),
-        handoff: "say-then-redirect-ai-bridge",
+        handoff: spokenDialFallbackHandoff ? "say-then-redirect-ai-bridge" : "redirect-silent-ai-bridge",
       })
     )
-    return new NextResponse(buildSayThenRedirectToAiBridgeTeXML(userId, callSid || undefined), {
+    return new NextResponse(handoffXml, {
       headers: { "Content-Type": "text/xml" },
     })
   }

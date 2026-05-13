@@ -3,16 +3,21 @@ import { buildInboundLineWhisperPhrase, sanitizeWhisperPhrase } from "@/lib/inbo
 
 describe("buildInboundLineWhisperPhrase", () => {
   it("uses custom label when not Main Line", () => {
-    expect(buildInboundLineWhisperPhrase("Key Squad 502", "", "+15025199741")).toMatch(/Key Squad 502/)
+    const s = buildInboundLineWhisperPhrase("Key Squad 502", "", "+15025199741")
+    expect(s).toBe("Key Squad 502")
+    expect(s).not.toMatch(/Zing/i)
   })
 
   it("falls back to friendly name when label is Main Line", () => {
-    expect(buildInboundLineWhisperPhrase("Main Line", "(502) 519-9741", "+15025199741")).toMatch(/502/)
+    const s = buildInboundLineWhisperPhrase("Main Line", "(502) 519-9741", "+15025199741")
+    expect(s).toBe("(502) 519-9741")
+    expect(s).not.toMatch(/Zing/i)
   })
 
   it("uses last four digits when no label or friendly name", () => {
     const s = buildInboundLineWhisperPhrase("Main Line", "", "+15025199741")
     expect(s).toMatch(/9\s+7\s+4\s+1/)
+    expect(s).not.toMatch(/Zing/i)
   })
 })
 

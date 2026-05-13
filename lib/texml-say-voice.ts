@@ -48,3 +48,12 @@ export function texmlSayNatural(vr: InstanceType<typeof VoiceResponse>, plainTex
   const attrs = getTexmlSayVoiceAttributes()
   vr.say(attrs, texmlSayMessageBody(plainText))
 }
+
+/**
+ * Short callee-only whisper: same neural voice as `texmlSayNatural` but **never** wraps SSML `<prosody>`.
+ * Some carriers mishandle SSML on the `<Dial><Number url="…">` screen leg (double speak or odd routing).
+ */
+export function texmlSayWhisperPlain(vr: InstanceType<typeof VoiceResponse>, plainText: string): void {
+  const attrs = getTexmlSayVoiceAttributes()
+  vr.say(attrs, plainText)
+}

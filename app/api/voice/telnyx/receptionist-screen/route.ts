@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse } from "@/lib/telnyx"
 import { sanitizeWhisperPhrase } from "@/lib/inbound-line-whisper"
-import { texmlSayNatural } from "@/lib/texml-say-voice"
+import { texmlSayWhisperPlain } from "@/lib/texml-say-voice"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -30,7 +30,7 @@ function phraseFromRequest(req: NextRequest): string | null {
 
 function texmlForPhrase(phrase: string | null): string {
   const texml = new VoiceResponse()
-  if (phrase) texmlSayNatural(texml, phrase)
+  if (phrase) texmlSayWhisperPlain(texml, phrase)
   return texml.toString()
 }
 

@@ -19,18 +19,21 @@ export function buildInboundLineWhisperPhrase(
   phoneLineFriendlyName: string,
   businessLineE164: string
 ): string {
-  const lbl = phoneLineLabel.trim()
+  const lbl = phoneLineLabel.trim() // Trim spaces from the dashboard line name
   if (lbl && lbl.toLowerCase() !== "main line") {
-    return sanitizeWhisperPhrase(`Zing. ${lbl}.`)
+    // Custom name wins: speak only that text (no “Zing” or “call for” wrapper)
+    return sanitizeWhisperPhrase(lbl)
   }
-  const fn = phoneLineFriendlyName.trim()
+  const fn = phoneLineFriendlyName.trim() // Often the formatted business number when label is default
   if (fn) {
-    return sanitizeWhisperPhrase(`Zing. Call for ${fn}.`)
+    // Second choice: the friendly display string only
+    return sanitizeWhisperPhrase(fn)
   }
-  const digits = businessLineE164.replace(/\D/g, "")
-  const last4 = digits.slice(-4)
+  const digits = businessLineE164.replace(/\D/g, "") // Strip + and punctuation from E.164
+  const last4 = digits.slice(-4) // Last four of the DID the caller dialed
   if (last4.length === 4) {
-    return sanitizeWhisperPhrase(`Zing. Business line, ending ${last4.split("").join(" ")}.`)
+    // Space between digits so TTS reads them as separate numbers, not one big integer
+    return sanitizeWhisperPhrase(last4.split("").join(" "))
   }
-  return "Zing. Incoming business call."
+  return "Incoming call" // Fallback when we have no usable digits
 }

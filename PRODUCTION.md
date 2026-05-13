@@ -29,6 +29,7 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `ZING_AI_LAST_RESORT_CONNECT_HIT` | Optional. **Default: unset (= off).** If set to e.g. **`5`**, on that **`/incoming`** POST count Zing returns **`<Connect><AIAssistant>`** on `/incoming` (experimental — Telnyx often plays **“application error, goodbye”** instead of attaching AI). **`0`** / **`false`** explicitly disables. When off, when **`incomingHitCount` > 8** (9th POST onward) Zing plays its **own** give-up message (not Telnyx’s error). |
 | `ZING_AI_DIRECT_NO_RECEPTIONIST` | Legacy no-op (still accepted). Direct-to-AI is now the **default** when AI fallback + no receptionist; use **`ZING_AI_RING_OWNER_FIRST`** if you need the old ring-first behavior. |
 | `ZING_TELNYX_FALLBACK_DIAGNOSTIC` | Optional. If `true` / `1`: log **`zing: telnyx-fallback-diagnostic`** per Dial `action` request (PII-redacted form fields + routing snapshot). Use when debugging; turn off after. See **`tests/fixtures/telnyx-fallback/README.md`**. |
+| `ZING_INBOUND_RECEPTIONIST_WHISPER` | Optional. Set to **`0`**, **`false`**, or **`no`** to **disable** the short spoken line-ID (**`Zing. …`**) played only to the person who answers the forwarded leg (before the caller is connected). **Default:** whisper is **on** when Zing can build a phrase from `phone_numbers.label` / `friendly_name` / last four digits. |
 
 Save and **redeploy** the project (Deployments → … → Redeploy).
 

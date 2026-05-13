@@ -88,21 +88,25 @@ function parseRoutingRow(row: Record<string, unknown>): RoutingConfig {
   }
 }
 
+export type IncomingRoutingRow = {
+  user_id: string
+  user_name: string
+  owner_phone: string
+  selected_receptionist_id: string | null
+  fallback_type: RoutingConfig["fallback_type"]
+  ring_timeout_seconds: number
+  ai_ring_owner_first: boolean
+  receptionist_name: string | null
+  receptionist_phone: string | null
+  /** `phone_numbers.label` — shown to receptionist in whisper / UI (e.g. "Key Squad 502"). */
+  phone_line_label: string
+  /** `phone_numbers.friendly_name` — display form of the DID. */
+  phone_line_friendly_name: string
+}
+
 // Cache for incoming voice routing to reduce per-request DB latency.
 // In serverless, the module can stay warm briefly, so this helps most traffic bursts.
-type IncomingRoutingByNumber =
-  | {
-    user_id: string
-    user_name: string
-    owner_phone: string
-    selected_receptionist_id: string | null
-    fallback_type: RoutingConfig["fallback_type"]
-    ring_timeout_seconds: number
-    ai_ring_owner_first: boolean
-    receptionist_name: string | null
-    receptionist_phone: string | null
-  }
-  | null
+type IncomingRoutingByNumber = IncomingRoutingRow | null
 
 const incomingRoutingCache = new Map<string, { expiresAt: number; value: IncomingRoutingByNumber }>()
 const INCOMING_ROUTING_CACHE_TTL_MS = 10_000
@@ -535,17 +539,7 @@ export async function getUserByPhoneNumber(toNumber: string): Promise<User | nul
 export async function getIncomingRoutingByNumber(
   toNumber: string,
   options?: { bypassCache?: boolean }
-): Promise<{
-  user_id: string
-  user_name: string
-  owner_phone: string
-  selected_receptionist_id: string | null
-  fallback_type: RoutingConfig["fallback_type"]
-  ring_timeout_seconds: number
-  ai_ring_owner_first: boolean
-  receptionist_name: string | null
-  receptionist_phone: string | null
-} | null> {
+): Promise<IncomingRoutingByNumber> {
   const normalized = normalizePhoneNumberE164(toNumber)
   const digitKey = phoneDigitsKey(toNumber)
 
@@ -574,7 +568,9 @@ export async function getIncomingRoutingByNumber(
       ) AS ring_timeout_seconds,
       COALESCE(rc_def.ai_ring_owner_first, false) AS ai_ring_owner_first,
       CASE WHEN rc_spec.id IS NOT NULL THEN rs.name ELSE rd.name END AS receptionist_name,
-      CASE WHEN rc_spec.id IS NOT NULL THEN rs.phone ELSE rd.phone END AS receptionist_phone
+      CASE WHEN rc_spec.id IS NOT NULL THEN rs.phone ELSE rd.phone END AS receptionist_phone,
+      COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
+      COALESCE(pn.friendly_name, '') AS phone_line_friendly_name
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
     LEFT JOIN routing_config rc_spec
@@ -612,7 +608,7 @@ export async function getIncomingRoutingByNumber(
     return null
   }
 
-  const value: IncomingRoutingByNumber = {
+  const value: IncomingRoutingRow = {
     user_id: String(row.user_id),
     user_name: String(row.user_name),
     owner_phone: String(row.owner_phone),
@@ -622,6 +618,8 @@ export async function getIncomingRoutingByNumber(
     ai_ring_owner_first: pgBool(row.ai_ring_owner_first),
     receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
     receptionist_phone: row.receptionist_phone ? String(row.receptionist_phone) : null,
+    phone_line_label: row.phone_line_label != null ? String(row.phone_line_label) : "Main Line",
+    phone_line_friendly_name: row.phone_line_friendly_name != null ? String(row.phone_line_friendly_name) : "",
   }
 
   incomingRoutingCache.set(normalized, { expiresAt: Date.now() + INCOMING_ROUTING_CACHE_TTL_MS, value })

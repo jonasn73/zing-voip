@@ -11,6 +11,7 @@
 import { randomUUID } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
+import { buildInboundLineWhisperPhrase } from "@/lib/inbound-line-whisper"
 import {
   getIncomingRoutingByNumber,
   getUser,
@@ -29,6 +30,15 @@ import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycl
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
+
+/** Set to `0` / `false` / `no` to skip the short line-ID whisper on the callee leg. */
+const INBOUND_RECEPTIONIST_WHISPER_DISABLED = ["0", "false", "no"].includes(
+  (process.env.ZING_INBOUND_RECEPTIONIST_WHISPER || "").trim().toLowerCase()
+)
+
+function receptionistWhisperScreenUrl(phrase: string): string {
+  return `${getAppUrl()}/api/voice/telnyx/receptionist-screen?p=${encodeURIComponent(phrase)}`
+}
 
 /**
  * After this many `/incoming` POSTs, optionally emit `<Connect><AIAssistant>` once on `/incoming`.
@@ -162,7 +172,7 @@ async function handleIncomingCall(
     }
 
     // 4. Route: receptionist (per-number or default) → owner's cell as fallback
-    // callerId is REQUIRED by Telnyx TeXML for the outbound leg — use the business number
+    // Outbound PSTN leg: callerId must be set — use normalized business DID so the callee can see which number was dialed.
     const wantsAiAfterNoAnswer = String(routing.fallback_type || "").toLowerCase() === "ai"
     const hasReceptionist = Boolean(routing.selected_receptionist_id && routing.receptionist_phone)
     /**
@@ -306,11 +316,20 @@ async function handleIncomingCall(
     const fbQuery = wantsAiAfterNoAnswer ? "&fb=ai" : ""
     const bnQuery = `&bn=${encodeURIComponent(businessLineE164)}`
 
+    // callerId on the outbound PSTN leg is the business DID so the callee’s phone can show which line was dialed.
+    const whisperPhrase = INBOUND_RECEPTIONIST_WHISPER_DISABLED
+      ? ""
+      : buildInboundLineWhisperPhrase(
+          routing.phone_line_label,
+          routing.phone_line_friendly_name,
+          businessLineE164
+        )
+
     if (routing.selected_receptionist_id && routing.receptionist_phone) {
       const recPhone = normalizePhoneNumberE164(routing.receptionist_phone)
       if (debug) console.log(`[Zing] Routing to receptionist: ${routing.receptionist_name || "Receptionist"} (${recPhone})`)
       const dial = texml.dial({
-        callerId: calledNumber,
+        callerId: businessLineE164,
         // Keep the caller on carrier ringback until bridge, which avoids
         // the mid-ring tone change from early answer + handoff.
         answerOnBridge: true,
@@ -318,19 +337,27 @@ async function handleIncomingCall(
         action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}`,
         method: "POST",
       })
-      dial.number(recPhone)
+      if (whisperPhrase.trim()) {
+        dial.number({ url: receptionistWhisperScreenUrl(whisperPhrase) }, recPhone)
+      } else {
+        dial.number(recPhone)
+      }
     } else {
       const ownerPhone = normalizePhoneNumberE164(routing.owner_phone)
       if (debug) console.log(`[Zing] No receptionist assigned, routing to owner: ${ownerPhone}`)
       // Same as receptionist path: if your phone does not answer, POST to fallback so AI / voicemail / second leg can run.
       const dial = texml.dial({
-        callerId: calledNumber,
+        callerId: businessLineE164,
         answerOnBridge: true,
         timeout: ownerRingSec,
         action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first${bnQuery}${fbQuery}${modeQuery}`,
         method: "POST",
       })
-      dial.number(ownerPhone)
+      if (whisperPhrase.trim()) {
+        dial.number({ url: receptionistWhisperScreenUrl(whisperPhrase) }, ownerPhone)
+      } else {
+        dial.number(ownerPhone)
+      }
     }
   } catch (error) {
     console.error("[Telnyx] Error in incoming webhook:", error)

@@ -17,6 +17,8 @@ export type TelnyxFallbackFixtureMocks = {
     ai_ring_owner_first: boolean
     receptionist_name: string | null
     receptionist_phone: string | null
+    phone_line_label: string
+    phone_line_friendly_name: string
   } | null
   routingForNumber: RoutingConfig | null
   globalRouting: RoutingConfig | null
@@ -67,6 +69,23 @@ const baseRouting = (over: Partial<RoutingConfig>): RoutingConfig => ({
   ...over,
 })
 
+const baseIncomingRouting = (
+  over: Partial<NonNullable<TelnyxFallbackFixtureMocks["incomingRouting"]>>
+): NonNullable<TelnyxFallbackFixtureMocks["incomingRouting"]> => ({
+  user_id: "11111111-1111-1111-1111-111111111111",
+  user_name: "Fixture User",
+  owner_phone: "+15551110002",
+  selected_receptionist_id: null,
+  fallback_type: "ai",
+  ring_timeout_seconds: 22,
+  ai_ring_owner_first: true,
+  receptionist_name: null,
+  receptionist_phone: null,
+  phone_line_label: "Main Line",
+  phone_line_friendly_name: "(555) 111-0001",
+  ...over,
+})
+
 export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
   {
     id: "owner-leg-no-answer-owner-ai-path",
@@ -79,17 +98,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       To: "+15551110002",
     },
     mocks: {
-      incomingRouting: {
-        user_id: "11111111-1111-1111-1111-111111111111",
-        user_name: "Fixture User",
-        owner_phone: "+15551110002",
-        selected_receptionist_id: null,
-        fallback_type: "ai",
-        ring_timeout_seconds: 22,
-        ai_ring_owner_first: true,
-        receptionist_name: null,
-        receptionist_phone: null,
-      },
+      incomingRouting: baseIncomingRouting({}),
       routingForNumber: baseRouting({ fallback_type: "ai", business_number: "+15551110001" }),
       globalRouting: baseRouting({
         business_number: null,
@@ -117,17 +126,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       To: "+15551110002",
     },
     mocks: {
-      incomingRouting: {
-        user_id: "11111111-1111-1111-1111-111111111111",
-        user_name: "Fixture User",
-        owner_phone: "+15551110002",
-        selected_receptionist_id: null,
-        fallback_type: "ai",
-        ring_timeout_seconds: 22,
-        ai_ring_owner_first: true,
-        receptionist_name: null,
-        receptionist_phone: null,
-      },
+      incomingRouting: baseIncomingRouting({}),
       routingForNumber: baseRouting({ fallback_type: "ai" }),
       globalRouting: baseRouting({ business_number: null, fallback_type: "voicemail", id: "rc-g2" }),
       user: baseUser({}),
@@ -153,17 +152,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       To: "+15551110002",
     },
     mocks: {
-      incomingRouting: {
-        user_id: "11111111-1111-1111-1111-111111111111",
-        user_name: "Fixture User",
-        owner_phone: "+15551110002",
-        selected_receptionist_id: null,
-        fallback_type: "ai",
-        ring_timeout_seconds: 22,
-        ai_ring_owner_first: true,
-        receptionist_name: null,
-        receptionist_phone: null,
-      },
+      incomingRouting: baseIncomingRouting({}),
       routingForNumber: baseRouting({ fallback_type: "ai" }),
       globalRouting: baseRouting({ business_number: null, fallback_type: "ai", id: "rc-g3" }),
       user: baseUser({}),
@@ -188,17 +177,12 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       To: "+15558887766",
     },
     mocks: {
-      incomingRouting: {
-        user_id: "11111111-1111-1111-1111-111111111111",
-        user_name: "Fixture User",
-        owner_phone: "+15551110002",
+      incomingRouting: baseIncomingRouting({
         selected_receptionist_id: "recv-1",
-        fallback_type: "ai",
-        ring_timeout_seconds: 22,
         ai_ring_owner_first: false,
         receptionist_name: "Desk",
         receptionist_phone: "+15558887766",
-      },
+      }),
       routingForNumber: baseRouting({ fallback_type: "ai", selected_receptionist_id: "recv-1" }),
       globalRouting: baseRouting({ business_number: null, fallback_type: "ai", id: "rc-g5" }),
       user: baseUser({}),
@@ -221,17 +205,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       To: "+15551110002",
     },
     mocks: {
-      incomingRouting: {
-        user_id: "11111111-1111-1111-1111-111111111111",
-        user_name: "Fixture User",
-        owner_phone: "+15551110002",
-        selected_receptionist_id: null,
-        fallback_type: "ai",
-        ring_timeout_seconds: 22,
-        ai_ring_owner_first: true,
-        receptionist_name: null,
-        receptionist_phone: null,
-      },
+      incomingRouting: baseIncomingRouting({}),
       routingForNumber: baseRouting({ fallback_type: "ai" }),
       globalRouting: baseRouting({ business_number: null, fallback_type: "ai", id: "rc-g4" }),
       user: baseUser({ telnyx_ai_assistant_id: null }),

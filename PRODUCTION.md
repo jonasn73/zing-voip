@@ -32,8 +32,8 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `ZING_INBOUND_RECEPTIONIST_WHISPER` | Optional **global** kill switch. Set to **`0`**, **`false`**, or **`no`** to disable the short callee-only whisper for **all** accounts on this deployment. Per-user default is **on** in Settings unless turned off there. Whisper text is **account business name** (from Settings) **then** the line label / friendly number / last four digits. |
 | `ZING_TEXML_SAY_VOICE` | Optional. Twilio-style **Polly / Google neural** voice id for TeXML `<Say>` (whisper, voicemail prompts, IVR). Default **`Polly.Joanna-Neural`**. Set e.g. `Polly.Matthew-Neural` or `Google.en-US-Neural2-F` if Telnyx accepts it on your account. |
 | `ZING_TEXML_SAY_LANGUAGE` | Optional. BCP-47 language for `<Say>` (default **`en-US`**). |
-| `ZING_TEXML_SAY_RATE` | Optional. SSML prosody rate for `<Say>` plain TTS (default **`1.08`** = slightly faster). Set **`1`** or **`off`** to disable prosody wrapper. |
-| `ZING_TEXML_SAY_SSML` | Optional. Set **`0`** / **`false`** to send **plain text only** (no `<prosody>`), if a carrier mis-reads SSML. |
+| `ZING_TEXML_SAY_RATE` | Optional. When set to a number **≠ 1** (e.g. **`1.08`**), `<Say>` wraps text in SSML `<prosody rate="…">`. **Default is off (plain text):** omit this variable. Telnyx often **reads SSML tags as words** (“prosody…”) — use plain default or set `ZING_TEXML_SAY_SSML` to **`false`**. |
+| `ZING_TEXML_SAY_SSML` | Optional. Set **`0`** / **`false`** to send **plain text only** (no `<prosody>`), recommended if a carrier speaks tag names aloud. |
 | `TELNYX_AI_VOICE_SPEED` | Optional. Assistant **`voice_speed`** for Telnyx Natural / NaturalHD / Kokoro voices (default **`1.08`**, range about **0.9–1.25**). |
 | `TELNYX_AI_EXPRESSIVE` | Optional. Set **`0`** / **`false`** to skip **`expressive_mode`** when using **`Telnyx.Ultra.*`** voices. Default enables expressive for Ultra. |
 

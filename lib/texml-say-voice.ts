@@ -18,10 +18,11 @@ export function getTexmlSayVoiceAttributes(): { voice: string; language: string 
 }
 
 function parseProsodyRate(): number {
-  const raw = process.env.ZING_TEXML_SAY_RATE?.trim()
+  // Coalesce missing env to "" so "unset" matches the empty branch below (optional `.trim()` alone yields `undefined`, which skipped that branch and forced rate 1.08 — Telnyx then spoke "<prosody …>" aloud).
+  const raw = (process.env.ZING_TEXML_SAY_RATE ?? "").trim()
   if (raw === "" || raw === "1" || raw === "off" || raw === "false") return 1
-  const n = parseFloat(raw || "1.08")
-  if (!Number.isFinite(n) || n < 0.85 || n > 1.35) return 1.08
+  const n = parseFloat(raw)
+  if (!Number.isFinite(n) || n < 0.85 || n > 1.35) return 1
   return n
 }
 

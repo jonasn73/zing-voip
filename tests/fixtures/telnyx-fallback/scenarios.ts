@@ -146,7 +146,7 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
   {
     id: "owner-ai-long-bridged-owner-hangup-ends-caller",
     description:
-      "Owner-first AI path: after a real PSTN bridge and completed leg, hang up the caller (no Voice AI handoff)",
+      "Owner-first AI path: after a real PSTN bridge the caller should reach Voice AI (Say + Redirect to ai-bridge), not hang up",
     method: "POST",
     url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/owner-ai?callSid=CA_fixture_long&primary=owner&leg=owner-first",
     form: {
@@ -164,14 +164,15 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Hangup"],
-      bodyNotContains: ["ai-bridge", "Thanks for calling"],
+      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
   },
   {
     id: "owner-ai-short-bridged-owner-hangup-ends-caller",
-    description: "Owner-first AI path: short bridged completed leg still ends caller (no AI after you hang up)",
+    description:
+      "Owner-first AI path: short bridged completed leg still hands caller to Voice AI (ai-bridge), not hang up",
     method: "POST",
     url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/owner-ai?callSid=CA_fixture_owner_short&primary=owner",
     form: {
@@ -189,8 +190,8 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Hangup"],
-      bodyNotContains: ["ai-bridge"],
+      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
   },
@@ -249,9 +250,9 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
   {
     id: "owner-ai-completed-short-no-bridge-metadata-hangup",
     description:
-      "Owner answered then hung up quickly: Telnyx completed + duration but no bridge fields — must hang up (no AI hold line, no ai_greeting+Record)",
+      "Non-AI TeXML path `owner` + voicemail routing: short completed leg with no bridge fields — hang up caller (no AI hold line)",
     method: "POST",
-    url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/owner-ai?callSid=CA_fixture_short_nobridge&primary=owner&leg=owner-first",
+    url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/owner?callSid=CA_fixture_short_nobridge&primary=owner&leg=owner-first",
     form: {
       DialCallStatus: "completed",
       DialCallDuration: "12",
@@ -259,9 +260,9 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       To: "+15551110002",
     },
     mocks: {
-      incomingRouting: baseIncomingRouting({}),
-      routingForNumber: baseRouting({ fallback_type: "ai" }),
-      globalRouting: baseRouting({ business_number: null, fallback_type: "ai", id: "rc-short-nb" }),
+      incomingRouting: baseIncomingRouting({ fallback_type: "voicemail", ai_ring_owner_first: false }),
+      routingForNumber: baseRouting({ fallback_type: "voicemail" }),
+      globalRouting: baseRouting({ business_number: null, fallback_type: "voicemail", id: "rc-short-nb" }),
       user: baseUser({}),
       primaryBusinessE164: "+15551110001",
     },
@@ -274,9 +275,9 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
   {
     id: "recv-ai-completed-short-no-bridge-metadata-hangup",
     description:
-      "Receptionist answered briefly with no DialBridged* in callback — still hang up caller (no AI)",
+      "Non-AI TeXML path `recv` + voicemail routing: receptionist short completed, no bridge fields — hang up caller (no AI)",
     method: "POST",
-    url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/recv-ai?callSid=CA_fixture_recv_short_nb",
+    url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/recv?callSid=CA_fixture_recv_short_nb",
     form: {
       DialCallStatus: "completed",
       DialCallDuration: "11",
@@ -289,9 +290,10 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
         ai_ring_owner_first: false,
         receptionist_name: "Desk",
         receptionist_phone: "+15558887766",
+        fallback_type: "voicemail",
       }),
-      routingForNumber: baseRouting({ fallback_type: "ai", selected_receptionist_id: "recv-1" }),
-      globalRouting: baseRouting({ business_number: null, fallback_type: "ai", id: "rc-recv-nb" }),
+      routingForNumber: baseRouting({ fallback_type: "voicemail", selected_receptionist_id: "recv-1" }),
+      globalRouting: baseRouting({ business_number: null, fallback_type: "voicemail", id: "rc-recv-nb" }),
       user: baseUser({}),
       primaryBusinessE164: "+15551110001",
     },
@@ -328,7 +330,8 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
   },
   {
     id: "recv-ai-long-bridged-early-hangup",
-    description: "Receptionist-first AI: 2+ min bridged recv leg → hang up caller (no AI after long desk call)",
+    description:
+      "Receptionist-first AI: long bridged recv leg → hand caller to Voice AI (Say + Redirect to ai-bridge)",
     method: "POST",
     url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/recv-ai?callSid=CA_fixture_recv_long",
     form: {
@@ -351,15 +354,15 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Hangup"],
-      bodyNotContains: ["ai-bridge"],
+      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
   },
   {
     id: "recv-ai-short-bridged-early-hangup",
     description:
-      "Receptionist-first AI: answered then hung up after a short bridge — hang up caller (no AI hold message)",
+      "Receptionist-first AI: short bridged recv leg → hand caller to Voice AI (ai-bridge), not hang up",
     method: "POST",
     url: "http://test.local/api/voice/telnyx/fallback/u/11111111-1111-1111-1111-111111111111/n/15551110001/recv-ai?callSid=CA_fixture_recv_short",
     form: {
@@ -382,8 +385,8 @@ export const telnyxFallbackScenarios: TelnyxFallbackFixture[] = [
       primaryBusinessE164: "+15551110001",
     },
     expect: {
-      bodyContains: ["Hangup"],
-      bodyNotContains: ["Thanks for calling", "ai-bridge"],
+      bodyContains: ["Thanks for calling", "ai-bridge"],
+      bodyNotContains: ["</Hangup>"],
       contentType: "text/xml",
     },
   },

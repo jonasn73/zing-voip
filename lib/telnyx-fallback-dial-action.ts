@@ -441,6 +441,17 @@ export async function handleTelnyxFallbackDialEnded(
       }
     }
 
+    /** Explicit TeXML path is “human only” — never treat DB AI as reason to skip post-human hangup. */
+    const explicitNonAiPath =
+      pathFallbackMode === "owner" || pathFallbackMode === "recv"
+    /**
+     * When this line is configured for Voice AI after the first leg, keep the caller on the flow so
+     * `switch (fallbackType)` can return AI TeXML after a human hangs up (do not early `<Hangup>`).
+     */
+    const allowAiHandoffAfterHumanLeg =
+      virtualFbAi ||
+      (!explicitNonAiPath && String(lr?.fallback_type ?? "").toLowerCase() === "ai")
+
     const bridgedToDigits = dialCallbackBridgeDigitCount(formData)
     const bridgedSecHint = dialBridgedSecondsHint(formData)
     maybeLogTelnyxFallbackDiagnosticEntry({
@@ -484,11 +495,11 @@ export async function handleTelnyxFallbackDialEnded(
           !inferDialLegWasOwnerCell(formData, lr.owner_phone)
       )
     /**
-     * Receptionist leg ended after a real bridge — hang up the caller (no AI / voicemail on their leg).
-     * Uses URL path `recv` / `recv-ai`, or when Telnyx strips the path, matches the dialed party to `receptionist_phone`
-     * while **not** being the explicit “ring owner first” leg (`primary=owner` / `leg=owner-first`).
+     * Receptionist leg ended after a real bridge — hang up the caller (no AI / voicemail on their leg)
+     * unless this line is set for Voice AI after the first leg (`allowAiHandoffAfterHumanLeg`).
      */
     const receptionistLegEndedAfterBridge =
+      !allowAiHandoffAfterHumanLeg &&
       (pathFallbackMode === "recv" || pathFallbackMode === "recv-ai" || receptionistCalleeMatches) &&
       dialStatus === "completed" &&
       (pstnBridgeEvidence || shortCompletedLooksAnswered)
@@ -511,11 +522,11 @@ export async function handleTelnyxFallbackDialEnded(
     const answeredAndHadConversation =
       dialStatus === "completed" && dialDurationSec >= 120 && pstnBridgeEvidence
     /**
-     * `owner-ai` used to always hand the caller to Voice AI after the owner leg ended, even after a real conversation.
-     * That is handled later with the same rule as receptionist: **completed + PSTN bridge** → hang up the A-leg (see below).
-     * Keep skipping the generic 2‑minute “long bridged” hangup for `owner-ai` so we do not double‑end the call before that block runs.
+     * Skip the generic long-bridged hangup when the next step should be Voice AI (`owner-ai` path or
+     * `allowAiHandoffAfterHumanLeg` for e.g. stripped URLs + `recv-ai`).
      */
-    const skipLongBridgedHangupForOwnerFirstAi = pathFallbackMode === "owner-ai"
+    const skipLongBridgedHangupForOwnerFirstAi =
+      pathFallbackMode === "owner-ai" || allowAiHandoffAfterHumanLeg
     if (answeredAndHadConversation && !skipLongBridgedHangupForOwnerFirstAi) {
       maybeLogTelnyxFallbackDiagnosticEarly("long-bridged-hangup", {
         dialDurationSec,
@@ -680,11 +691,11 @@ export async function handleTelnyxFallbackDialEnded(
     }
 
     /**
-     * Owner cell leg (`owner` / `owner-ai`, or stripped path) ended after a real PSTN bridge — end the caller’s leg.
-     * Do not require `pathFallbackMode` in the URL (Telnyx often truncates `/n/{did}/{mode}`); exclude receptionist legs.
+     * Owner cell leg ended after a real PSTN bridge — end the caller’s leg unless Voice AI should run next.
      */
     const recvLegByPath = pathFallbackMode === "recv" || pathFallbackMode === "recv-ai"
     const ownerFirstLegBridgedComplete =
+      !allowAiHandoffAfterHumanLeg &&
       primaryWasOwner &&
       !recvLegByPath &&
       !receptionistCalleeMatches &&

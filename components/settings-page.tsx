@@ -578,33 +578,33 @@ export function SettingsPage() {
 
   // Persist the line name for the number open in the routing modal (used in receptionist whisper + lists).
   async function saveRoutingLineLabel() {
-    if (!routingModalNumber) return
-    const row = myNumbers.find((n) => n.number === routingModalNumber)
-    if (!row) return
-    setRoutingLineLabelSaving(true)
-    setRoutingLineLabelError(null)
+    if (!routingModalNumber) return // Modal closed — nothing to save
+    const row = myNumbers.find((n) => n.number === routingModalNumber) // Look up UUID for this E.164
+    if (!row) return // Numbers list not loaded yet
+    setRoutingLineLabelSaving(true) // Disable button while the request runs
+    setRoutingLineLabelError(null) // Clear any previous error message
     try {
       const res = await fetch(`/api/numbers/${row.id}`, {
-        method: "PATCH",
+        method: "PATCH", // Partial update of one phone_numbers row
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ label: routingLineLabelDraft.trim() || "Business Line" }),
+        credentials: "include", // Send session cookie so the API knows the user
+        body: JSON.stringify({ label: routingLineLabelDraft.trim() || "Business Line" }), // Empty input → default label
       })
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      const data = (await res.json().catch(() => ({}))) as { error?: string } // Parse error body if present
       if (!res.ok) {
-        setRoutingLineLabelError(typeof data?.error === "string" ? data.error : "Could not save line name")
-        return
+        setRoutingLineLabelError(typeof data?.error === "string" ? data.error : "Could not save line name") // Show server message
+        return // Leave modal open so they can retry
       }
-      const saved = routingLineLabelDraft.trim() || "Business Line"
-      setMyNumbers((prev) => prev.map((n) => (n.number === routingModalNumber ? { ...n, label: saved } : n)))
+      const saved = routingLineLabelDraft.trim() || "Business Line" // Value we optimistically mirror in state
+      setMyNumbers((prev) => prev.map((n) => (n.number === routingModalNumber ? { ...n, label: saved } : n))) // Update list under the hood
       toast({
         title: "Line name saved",
         description: "Your team hears this in the short whisper when they pick up a forwarded call.",
-      })
+      }) // Lightweight confirmation
     } catch {
-      setRoutingLineLabelError("Network error — try again.")
+      setRoutingLineLabelError("Network error — try again.") // Offline or CORS-style failure
     } finally {
-      setRoutingLineLabelSaving(false)
+      setRoutingLineLabelSaving(false) // Re-enable the save button
     }
   }
 

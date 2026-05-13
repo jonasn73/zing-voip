@@ -67,6 +67,8 @@ export interface PhoneNumberRoutingSummary {
   telnyx_assistant_linked: boolean
   /** Callers will actually get AI after no-answer (selected + assistant linked). */
   ai_fallback_live: boolean
+  /** Who rings first for this DID (null = business owner cell). */
+  ring_first_receptionist_id: string | null
 }
 
 /** In-app row from Telnyx porting webhooks (`016-porting-notifications.sql`). */

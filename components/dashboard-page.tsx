@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import {
   Phone,
@@ -33,6 +33,22 @@ import { Switch } from "@/components/ui/switch"
 import { AiIntakeFlowPanel } from "@/components/ai-intake-flow-panel"
 import { useOperationsData } from "@/lib/hooks/use-operations-data"
 import type { PhoneNumberRoutingSummary } from "@/lib/types"
+
+/** Last 10 US digits so we can match +1… vs 10-digit values from APIs without breaking line selection. */
+function phoneDigits10(phone: string | null | undefined): string {
+  if (phone == null || typeof phone !== "string") return ""
+  const d = phone.replace(/\D/g, "")
+  if (d.length === 11 && d.startsWith("1")) return d.slice(-10)
+  if (d.length >= 10) return d.slice(-10)
+  return d
+}
+
+/** True when two stored phone strings refer to the same DID (handles +1 vs digits-only). */
+function businessNumbersMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a == null && b == null) return true
+  if (a == null || b == null) return false
+  return phoneDigits10(a) === phoneDigits10(b)
+}
 
 // Format E.164 to display, e.g. +15025551234 -> (502) 555-1234
 function formatPhoneDisplay(phone: string | undefined | null): string {
@@ -164,6 +180,9 @@ export function DashboardPage() {
   const [businessNumbers, setBusinessNumbers] = useState<DashboardBusinessNumber[]>([])
   // Which business line the dropdown + fallback controls edit (E.164); null = account default when you have no numbers yet
   const [routingBusinessNumber, setRoutingBusinessNumber] = useState<string | null>(null)
+  // True while GET /api/routing for the tapped line is in flight (avoids showing the previous line’s target).
+  const [routingLineDetailLoading, setRoutingLineDetailLoading] = useState(false)
+  const routingFetchSeqRef = useRef(0)
 
   // Wait until these complete before showing “Quick setup” — otherwise empty initial state looks
   // like an incomplete setup and the banner flashes away when APIs return (confusing on refresh).
@@ -221,7 +240,7 @@ export function DashboardPage() {
         setBusinessNumbers(active)
         // Keep the same selected line after refresh when possible; otherwise default to the first active number
         setRoutingBusinessNumber((prev) => {
-          if (prev && active.some((x: DashboardBusinessNumber) => x.number === prev)) return prev
+          if (prev && active.some((x: DashboardBusinessNumber) => businessNumbersMatch(x.number, prev))) return prev
           return active[0]?.number ?? null
         })
 
@@ -250,13 +269,15 @@ export function DashboardPage() {
   // After numbers load or you tap a different line, pull effective routing (per-number row merged with account default).
   useEffect(() => {
     if (!numbersRoutingFetchDone) return
+    const seq = ++routingFetchSeqRef.current
+    setRoutingLineDetailLoading(true)
     let cancelled = false
     const num = routingBusinessNumber
     const routingUrl = num ? `/api/routing?number=${encodeURIComponent(num)}` : "/api/routing"
     fetch(routingUrl, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((rData) => {
-        if (cancelled) return
+        if (cancelled || seq !== routingFetchSeqRef.current) return
         if (rData?.config) {
           setSelectedReceptionistId(rData.config.selected_receptionist_id || null)
           setFallback(rData.config.fallback_type || "owner")
@@ -264,6 +285,10 @@ export function DashboardPage() {
         }
       })
       .catch(() => {})
+      .finally(() => {
+        if (cancelled || seq !== routingFetchSeqRef.current) return
+        setRoutingLineDetailLoading(false)
+      })
     return () => {
       cancelled = true
     }
@@ -272,7 +297,10 @@ export function DashboardPage() {
   // If the selected line disappears (released number), snap back to the first remaining line.
   useEffect(() => {
     if (businessNumbers.length === 0) return
-    if (!routingBusinessNumber || !businessNumbers.some((b) => b.number === routingBusinessNumber)) {
+    if (
+      !routingBusinessNumber
+      || !businessNumbers.some((b) => businessNumbersMatch(b.number, routingBusinessNumber))
+    ) {
       setRoutingBusinessNumber(businessNumbers[0].number)
     }
   }, [businessNumbers, routingBusinessNumber])
@@ -534,7 +562,7 @@ export function DashboardPage() {
             {/* Show which business number(s) this routing applies to */}
             {businessNumbers.length > 1 && (
               <p className="max-w-sm text-[11px] text-muted-foreground">
-                Tap a number to choose which line you are configuring — each can ring a different person.
+                Tap a number, then use the controls below — each line can ring your phone or a different receptionist.
               </p>
             )}
 
@@ -543,8 +571,11 @@ export function DashboardPage() {
               <div className="flex flex-wrap justify-center gap-2">
                 {businessNumbers.map((bn) => {
                   const rs = bn.routing_summary
+                  const ringId = rs?.ring_first_receptionist_id ?? null
+                  const ringName = ringId ? receptionists.find((r) => r.id === ringId)?.name : null
+                  const ringSummary = ringName ? `Rings: ${ringName}` : "Rings: Your phone"
                   const showLinePicker = businessNumbers.length > 1
-                  const isLineSelected = showLinePicker && bn.number === routingBusinessNumber
+                  const isLineSelected = showLinePicker && businessNumbersMatch(bn.number, routingBusinessNumber)
                   const cardClass = cn(
                     "flex max-w-[11rem] flex-col items-center gap-1 rounded-xl border px-2 py-1.5 transition-colors",
                     showLinePicker
@@ -559,6 +590,7 @@ export function DashboardPage() {
                   const tags = (
                     <>
                       <span className="text-xs font-medium text-primary">{formatPhoneDisplay(bn.number)}</span>
+                      <span className="text-[10px] font-medium leading-tight text-foreground/85">{ringSummary}</span>
                       {rs?.ai_fallback_live ? (
                         <span
                           title="AI fallback is on and your assistant is linked — callers should reach Voice AI. Use Fallback Settings → Ring my phone first to ring your cell before the assistant."
@@ -605,6 +637,18 @@ export function DashboardPage() {
             )}
 
             <div className="relative flex flex-col items-center gap-2">
+              {businessNumbers.length > 1 && routingBusinessNumber ? (
+                <p className="flex min-h-[1.25rem] items-center justify-center gap-1.5 text-xs font-semibold text-primary">
+                  {routingLineDetailLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                      <span>Loading line…</span>
+                    </>
+                  ) : (
+                    <span>Editing {formatPhoneDisplay(routingBusinessNumber)}</span>
+                  )}
+                </p>
+              ) : null}
               <p className="text-sm text-muted-foreground">
                 {isRoutingToOwner ? "Ringing directly to" : "Ringing first to"}
               </p>

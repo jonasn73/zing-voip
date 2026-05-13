@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
           ai_fallback_selected: aiSelected,
           telnyx_assistant_linked: assistantLinked,
           ai_fallback_live: aiSelected && assistantLinked,
+          ring_first_receptionist_id: cfg?.selected_receptionist_id ?? null,
         }
         return { ...row, routing_summary }
       })

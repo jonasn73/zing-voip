@@ -282,6 +282,11 @@ async function handleIncomingCall(
       process.env.ZING_AI_RING_OWNER_FIRST === "1" ||
       process.env.ZING_AI_RING_OWNER_FIRST === "true" ||
       routing.ai_ring_owner_first === true // DB toggle (Fallback Settings) or env — Dial cell first, then /fallback for AI
+    /**
+     * When “Ring my phone first” is on **and** a teammate is configured, the first PSTN leg is the owner’s cell;
+     * Dial `action` still uses `recv` / `recv-ai` so `/fallback` chains to the receptionist (`telnyx-fallback-dial-action.ts`).
+     */
+    const firstDialOwnerWithTeammate = Boolean(ringOwnerFirst && hasReceptionist)
     const twoStepAiHandoff =
       process.env.ZING_AI_HANDOFF_TWO_STEP === "1" || process.env.ZING_AI_HANDOFF_TWO_STEP === "true" // true = play “please hold” then redirect
     const connectDirectIncoming =
@@ -295,6 +300,7 @@ async function handleIncomingCall(
         userId: routing.user_id,
         wantsAiAfterNoAnswer,
         hasReceptionist,
+        firstDialOwnerWithTeammate,
         recvDialDigitLen: receptionistDialE164.replace(/\D/g, "").length,
         recvPlainDialEnv: INBOUND_RECV_PLAIN_DIAL,
         aiRingOwnerFirstFromDefaultRow: routing.ai_ring_owner_first,
@@ -427,7 +433,7 @@ async function handleIncomingCall(
       lineLbl && lineLbl.toLowerCase() !== "main line" ? lineLbl : routing.business_name
     const fromDisplayName = buildTelnyxDialFromDisplayName(fromDisplaySource)
 
-    if (selectedReceptionistId && receptionistDialE164) {
+    if (hasReceptionist && !firstDialOwnerWithTeammate) {
       const recPhone = receptionistDialE164
       if (debug) console.log(`[Zing] Routing to receptionist: ${routing.receptionist_name || "Receptionist"} (${recPhone})`)
       const dial = texml.dial({
@@ -446,6 +452,22 @@ async function handleIncomingCall(
         dial.number({ url: receptionistWhisperScreenUrl(whisperPhrase) }, recPhone)
       } else {
         dial.number(recPhone)
+      }
+    } else if (firstDialOwnerWithTeammate) {
+      const ownerPhone = normalizePhoneNumberE164(routing.owner_phone)
+      if (debug) console.log(`[Zing] Ring-owner-first: routing to owner cell, then teammate via /fallback (${ownerPhone})`)
+      const dial = texml.dial({
+        callerId: businessLineE164,
+        ...(fromDisplayName ? { fromDisplayName } : {}),
+        answerOnBridge: true,
+        timeout: ownerRingSec,
+        action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first${bnQuery}${fbQuery}${modeQuery}`,
+        method: "POST",
+      } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
+      if (whisperPhrase.trim()) {
+        dial.number({ url: receptionistWhisperScreenUrl(whisperPhrase) }, ownerPhone)
+      } else {
+        dial.number(ownerPhone)
       }
     } else {
       const ownerPhone = normalizePhoneNumberE164(routing.owner_phone)

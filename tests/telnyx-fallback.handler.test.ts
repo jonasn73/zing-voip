@@ -26,6 +26,11 @@ vi.mock("@/lib/db", () => {
     getIncomingRoutingByNumber: vi.fn(),
     getUser: vi.fn(),
     getPrimaryActiveBusinessNumberE164: vi.fn(),
+    getReceptionist: vi.fn(() => Promise.resolve(null)),
+    isReasonablePstnDialString: (s: string) => {
+      const d = String(s).replace(/\D/g, "")
+      return d.length >= 10 && d.length <= 15
+    },
     updateCallLog: vi.fn(() => Promise.resolve()),
     ensureCallLogForInboundLeg: vi.fn(() => Promise.resolve()),
     normalizePhoneNumberE164,

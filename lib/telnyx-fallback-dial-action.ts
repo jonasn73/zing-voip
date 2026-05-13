@@ -13,10 +13,13 @@ import {
   getIncomingRoutingByNumber,
   getUser,
   getPrimaryActiveBusinessNumberE164,
+  getReceptionist,
   updateCallLog,
   ensureCallLogForInboundLeg,
   normalizePhoneNumberE164,
+  isReasonablePstnDialString,
   markTelnyxInboundDialCallerLegDone,
+  type IncomingRoutingRow,
 } from "@/lib/db"
 import { normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
 import {
@@ -313,6 +316,23 @@ async function tryBuildAiAssistantResponse(args: {
   return "missing-assistant"
 }
 
+/** PSTN target for the teammate leg (join + optional `receptionists` row), same rules as `/incoming`. */
+async function receptionistOutboundE164FromIncomingRow(
+  lr: IncomingRoutingRow | null,
+  userId: string
+): Promise<string | null> {
+  if (!lr || lr.user_id !== userId || !lr.selected_receptionist_id?.trim()) return null
+  const joined = lr.receptionist_phone?.trim()
+  let cand = joined ? normalizePhoneNumberE164(joined) : ""
+  if (!cand || !isReasonablePstnDialString(cand)) {
+    const rec = await getReceptionist(lr.selected_receptionist_id.trim())
+    if (rec && rec.user_id === userId && rec.phone?.trim()) {
+      cand = normalizePhoneNumberE164(rec.phone)
+    }
+  }
+  return cand && isReasonablePstnDialString(cand) ? cand : null
+}
+
 /** Dial `action` URL path segment — survives Telnyx stripping long query strings. */
 export type TelnyxFallbackPathMode = "recv" | "recv-ai" | "owner" | "owner-ai"
 
@@ -519,6 +539,7 @@ export async function handleTelnyxFallbackDialEnded(
      */
     const receptionistLegEndedAfterBridge =
       !allowAiHandoffAfterHumanLeg &&
+      !primaryWasOwner &&
       (pathFallbackMode === "recv" || pathFallbackMode === "recv-ai" || receptionistCalleeMatches) &&
       dialStatus === "completed" &&
       (pstnBridgeEvidence || shortCompletedLooksAnswered)
@@ -733,6 +754,87 @@ export async function handleTelnyxFallbackDialEnded(
       )
       if (callSid.trim()) void markTelnyxInboundDialCallerLegDone(callSid)
       texml.hangup()
+      return new NextResponse(texml.toString(), {
+        headers: { "Content-Type": "text/xml" },
+      })
+    }
+
+    const zingAfterRecv = url.searchParams.get("zingAfter") === "recv"
+    const recvOutboundE164 = await receptionistOutboundE164FromIncomingRow(lr, userId)
+
+    if (zingAfterRecv && (virtualFbAi || pathFallbackMode === "recv-ai" || pathFallbackMode === "owner-ai")) {
+      const aiRes = await tryBuildAiAssistantResponse({
+        userId,
+        user,
+        callSid,
+        dialStatus,
+        rawStatus,
+        answeredAndHadConversation,
+      })
+      if (aiRes && aiRes !== "missing-assistant") return aiRes
+      if (aiRes === "missing-assistant") {
+        playTelnyxAiUnavailableVoicemail(texml, appUrl, userId, callSid)
+        return new NextResponse(texml.toString(), {
+          headers: { "Content-Type": "text/xml" },
+        })
+      }
+    }
+
+    if (zingAfterRecv && !virtualFbAi && pathFallbackMode !== "recv-ai" && pathFallbackMode !== "owner-ai") {
+      const greeting =
+        config?.ai_greeting?.trim() || "Sorry we could not reach you. Please leave a message after the tone."
+      texmlSayNatural(texml, greeting)
+      texml.record({
+        maxLength: 120,
+        recordingStatusCallback: `${appUrl}/api/voice/telnyx/recording-status`,
+        action: `${appUrl}/api/voice/telnyx/voicemail-complete?userId=${userId}&callSid=${callSid}`,
+      })
+      return new NextResponse(texml.toString(), {
+        headers: { "Content-Type": "text/xml" },
+      })
+    }
+
+    if (
+      !zingAfterRecv &&
+      recvOutboundE164 &&
+      primaryWasOwner &&
+      (pathFallbackMode === "recv-ai" || pathFallbackMode === "recv")
+    ) {
+      console.log(
+        JSON.stringify({
+          zing: "telnyx-fallback-owner-first-to-recv",
+          userId,
+          callSid,
+          pathFallbackMode: pathFallbackMode ?? null,
+        })
+      )
+      const bnForAction =
+        (bnFromQuery || "").trim() ||
+        effectiveBusinessLine ||
+        businessLineE164 ||
+        (await getPrimaryActiveBusinessNumberE164(userId)) ||
+        ""
+      const outboundCallerId = bnForAction.trim() ? normalizePhoneNumberE164(bnForAction) : undefined
+      const fromDisplayName = buildTelnyxDialFromDisplayName(user?.business_name || "Business")
+      const didPath = bnForAction.replace(/\D/g, "")
+      const nextPathMode: TelnyxFallbackPathMode =
+        virtualFbAi || pathFallbackMode === "recv-ai" || pathFallbackMode === "owner-ai" ? "recv-ai" : "recv"
+      const fbTail = nextPathMode === "recv-ai" ? "&fb=ai" : ""
+      const secondLegBase =
+        didPath.length >= 10
+          ? `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}/n/${didPath}/${nextPathMode}`
+          : `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}`
+      const secondModeQuery = didPath.length < 10 ? `&zingFbMode=${encodeURIComponent(nextPathMode)}` : ""
+      const recvRingSec = Math.min(Math.max(lr?.ring_timeout_seconds ?? 30, 10), 60)
+      const dial = texml.dial({
+        callerId: outboundCallerId,
+        ...(fromDisplayName ? { fromDisplayName } : {}),
+        answerOnBridge: true,
+        timeout: recvRingSec,
+        action: `${secondLegBase}?callSid=${encodeURIComponent(callSid)}&zingAfter=recv&bn=${encodeURIComponent(bnForAction)}${fbTail}${secondModeQuery}`,
+        method: "POST",
+      } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
+      dial.number(recvOutboundE164)
       return new NextResponse(texml.toString(), {
         headers: { "Content-Type": "text/xml" },
       })

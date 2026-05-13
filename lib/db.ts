@@ -73,6 +73,13 @@ function pgBool(v: unknown): boolean {
   return v === true || v === "t" || v === "true" || v === 1
 }
 
+/** True when `users.inbound_receptionist_whisper_enabled` is missing (run scripts/017-inbound-whisper-user-toggle.sql). */
+function isMissingInboundReceptionistWhisperColumnError(e: unknown): boolean {
+  const code = pgErrorCode(e)
+  const msg = pgErrorMessage(e).toLowerCase()
+  return code === "42703" && msg.includes("inbound_receptionist_whisper_enabled")
+}
+
 // Parse a routing_config row into a RoutingConfig object
 function parseRoutingRow(row: Record<string, unknown>): RoutingConfig {
   return {
@@ -434,29 +441,50 @@ export async function deleteReceptionist(receptionistId: string, userId: string)
 // Get user by email (for auth login; includes password_hash)
 export async function getAuthUserByEmail(email: string): Promise<(User & { password_hash: string }) | null> {
   const sql = getSql()
+  const pack = (row: Record<string, unknown> | undefined) => {
+    if (!row) return null
+    return { ...parseUserRow(row), password_hash: String(row.password_hash) }
+  }
   try {
     const rows = await sql`
       SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, industry, telnyx_ai_assistant_id, password_hash, created_at
       FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
     `
-    const row = rows[0]
-    if (!row) return null
-    return {
-      ...parseUserRow(row),
-      password_hash: String(row.password_hash),
-    }
+    return pack(rows[0])
   } catch (e) {
-    if (!isMissingIndustryColumnError(e)) throw e
-    const rows = await sql`
-      SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, password_hash, created_at
-      FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
-    `
-    const row = rows[0]
-    if (!row) return null
-    return {
-      ...parseUserRow(row),
-      password_hash: String(row.password_hash),
+    if (isMissingInboundReceptionistWhisperColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, industry, telnyx_ai_assistant_id, password_hash, created_at
+          FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+        `
+        return pack(rows[0])
+      } catch (e2) {
+        if (!isMissingIndustryColumnError(e2)) throw e2
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, password_hash, created_at
+          FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+        `
+        return pack(rows[0])
+      }
     }
+    if (isMissingIndustryColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, telnyx_ai_assistant_id, password_hash, created_at
+          FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+        `
+        return pack(rows[0])
+      } catch (e2) {
+        if (!isMissingInboundReceptionistWhisperColumnError(e2)) throw e2
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, password_hash, created_at
+          FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+        `
+        return pack(rows[0])
+      }
+    }
+    throw e
   }
 }
 
@@ -494,6 +522,7 @@ export async function createUser(params: {
     name: params.name,
     phone: params.phone,
     business_name: params.business_name,
+    inbound_receptionist_whisper_enabled: true,
     industry,
     telnyx_ai_assistant_id: null,
     created_at: new Date().toISOString(),
@@ -530,16 +559,57 @@ export async function getUserByPhoneNumber(toNumber: string): Promise<User | nul
     `
     return rows[0] ? parseUserRow(rows[0]) : null
   } catch (e) {
+    if (isMissingInboundReceptionistWhisperColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT u.id, u.email, u.name, u.phone, u.business_name, u.industry, u.telnyx_ai_assistant_id, u.created_at
+          FROM users u
+          JOIN phone_numbers pn ON pn.user_id = u.id
+          WHERE pn.number = ${toNumber} AND pn.status = 'active'
+          LIMIT 1
+        `
+        return rows[0] ? parseUserRow(rows[0]) : null
+      } catch (e2) {
+        if (!isMissingIndustryColumnError(e2)) throw e2
+        const rows = await sql`
+          SELECT u.id, u.email, u.name, u.phone, u.business_name, u.telnyx_ai_assistant_id, u.created_at
+          FROM users u
+          JOIN phone_numbers pn ON pn.user_id = u.id
+          WHERE pn.number = ${toNumber} AND pn.status = 'active'
+          LIMIT 1
+        `
+        return rows[0] ? parseUserRow(rows[0]) : null
+      }
+    }
     if (!isMissingIndustryColumnError(e)) throw e
-    const rows = await sql`
-      SELECT u.id, u.email, u.name, u.phone, u.business_name, u.inbound_receptionist_whisper_enabled, u.telnyx_ai_assistant_id, u.created_at
-      FROM users u
-      JOIN phone_numbers pn ON pn.user_id = u.id
-      WHERE pn.number = ${toNumber} AND pn.status = 'active'
-      LIMIT 1
-    `
-    return rows[0] ? parseUserRow(rows[0]) : null
+    try {
+      const rows = await sql`
+        SELECT u.id, u.email, u.name, u.phone, u.business_name, u.inbound_receptionist_whisper_enabled, u.telnyx_ai_assistant_id, u.created_at
+        FROM users u
+        JOIN phone_numbers pn ON pn.user_id = u.id
+        WHERE pn.number = ${toNumber} AND pn.status = 'active'
+        LIMIT 1
+      `
+      return rows[0] ? parseUserRow(rows[0]) : null
+    } catch (e2) {
+      if (!isMissingInboundReceptionistWhisperColumnError(e2)) throw e2
+      const rows = await sql`
+        SELECT u.id, u.email, u.name, u.phone, u.business_name, u.telnyx_ai_assistant_id, u.created_at
+        FROM users u
+        JOIN phone_numbers pn ON pn.user_id = u.id
+        WHERE pn.number = ${toNumber} AND pn.status = 'active'
+        LIMIT 1
+      `
+      return rows[0] ? parseUserRow(rows[0]) : null
+    }
   }
+}
+
+function inboundWhisperEnabledFromRoutingRow(row: Record<string, unknown>): boolean {
+  if (row.inbound_receptionist_whisper_enabled === null || row.inbound_receptionist_whisper_enabled === undefined) {
+    return true
+  }
+  return pgBool(row.inbound_receptionist_whisper_enabled)
 }
 
 // Fast routing lookup for incoming voice webhooks.
@@ -559,7 +629,9 @@ export async function getIncomingRoutingByNumber(
 
   const sql = getSql()
   // Match Telnyx "To" (+1…) to rows stored as 10-digit, 11-digit, or E.164 (avoids silent no-match → no call_logs).
-  const rows = await sql`
+  let rows: Record<string, unknown>[]
+  try {
+    rows = await sql`
     SELECT
       u.id AS user_id,
       u.name AS user_name,
@@ -611,6 +683,60 @@ export async function getIncomingRoutingByNumber(
       )
     LIMIT 1
   `
+  } catch (e) {
+    if (!isMissingInboundReceptionistWhisperColumnError(e)) throw e
+    rows = await sql`
+    SELECT
+      u.id AS user_id,
+      u.name AS user_name,
+      COALESCE(NULLIF(trim(u.business_name), ''), 'My Business') AS business_name,
+      u.phone AS owner_phone,
+      CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.selected_receptionist_id ELSE rc_def.selected_receptionist_id END
+        AS selected_receptionist_id,
+      COALESCE(
+        CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.fallback_type ELSE rc_def.fallback_type END,
+        'owner'
+      ) AS fallback_type,
+      COALESCE(
+        CASE WHEN rc_spec.id IS NOT NULL THEN rc_spec.ring_timeout_seconds ELSE rc_def.ring_timeout_seconds END,
+        30
+      ) AS ring_timeout_seconds,
+      COALESCE(rc_def.ai_ring_owner_first, false) AS ai_ring_owner_first,
+      CASE WHEN rc_spec.id IS NOT NULL THEN rs.name ELSE rd.name END AS receptionist_name,
+      CASE WHEN rc_spec.id IS NOT NULL THEN rs.phone ELSE rd.phone END AS receptionist_phone,
+      COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
+      COALESCE(pn.friendly_name, '') AS phone_line_friendly_name
+    FROM phone_numbers pn
+    JOIN users u ON u.id = pn.user_id
+    LEFT JOIN routing_config rc_spec
+      ON rc_spec.user_id = u.id
+      AND (
+        rc_spec.business_number = pn.number
+        OR regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g') = regexp_replace(pn.number, '\\D', '', 'g')
+        OR (
+          length(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g')) >= 10
+          AND length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
+          AND right(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g'), 10)
+            = right(regexp_replace(pn.number, '\\D', '', 'g'), 10)
+        )
+      )
+    LEFT JOIN routing_config rc_def
+      ON rc_def.user_id = u.id
+      AND rc_def.business_number IS NULL
+    LEFT JOIN receptionists rs ON rs.id = rc_spec.selected_receptionist_id
+    LEFT JOIN receptionists rd ON rd.id = rc_def.selected_receptionist_id
+    WHERE pn.status = 'active'
+      AND (
+        regexp_replace(pn.number, '\\D', '', 'g') = ${digitKey}
+        OR (
+          length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
+          AND length(${digitKey}) >= 10
+          AND right(regexp_replace(pn.number, '\\D', '', 'g'), 10) = right(${digitKey}, 10)
+        )
+      )
+    LIMIT 1
+  `
+  }
 
   const row = rows[0]
   if (!row) {
@@ -622,7 +748,7 @@ export async function getIncomingRoutingByNumber(
     user_id: String(row.user_id),
     user_name: String(row.user_name),
     business_name: row.business_name != null ? String(row.business_name) : "My Business",
-    inbound_receptionist_whisper_enabled: pgBool(row.inbound_receptionist_whisper_enabled),
+    inbound_receptionist_whisper_enabled: inboundWhisperEnabledFromRoutingRow(row as Record<string, unknown>),
     owner_phone: String(row.owner_phone),
     selected_receptionist_id: row.selected_receptionist_id ? String(row.selected_receptionist_id) : null,
     fallback_type: (row.fallback_type as RoutingConfig["fallback_type"]) || "owner",
@@ -648,12 +774,39 @@ export async function getUser(userId: string): Promise<User | null> {
     `
     return rows[0] ? parseUserRow(rows[0]) : null
   } catch (e) {
-    if (!isMissingIndustryColumnError(e)) throw e
-    const rows = await sql`
-      SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, telnyx_ai_assistant_id, created_at
-      FROM users WHERE id = ${userId} LIMIT 1
-    `
-    return rows[0] ? parseUserRow(rows[0]) : null
+    if (isMissingInboundReceptionistWhisperColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, industry, telnyx_ai_assistant_id, created_at
+          FROM users WHERE id = ${userId} LIMIT 1
+        `
+        return rows[0] ? parseUserRow(rows[0]) : null
+      } catch (e2) {
+        if (!isMissingIndustryColumnError(e2)) throw e2
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, created_at
+          FROM users WHERE id = ${userId} LIMIT 1
+        `
+        return rows[0] ? parseUserRow(rows[0]) : null
+      }
+    }
+    if (isMissingIndustryColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, telnyx_ai_assistant_id, created_at
+          FROM users WHERE id = ${userId} LIMIT 1
+        `
+        return rows[0] ? parseUserRow(rows[0]) : null
+      } catch (e2) {
+        if (!isMissingInboundReceptionistWhisperColumnError(e2)) throw e2
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, telnyx_ai_assistant_id, created_at
+          FROM users WHERE id = ${userId} LIMIT 1
+        `
+        return rows[0] ? parseUserRow(rows[0]) : null
+      }
+    }
+    throw e
   }
 }
 

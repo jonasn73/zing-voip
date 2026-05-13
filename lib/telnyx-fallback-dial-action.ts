@@ -612,13 +612,14 @@ export async function handleTelnyxFallbackDialEnded(
           break
         }
         if (user) {
-          const calledNum = (formData.get("To") as string) || ""
           const bnForAction =
             (bnFromQuery || "").trim() ||
             effectiveBusinessLine ||
             businessLineE164 ||
             (await getPrimaryActiveBusinessNumberE164(userId)) ||
             ""
+          // Must be a Telnyx-owned business DID — not `To` from this webhook (often the callee’s cell), or carriers may flag spam / fail attestation.
+          const outboundCallerId = bnForAction.trim() ? normalizePhoneNumberE164(bnForAction) : undefined
           const didPath = bnForAction.replace(/\D/g, "")
           const secondMode: TelnyxFallbackPathMode =
             (useLive && lr?.fallback_type === "ai") || globalDefaultConfig?.fallback_type === "ai"
@@ -632,7 +633,7 @@ export async function handleTelnyxFallbackDialEnded(
               : `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}`
           const secondModeQuery = didPath.length < 10 ? `&zingFbMode=${encodeURIComponent(secondMode)}` : ""
           const dial = texml.dial({
-            callerId: calledNum || undefined,
+            callerId: outboundCallerId,
             answerOnBridge: true,
             timeout: 30,
             action: `${secondLegBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first&bn=${encodeURIComponent(bnForAction)}${fbTail}${secondModeQuery}`,

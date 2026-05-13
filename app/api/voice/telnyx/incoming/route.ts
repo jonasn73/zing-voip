@@ -42,9 +42,13 @@ const INBOUND_RECEPTIONIST_WHISPER_DISABLED = ["0", "false", "no"].includes(
   (process.env.ZING_INBOUND_RECEPTIONIST_WHISPER || "").trim().toLowerCase()
 )
 
-/** When true, `<Dial><Number>` to the receptionist omits `url=` (no pre-answer whisper) — use if Telnyx never rings the teammate when `url` is set. */
+/** Legacy: set to force plain `<Number>` (same as default today). Ignored when `ZING_INBOUND_RECV_WHISPER_URL` is on. */
 const INBOUND_RECV_PLAIN_DIAL = ["1", "true", "yes"].includes(
   (process.env.ZING_INBOUND_RECV_PLAIN_DIAL ?? "").trim().toLowerCase()
+)
+/** Opt-in: set `1`/`true`/`yes` so receptionist `<Number url=…>` plays the line-ID whisper (off by default — Telnyx often never completes the PSTN leg when `url` is set). */
+const INBOUND_RECV_WHISPER_URL_ENABLED = ["1", "true", "yes"].includes(
+  (process.env.ZING_INBOUND_RECV_WHISPER_URL ?? "").trim().toLowerCase()
 )
 
 function receptionistWhisperScreenUrl(phrase: string): string {
@@ -74,6 +78,26 @@ function pickField(fields: Record<string, string>, keys: string[]): string {
     if (value != null && String(value).trim() !== "") return String(value).trim()
   }
   return ""
+}
+
+/** Only treat “Dial completed” on the voice URL as terminal when Telnyx sent real dial metadata (avoids hanging up before the first `<Dial>`). */
+function hasVoiceUrlDialCompletedEvidence(fields: Record<string, string>): boolean {
+  const sid = pickField(fields, [
+    "DialCallSid",
+    "DialSid",
+    "ChildCallSid",
+    "DialLegSid",
+    "dial_call_sid",
+  ]).trim()
+  if (sid.length > 0) return true
+  const durRaw = pickField(fields, [
+    "DialCallDuration",
+    "DialCallDurationSeconds",
+    "DialBridgedDuration",
+    "DialDuration",
+  ]).trim()
+  const dur = parseInt(durRaw, 10)
+  return Number.isFinite(dur) && dur > 0
 }
 
 // Read TeXML instruction request body as form fields or JSON.
@@ -184,7 +208,12 @@ async function handleIncomingCall(
     const dialOutcomeIsNonLive = (s: string) =>
       ["ringing", "ring", "queued", "init", "in-progress", "inprogress", "answered", "early-media"].includes(s)
 
-    if (dialOutcomeOnVoiceUrl && !dialOutcomeIsNonLive(dialOutcomeOnVoiceUrl) && dialOutcomeOnVoiceUrl === "completed") {
+    if (
+      dialOutcomeOnVoiceUrl &&
+      !dialOutcomeIsNonLive(dialOutcomeOnVoiceUrl) &&
+      dialOutcomeOnVoiceUrl === "completed" &&
+      hasVoiceUrlDialCompletedEvidence(webhookFields)
+    ) {
       console.log(
         JSON.stringify({
           zing: "telnyx-incoming-dial-completed-on-voice-url",
@@ -196,6 +225,21 @@ async function handleIncomingCall(
       void markTelnyxInboundDialCallerLegDone(callSid)
       texml.hangup()
       return { kind: "twiml", texml }
+    }
+    if (
+      dialOutcomeOnVoiceUrl &&
+      !dialOutcomeIsNonLive(dialOutcomeOnVoiceUrl) &&
+      dialOutcomeOnVoiceUrl === "completed" &&
+      !hasVoiceUrlDialCompletedEvidence(webhookFields)
+    ) {
+      console.log(
+        JSON.stringify({
+          zing: "telnyx-incoming-dial-completed-ignored-no-evidence",
+          callSid,
+          userId: routing.user_id,
+          dialOutcomeOnVoiceUrl,
+        })
+      )
     }
 
     // 3. Log the incoming call (don't let logging failures break call routing)
@@ -302,7 +346,7 @@ async function handleIncomingCall(
         hasReceptionist,
         firstDialOwnerWithTeammate,
         recvDialDigitLen: receptionistDialE164.replace(/\D/g, "").length,
-        recvPlainDialEnv: INBOUND_RECV_PLAIN_DIAL,
+        recvWhisperUrlEnabled: INBOUND_RECV_WHISPER_URL_ENABLED && !INBOUND_RECV_PLAIN_DIAL,
         aiRingOwnerFirstFromDefaultRow: routing.ai_ring_owner_first,
         ringOwnerFirstEffective: ringOwnerFirst,
         useDirectAiWhenNoReceptionist,
@@ -447,7 +491,10 @@ async function handleIncomingCall(
         method: "POST",
         // Telnyx TeXML accepts `fromDisplayName` on Dial (outbound CNAM); Twilio typings omit it.
       } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
-      const useRecvScreenUrl = whisperPhrase.trim().length > 0 && !INBOUND_RECV_PLAIN_DIAL
+      const useRecvScreenUrl =
+        whisperPhrase.trim().length > 0 &&
+        INBOUND_RECV_WHISPER_URL_ENABLED &&
+        !INBOUND_RECV_PLAIN_DIAL
       if (useRecvScreenUrl) {
         dial.number({ url: receptionistWhisperScreenUrl(whisperPhrase) }, recPhone)
       } else {
@@ -503,7 +550,15 @@ export async function POST(req: NextRequest) {
     console.log("[Zing] Telnyx webhook fields:", JSON.stringify(fields))
   }
 
-  const calledNumber = pickField(fields, ["To", "Called", "ToNumber", "CalledNumber"])
+  const calledNumber = pickField(fields, [
+    "To",
+    "Called",
+    "ToNumber",
+    "CalledNumber",
+    "Destination",
+    "destination",
+    "CalledVia",
+  ])
   const callerNumber = pickField(fields, ["From", "Caller", "RemoteParty"])
   const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
   const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
@@ -525,7 +580,15 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const fields = searchParamsToFields(url)
-  const calledNumber = pickField(fields, ["To", "Called", "ToNumber", "CalledNumber"])
+  const calledNumber = pickField(fields, [
+    "To",
+    "Called",
+    "ToNumber",
+    "CalledNumber",
+    "Destination",
+    "destination",
+    "CalledVia",
+  ])
   const callerNumber = pickField(fields, ["From", "Caller", "RemoteParty"])
   const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
   const callSid = callSidRaw.trim() || `zing-${randomUUID()}`

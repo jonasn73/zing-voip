@@ -1,6 +1,10 @@
 -- ============================================
 -- 019 — Billing balance, plans, platform admin, ledger, feedback
 -- ============================================
+-- HOW TO RUN IN NEON (SQL Editor):
+--   1. Open THIS file in your editor (or GitHub), select ALL lines, copy.
+--   2. Paste into Neon SQL Editor — do NOT paste the path "scripts/019-..." alone;
+--      that is a file name, not SQL, and causes: syntax error at or near "scripts".
 -- Run in Neon after prior migrations. Adds prepaid-style credit (cents) on users,
 -- optional platform admin flag, append-only billing ledger, and user feedback rows.
 

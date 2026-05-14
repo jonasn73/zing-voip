@@ -161,7 +161,10 @@ async function findPerNumberRoutingConfigId(userId: string, businessNumber: stri
   const normalized = normalizePhoneNumberE164(businessNumber)
   const digitKey = phoneDigitsKey(businessNumber)
   const exact = await sql`
-    SELECT id FROM routing_config WHERE user_id = ${userId} AND business_number = ${normalized} LIMIT 1
+    SELECT id FROM routing_config
+    WHERE user_id = ${userId} AND business_number = ${normalized}
+    ORDER BY updated_at DESC NULLS LAST
+    LIMIT 1
   `
   if (exact[0]) return String(exact[0].id)
   if (digitKey.length < 10) return null
@@ -177,6 +180,7 @@ async function findPerNumberRoutingConfigId(userId: string, businessNumber: stri
           AND right(regexp_replace(business_number, '\\D', '', 'g'), 10) = right(${digitKey}, 10)
         )
       )
+    ORDER BY updated_at DESC NULLS LAST
     LIMIT 1
   `
   return loose[0] ? String(loose[0].id) : null
@@ -210,10 +214,15 @@ async function mergePerNumberRoutingFromDefault(userId: string, cfg: RoutingConf
 export async function getRoutingConfigForNumber(userId: string, businessNumber: string): Promise<RoutingConfig | null> {
   const sql = getSql()
   const digitKey = phoneDigitsKey(businessNumber)
-  // Exact match first (fast path)
+  const normalizedBn = normalizePhoneNumberE164(businessNumber)
+  // Exact match first (fast path); prefer newest row if duplicates exist.
   const specificExact = await sql`
     SELECT id, user_id, business_number, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, ai_ring_owner_first, updated_at
-    FROM routing_config WHERE user_id = ${userId} AND business_number = ${businessNumber} LIMIT 1
+    FROM routing_config
+    WHERE user_id = ${userId}
+      AND (business_number = ${businessNumber} OR business_number = ${normalizedBn})
+    ORDER BY updated_at DESC NULLS LAST
+    LIMIT 1
   `
   if (specificExact[0]) return mergePerNumberRoutingFromDefault(userId, parseRoutingRow(specificExact[0]))
   if (digitKey.length < 10) return getRoutingConfig(userId)
@@ -231,6 +240,7 @@ export async function getRoutingConfigForNumber(userId: string, businessNumber: 
           AND right(regexp_replace(business_number, '\\D', '', 'g'), 10) = right(${digitKey}, 10)
         )
       )
+    ORDER BY updated_at DESC NULLS LAST
     LIMIT 1
   `
   if (specificLoose[0]) return mergePerNumberRoutingFromDefault(userId, parseRoutingRow(specificLoose[0]))
@@ -674,18 +684,24 @@ export async function getIncomingRoutingByNumber(
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
-    LEFT JOIN routing_config rc_spec
-      ON rc_spec.user_id = u.id
-      AND (
-        rc_spec.business_number = pn.number
-        OR regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g') = regexp_replace(pn.number, '\\D', '', 'g')
-        OR (
-          length(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g')) >= 10
-          AND length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
-          AND right(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g'), 10)
-            = right(regexp_replace(pn.number, '\\D', '', 'g'), 10)
+    LEFT JOIN LATERAL (
+      SELECT rc.*
+      FROM routing_config rc
+      WHERE rc.user_id = u.id
+        AND rc.business_number IS NOT NULL
+        AND (
+          rc.business_number = pn.number
+          OR regexp_replace(COALESCE(rc.business_number, ''), '\\D', '', 'g') = regexp_replace(pn.number, '\\D', '', 'g')
+          OR (
+            length(regexp_replace(COALESCE(rc.business_number, ''), '\\D', '', 'g')) >= 10
+            AND length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
+            AND right(regexp_replace(COALESCE(rc.business_number, ''), '\\D', '', 'g'), 10)
+              = right(regexp_replace(pn.number, '\\D', '', 'g'), 10)
+          )
         )
-      )
+      ORDER BY rc.updated_at DESC NULLS LAST
+      LIMIT 1
+    ) rc_spec ON true
     LEFT JOIN routing_config rc_def
       ON rc_def.user_id = u.id
       AND rc_def.business_number IS NULL
@@ -735,18 +751,24 @@ export async function getIncomingRoutingByNumber(
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
-    LEFT JOIN routing_config rc_spec
-      ON rc_spec.user_id = u.id
-      AND (
-        rc_spec.business_number = pn.number
-        OR regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g') = regexp_replace(pn.number, '\\D', '', 'g')
-        OR (
-          length(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g')) >= 10
-          AND length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
-          AND right(regexp_replace(COALESCE(rc_spec.business_number, ''), '\\D', '', 'g'), 10)
-            = right(regexp_replace(pn.number, '\\D', '', 'g'), 10)
+    LEFT JOIN LATERAL (
+      SELECT rc.*
+      FROM routing_config rc
+      WHERE rc.user_id = u.id
+        AND rc.business_number IS NOT NULL
+        AND (
+          rc.business_number = pn.number
+          OR regexp_replace(COALESCE(rc.business_number, ''), '\\D', '', 'g') = regexp_replace(pn.number, '\\D', '', 'g')
+          OR (
+            length(regexp_replace(COALESCE(rc.business_number, ''), '\\D', '', 'g')) >= 10
+            AND length(regexp_replace(pn.number, '\\D', '', 'g')) >= 10
+            AND right(regexp_replace(COALESCE(rc.business_number, ''), '\\D', '', 'g'), 10)
+              = right(regexp_replace(pn.number, '\\D', '', 'g'), 10)
+          )
         )
-      )
+      ORDER BY rc.updated_at DESC NULLS LAST
+      LIMIT 1
+    ) rc_spec ON true
     LEFT JOIN routing_config rc_def
       ON rc_def.user_id = u.id
       AND rc_def.business_number IS NULL

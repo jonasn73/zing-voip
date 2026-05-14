@@ -43,15 +43,6 @@ const INBOUND_RECEPTIONIST_WHISPER_DISABLED = ["0", "false", "no"].includes(
   (process.env.ZING_INBOUND_RECEPTIONIST_WHISPER || "").trim().toLowerCase()
 )
 
-/** Legacy: set to force plain `<Number>` (same as default today). Ignored when `ZING_INBOUND_RECV_WHISPER_URL` is on. */
-const INBOUND_RECV_PLAIN_DIAL = ["1", "true", "yes"].includes(
-  (process.env.ZING_INBOUND_RECV_PLAIN_DIAL ?? "").trim().toLowerCase()
-)
-/** Opt-in: set `1`/`true`/`yes` so receptionist `<Number url=…>` plays the line-ID whisper (off by default — Telnyx often never completes the PSTN leg when `url` is set). */
-const INBOUND_RECV_WHISPER_URL_ENABLED = ["1", "true", "yes"].includes(
-  (process.env.ZING_INBOUND_RECV_WHISPER_URL ?? "").trim().toLowerCase()
-)
-
 function receptionistWhisperScreenUrl(phrase: string): string {
   return `${getAppUrl()}/api/voice/telnyx/receptionist-screen?p=${encodeURIComponent(phrase)}`
 }
@@ -102,16 +93,66 @@ function hasVoiceUrlDialCompletedEvidence(fields: Record<string, string>): boole
 }
 
 // Read TeXML instruction request body as form fields or JSON.
+// Telnyx sometimes POSTs JSON with a nested `data` object; flatten so `pickField` sees `To` / `From` / `CallSid`.
+function flattenJsonWebhookToStringMap(body: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  const put = (key: string, val: unknown) => {
+    if (val === null || val === undefined) return
+    if (typeof val === "object" && !Array.isArray(val)) return
+    const s = String(val).trim()
+    if (!s) return
+    if (out[key] == null || out[key] === "") out[key] = s
+  }
+  for (const [k, v] of Object.entries(body)) {
+    put(k, v)
+    if (k === "data" && v && typeof v === "object" && !Array.isArray(v)) {
+      for (const [ik, iv] of Object.entries(v as Record<string, unknown>)) {
+        put(ik, iv)
+        if (ik === "to") put("To", iv)
+        if (ik === "from") put("From", iv)
+        if (ik === "call_control_id") put("CallSid", iv)
+      }
+    }
+  }
+  return out
+}
+
+/** If `To` is missing from the map, find the first value that looks like E.164 (some proxies nest the callee). */
+function inferE164FromFieldMap(fields: Record<string, string>): string {
+  for (const val of Object.values(fields)) {
+    const m = val.match(/\+[1-9]\d{9,14}\b/)
+    if (m) return m[0]
+  }
+  return ""
+}
+
+function resolveCalledParty(fields: Record<string, string>): string {
+  const keys = [
+    "To",
+    "to",
+    "Called",
+    "called",
+    "ToNumber",
+    "to_number",
+    "CalledNumber",
+    "called_number",
+    "Destination",
+    "destination",
+    "CalledVia",
+    "dialed_number",
+    "DialedNumber",
+  ]
+  const direct = pickField(fields, keys).trim()
+  if (direct) return direct
+  return inferE164FromFieldMap(fields)
+}
+
 async function readWebhookFields(req: NextRequest): Promise<Record<string, string>> {
   const contentType = (req.headers.get("content-type") || "").toLowerCase()
   if (contentType.includes("application/json")) {
     try {
       const body = (await req.json()) as Record<string, unknown>
-      const out: Record<string, string> = {}
-      for (const [key, val] of Object.entries(body)) {
-        if (val !== null && val !== undefined && String(val).trim() !== "") out[key] = String(val)
-      }
-      return out
+      return flattenJsonWebhookToStringMap(body)
     } catch {
       return {}
     }
@@ -367,11 +408,13 @@ async function handleIncomingCall(
       JSON.stringify({
         zing: "telnyx-incoming-routing-flags",
         userId: routing.user_id,
+        cfgDid: businessLineE164 || normalizePhoneNumberE164(calledNumber) || calledNumber.trim(),
+        calledLen: calledNumber.trim().length,
         wantsAiAfterNoAnswer,
         hasReceptionist,
         selectedRecvConfigured: Boolean(selectedReceptionistId),
         recvDialDigitLen: receptionistDialE164.replace(/\D/g, "").length,
-        recvWhisperUrlEnabled: INBOUND_RECV_WHISPER_URL_ENABLED && !INBOUND_RECV_PLAIN_DIAL,
+        recvPstnDialPlain: true,
         aiRingOwnerFirstFromDefaultRow: routing.ai_ring_owner_first,
         ringOwnerFirstEffective: ringOwnerFirst,
         useDirectAiWhenNoReceptionist,
@@ -516,15 +559,8 @@ async function handleIncomingCall(
         method: "POST",
         // Telnyx TeXML accepts `fromDisplayName` on Dial (outbound CNAM); Twilio typings omit it.
       } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
-      const useRecvScreenUrl =
-        whisperPhrase.trim().length > 0 &&
-        INBOUND_RECV_WHISPER_URL_ENABLED &&
-        !INBOUND_RECV_PLAIN_DIAL
-      if (useRecvScreenUrl) {
-        dial.number({ url: receptionistWhisperScreenUrl(whisperPhrase) }, recPhone)
-      } else {
-        dial.number(recPhone)
-      }
+      // Receptionist leg: always plain `<Number>` — `<Number url="…">` screening breaks PSTN completion on many Telnyx accounts (owner leg may still use whisper `url` below).
+      dial.number(recPhone)
     } else {
       const ownerPhone = normalizePhoneNumberE164(routing.owner_phone)
       if (debug) console.log(`[Zing] No receptionist assigned, routing to owner: ${ownerPhone}`)
@@ -559,16 +595,18 @@ export async function POST(req: NextRequest) {
     console.log("[Zing] Telnyx webhook fields:", JSON.stringify(fields))
   }
 
-  const calledNumber = pickField(fields, [
-    "To",
-    "Called",
-    "ToNumber",
-    "CalledNumber",
-    "Destination",
-    "destination",
-    "CalledVia",
-  ])
-  const callerNumber = pickField(fields, ["From", "Caller", "RemoteParty"])
+  const calledNumberRaw = resolveCalledParty(fields)
+  if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
+    console.log(
+      JSON.stringify({
+        zing: "telnyx-incoming-called-inferred",
+        callSid: pickField(fields, ["CallSid", "CallControlId", "call_control_id"]) || null,
+        inferredTo: calledNumberRaw,
+        fieldKeySample: Object.keys(fields).slice(0, 25),
+      })
+    )
+  }
+  const callerNumber = pickField(fields, ["From", "from", "Caller", "caller", "RemoteParty"])
   const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
   const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
   if (!callSidRaw.trim()) {
@@ -578,7 +616,7 @@ export async function POST(req: NextRequest) {
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields), fields)
+  const out = await handleIncomingCall(calledNumberRaw, callerNumber, callSid, callerName, Object.keys(fields), fields)
   const body = out.kind === "raw" ? out.xml : out.texml.toString()
 
   return new NextResponse(body, {
@@ -589,16 +627,17 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const fields = searchParamsToFields(url)
-  const calledNumber = pickField(fields, [
-    "To",
-    "Called",
-    "ToNumber",
-    "CalledNumber",
-    "Destination",
-    "destination",
-    "CalledVia",
-  ])
-  const callerNumber = pickField(fields, ["From", "Caller", "RemoteParty"])
+  const calledNumberRaw = resolveCalledParty(fields)
+  if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
+    console.log(
+      JSON.stringify({
+        zing: "telnyx-incoming-called-inferred-get",
+        callSid: pickField(fields, ["CallSid", "CallControlId", "call_control_id"]) || null,
+        inferredTo: calledNumberRaw,
+      })
+    )
+  }
+  const callerNumber = pickField(fields, ["From", "from", "Caller", "caller", "RemoteParty"])
   const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
   const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
   if (!callSidRaw.trim()) {
@@ -606,7 +645,7 @@ export async function GET(req: NextRequest) {
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const out = await handleIncomingCall(calledNumber, callerNumber, callSid, callerName, Object.keys(fields), fields)
+  const out = await handleIncomingCall(calledNumberRaw, callerNumber, callSid, callerName, Object.keys(fields), fields)
   const body = out.kind === "raw" ? out.xml : out.texml.toString()
 
   return new NextResponse(body, {

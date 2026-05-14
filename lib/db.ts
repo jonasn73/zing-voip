@@ -86,7 +86,11 @@ function parseRoutingRow(row: Record<string, unknown>): RoutingConfig {
     id: String(row.id),
     user_id: String(row.user_id),
     business_number: row.business_number != null ? String(row.business_number) : null,
-    selected_receptionist_id: row.selected_receptionist_id != null ? String(row.selected_receptionist_id) : null,
+    selected_receptionist_id: (() => {
+      if (row.selected_receptionist_id == null) return null
+      const s = String(row.selected_receptionist_id).trim()
+      return s === "" ? null : s
+    })(),
     fallback_type: row.fallback_type as RoutingConfig["fallback_type"],
     ai_greeting: String(row.ai_greeting ?? ""),
     ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),

@@ -378,6 +378,15 @@ export function DashboardPage() {
   }
 
   function selectReceptionist(id: string) {
+    const active = businessNumbers.filter((b) => b.status === "active")
+    if (active.length >= 2 && !routingBusinessNumber?.trim()) {
+      toast({
+        title: "Tap a business number first",
+        description: "With two lines, tap the green number card for the line Sarah should answer, then tap Sarah again.",
+        variant: "destructive",
+      })
+      return
+    }
     const prev = selectedReceptionistId
     setSelectedReceptionistId(id)
     void saveRouting({ selected_receptionist_id: id }).catch((e) => {
@@ -386,6 +395,15 @@ export function DashboardPage() {
   }
 
   function clearReceptionist() {
+    const active = businessNumbers.filter((b) => b.status === "active")
+    if (active.length >= 2 && !routingBusinessNumber?.trim()) {
+      toast({
+        title: "Tap a business number first",
+        description: "Tap the line you want to route to your phone, then try again.",
+        variant: "destructive",
+      })
+      return
+    }
     const prev = selectedReceptionistId
     setSelectedReceptionistId(null)
     void saveRouting({ selected_receptionist_id: null }).catch((e) => {

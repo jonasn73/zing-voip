@@ -18,6 +18,7 @@ import {
   getIncomingRoutingByNumber,
   getReceptionist,
   getRoutingConfigForNumber,
+  getPrimaryActiveBusinessNumberE164,
   getUser,
   insertCallLog,
   isReasonablePstnDialString,
@@ -557,6 +558,32 @@ async function handleIncomingCall(
     const fbQuery = wantsAiAfterNoAnswer ? "&fb=ai" : ""
     const bnQuery = `&bn=${encodeURIComponent(businessLineE164)}`
 
+    // PSTN `<Dial callerId>` must be a Telnyx-owned E.164; if the webhook DID normalizes badly, fall back to this user’s primary active number.
+    let outboundCallerId = businessLineE164
+    if (!isReasonablePstnDialString(outboundCallerId)) {
+      const primary = await getPrimaryActiveBusinessNumberE164(routing.user_id)
+      if (primary && isReasonablePstnDialString(primary)) {
+        outboundCallerId = primary
+        console.log(
+          JSON.stringify({
+            zing: "telnyx-incoming-callerid-fallback-primary",
+            callSid,
+            userId: routing.user_id,
+          })
+        )
+      }
+    }
+    if (!isReasonablePstnDialString(outboundCallerId)) {
+      console.error(
+        JSON.stringify({
+          zing: "telnyx-incoming-callerid-missing",
+          callSid,
+          userId: routing.user_id,
+          businessLineE164: businessLineE164 || null,
+        })
+      )
+    }
+
     // callerId on the outbound PSTN leg is the business DID so the callee’s phone can show which line was dialed.
     const whisperOffUser = routing.inbound_receptionist_whisper_enabled === false
     const whisperPhrase =
@@ -577,25 +604,21 @@ async function handleIncomingCall(
     if (hasReceptionist) {
       const recPhone = receptionistDialE164
       if (debug) console.log(`[Zing] Routing to receptionist: ${receptionistDisplayName || "Receptionist"} (${recPhone})`)
+      // Receptionist leg: omit `fromDisplayName` — Telnyx often fails or drops the PSTN B-leg when CNAM + forwarded mobile combine.
       const dial = texml.dial({
-        callerId: businessLineE164,
-        ...(fromDisplayName ? { fromDisplayName } : {}),
-        // Keep the caller on carrier ringback until bridge, which avoids
-        // the mid-ring tone change from early answer + handoff.
+        ...(isReasonablePstnDialString(outboundCallerId) ? { callerId: outboundCallerId } : {}),
         answerOnBridge: true,
         timeout: receptionistRingSec,
         action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}`,
         method: "POST",
-        // Telnyx TeXML accepts `fromDisplayName` on Dial (outbound CNAM); Twilio typings omit it.
       } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
-      // Receptionist leg: always plain `<Number>` — `<Number url="…">` screening breaks PSTN completion on many Telnyx accounts (owner leg may still use whisper `url` below).
       dial.number(recPhone)
     } else {
       const ownerPhone = normalizePhoneNumberE164(routing.owner_phone)
       if (debug) console.log(`[Zing] No receptionist assigned, routing to owner: ${ownerPhone}`)
       // Same as receptionist path: if your phone does not answer, POST to fallback so AI / voicemail / second leg can run.
       const dial = texml.dial({
-        callerId: businessLineE164,
+        ...(isReasonablePstnDialString(outboundCallerId) ? { callerId: outboundCallerId } : {}),
         ...(fromDisplayName ? { fromDisplayName } : {}),
         answerOnBridge: true,
         timeout: ownerRingSec,

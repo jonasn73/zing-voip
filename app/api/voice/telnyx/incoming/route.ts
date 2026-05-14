@@ -117,9 +117,20 @@ function flattenJsonWebhookToStringMap(body: Record<string, unknown>): Record<st
   return out
 }
 
-/** If `To` is missing from the map, find the first value that looks like E.164 (some proxies nest the callee). */
+/** If `To` is missing from the map, find a value that looks like E.164 — prefer keys that look like the callee, never `From`. */
 function inferE164FromFieldMap(fields: Record<string, string>): string {
-  for (const val of Object.values(fields)) {
+  const preferKeys = (re: RegExp) => {
+    for (const [k, val] of Object.entries(fields)) {
+      if (!re.test(k)) continue
+      const m = val.match(/\+[1-9]\d{9,14}\b/)
+      if (m) return m[0]
+    }
+    return ""
+  }
+  const fromDestHint = preferKeys(/to|called|destination|dialed|dialed_number/i)
+  if (fromDestHint) return fromDestHint
+  for (const [k, val] of Object.entries(fields)) {
+    if (/^from$/i.test(k) || /^caller$/i.test(k) || /^remote_party$/i.test(k)) continue
     const m = val.match(/\+[1-9]\d{9,14}\b/)
     if (m) return m[0]
   }

@@ -1,10 +1,10 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import Link from "next/link"
 import { verifySessionCookie, getSessionCookieName } from "@/lib/auth"
 import { getUser } from "@/lib/db"
 import { isPlatformAdminUser } from "@/lib/platform-admin"
 import type { User } from "@/lib/types"
+import { AdminChrome } from "@/components/admin-chrome"
 
 export const dynamic = "force-dynamic"
 
@@ -37,23 +37,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await userForAdminGate()
   if (!user) redirect("/login?next=/admin")
   if (!isPlatformAdminUser(user)) redirect("/dashboard")
+  const displayName = user.name?.trim() || user.email
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-4 py-3">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-semibold text-foreground">Operator console</span>
-          <span className="text-xs text-muted-foreground">Signed in as {user.email}</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard/help" className="text-sm font-medium text-primary hover:underline">
-            Help
-          </Link>
-          <Link href="/dashboard" className="text-sm font-medium text-primary hover:underline">
-            Back to app
-          </Link>
-        </div>
-      </header>
-      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
-    </div>
+    <AdminChrome userName={displayName} userEmail={user.email}>
+      {children}
+    </AdminChrome>
   )
 }

@@ -7,7 +7,14 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { getUser, getRoutingConfig, getRoutingConfigForNumber, getAllRoutingConfigs, updateRoutingConfig } from "@/lib/db"
+import {
+  getUser,
+  getRoutingConfig,
+  getRoutingConfigForNumber,
+  getAllRoutingConfigs,
+  updateRoutingConfig,
+  getPhoneNumbers,
+} from "@/lib/db"
 import type { UpdateRoutingRequest } from "@/lib/types"
 import {
   ensureTelnyxVoiceAiAssistant,
@@ -54,7 +61,30 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body: UpdateRoutingRequest & { business_number?: string } = await req.json()
-    const businessNumber = body.business_number || null
+    const businessNumber =
+      typeof body.business_number === "string" && body.business_number.trim() !== ""
+        ? body.business_number.trim()
+        : null
+
+    const touchesPerLineRouting =
+      body.selected_receptionist_id !== undefined ||
+      body.fallback_type !== undefined ||
+      body.ai_greeting !== undefined ||
+      body.ring_timeout_seconds !== undefined
+
+    if (touchesPerLineRouting && businessNumber == null) {
+      const nums = await getPhoneNumbers(userId)
+      const activeLines = nums.filter((n) => n.status === "active").length
+      if (activeLines >= 2) {
+        return NextResponse.json(
+          {
+            error:
+              "Which line is this for? On the dashboard tap the business number, then save again so we can store routing for that line (not only the account default).",
+          },
+          { status: 400 }
+        )
+      }
+    }
 
     await updateRoutingConfig(
       userId,

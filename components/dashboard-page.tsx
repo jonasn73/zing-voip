@@ -256,13 +256,34 @@ export function DashboardPage() {
 
   // Save routing for the line shown in the UI (`routingBusinessNumber`), or the account default when you have no numbers yet.
   // When fallback_type is "ai", the API auto-provisions voice AI and returns voiceAi.
+  // With **two or more** business lines, never send `business_number: null` for per-line fields — that only updated the
+  // account default row and left the tapped line’s `routing_config` unchanged (calls still rang the wrong person).
   function saveRouting(updates: Record<string, unknown>, opts?: { quiet?: boolean }): Promise<void> {
-    const lineE164 = routingBusinessNumber
+    const active = businessNumbers.filter((b) => b.status === "active")
+    const lineE164 =
+      (routingBusinessNumber && routingBusinessNumber.trim()) ||
+      (active.length === 1 ? active[0]?.number?.trim() || null : null)
+    const touchesPerLine =
+      updates.selected_receptionist_id !== undefined ||
+      updates.fallback_type !== undefined ||
+      updates.ai_greeting !== undefined ||
+      updates.ring_timeout_seconds !== undefined
+    if (active.length >= 2 && touchesPerLine && !lineE164) {
+      if (!opts?.quiet) {
+        toast({
+          title: "Pick a business line first",
+          description: "Tap the number card for the line you want (green outline), then save again.",
+          variant: "destructive",
+        })
+      }
+      return Promise.reject(new Error("ZING_NO_ROUTING_LINE"))
+    }
+
     return fetch("/api/routing", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ ...updates, business_number: lineE164 }),
+      body: JSON.stringify({ ...updates, business_number: lineE164 || null }),
     })
       .then(async (res) => {
         const data = (await res.json().catch(() => ({}))) as {
@@ -278,7 +299,7 @@ export function DashboardPage() {
               variant: "destructive",
             })
           }
-          const refetchNum = routingBusinessNumber
+          const refetchNum = lineE164 || routingBusinessNumber
           const routingUrl = refetchNum
             ? `/api/routing?number=${encodeURIComponent(refetchNum)}`
             : "/api/routing"
@@ -324,7 +345,7 @@ export function DashboardPage() {
               title: "Routing updated",
               description:
                 businessNumbers.length > 1
-                  ? `Line ${formatPhoneDisplay(routingBusinessNumber)} will use this ring target and fallback.`
+                  ? `Line ${formatPhoneDisplay(lineE164 || routingBusinessNumber)} will use this ring target and fallback.`
                   : "Incoming calls will follow your new routing rule.",
             })
           }
@@ -357,13 +378,19 @@ export function DashboardPage() {
   }
 
   function selectReceptionist(id: string) {
+    const prev = selectedReceptionistId
     setSelectedReceptionistId(id)
-    saveRouting({ selected_receptionist_id: id })
+    void saveRouting({ selected_receptionist_id: id }).catch((e) => {
+      if (e instanceof Error && e.message === "ZING_NO_ROUTING_LINE") setSelectedReceptionistId(prev)
+    })
   }
 
   function clearReceptionist() {
+    const prev = selectedReceptionistId
     setSelectedReceptionistId(null)
-    saveRouting({ selected_receptionist_id: null })
+    void saveRouting({ selected_receptionist_id: null }).catch((e) => {
+      if (e instanceof Error && e.message === "ZING_NO_ROUTING_LINE") setSelectedReceptionistId(prev)
+    })
   }
 
   return (

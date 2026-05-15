@@ -1,5 +1,5 @@
 // ============================================
-// Edge middleware — session cookie gate for /dashboard/* and /admin/*
+// Edge middleware — session cookie gate for /dashboard/*, /admin/*, and /onboarding
 // ============================================
 // Only checks that the session cookie exists (shape: payload.signature).
 // Real signature + expiry validation stays in /api/auth/session (Node).

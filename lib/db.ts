@@ -1596,6 +1596,32 @@ export async function getVoiceOperationsInsights(userId: string, days = 7): Prom
   }
 }
 
+/** Map one `call_logs` row from Neon into the shared `CallLog` shape. */
+function parseCallLogRow(row: Record<string, unknown>): CallLog {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    provider_call_sid: String(row.provider_call_sid ?? row.twilio_call_sid ?? ""),
+    from_number: String(row.from_number),
+    to_number: String(row.to_number),
+    caller_name: row.caller_name ? String(row.caller_name) : null,
+    call_type: String(row.call_type) as CallLog["call_type"],
+    status: String(row.status),
+    duration_seconds: Number(row.duration_seconds),
+    routed_to_receptionist_id: row.routed_to_receptionist_id ? String(row.routed_to_receptionist_id) : null,
+    routed_to_name: row.routed_to_name ? String(row.routed_to_name) : null,
+    has_recording: Boolean(row.has_recording),
+    recording_url: row.recording_url ? String(row.recording_url) : null,
+    recording_duration_seconds: row.recording_duration_seconds ? Number(row.recording_duration_seconds) : null,
+    first_ring_at: row.first_ring_at ? String(row.first_ring_at) : null,
+    answered_at: row.answered_at ? String(row.answered_at) : null,
+    ended_at: row.ended_at ? String(row.ended_at) : null,
+    setup_duration_ms: row.setup_duration_ms == null ? null : Number(row.setup_duration_ms),
+    post_dial_delay_ms: row.post_dial_delay_ms == null ? null : Number(row.post_dial_delay_ms),
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }
+}
+
 // Get call logs for a user (paginated)
 export async function getCallLogs(
   userId: string,
@@ -1620,28 +1646,34 @@ export async function getCallLogs(
     `
   }
 
-  return rows.map((row) => ({
-    id: String(row.id),
-    user_id: String(row.user_id),
-    provider_call_sid: String(row.provider_call_sid ?? row.twilio_call_sid ?? ""),
-    from_number: String(row.from_number),
-    to_number: String(row.to_number),
-    caller_name: row.caller_name ? String(row.caller_name) : null,
-    call_type: String(row.call_type) as CallLog["call_type"],
-    status: String(row.status),
-    duration_seconds: Number(row.duration_seconds),
-    routed_to_receptionist_id: row.routed_to_receptionist_id ? String(row.routed_to_receptionist_id) : null,
-    routed_to_name: row.routed_to_name ? String(row.routed_to_name) : null,
-    has_recording: Boolean(row.has_recording),
-    recording_url: row.recording_url ? String(row.recording_url) : null,
-    recording_duration_seconds: row.recording_duration_seconds ? Number(row.recording_duration_seconds) : null,
-    first_ring_at: row.first_ring_at ? String(row.first_ring_at) : null,
-    answered_at: row.answered_at ? String(row.answered_at) : null,
-    ended_at: row.ended_at ? String(row.ended_at) : null,
-    setup_duration_ms: row.setup_duration_ms == null ? null : Number(row.setup_duration_ms),
-    post_dial_delay_ms: row.post_dial_delay_ms == null ? null : Number(row.post_dial_delay_ms),
-    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
-  }))
+  return rows.map((row) => parseCallLogRow(row as Record<string, unknown>))
+}
+
+/**
+ * Calls that look **in flight** for the dashboard: `ended_at` is still null (see `recordCallStatusEvent`)
+ * and the row is recent so stuck webhooks do not show forever.
+ * Requires `scripts/007-call-quality-metrics.sql` (`ended_at` column); otherwise returns [].
+ */
+export async function listLiveCallLogsForUser(userId: string): Promise<CallLog[]> {
+  const sql = getSql()
+  let rows: Record<string, unknown>[]
+  try {
+    rows = await sql`
+      SELECT * FROM call_logs
+      WHERE user_id = ${userId}
+        AND ended_at IS NULL
+        AND created_at > (now() - interval '1 hour')
+      ORDER BY created_at DESC
+      LIMIT 20
+    `
+  } catch (e) {
+    if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("ended_at")) {
+      console.warn("[db] listLiveCallLogsForUser: ended_at missing — run scripts/007-call-quality-metrics.sql in Neon.")
+      return []
+    }
+    throw e
+  }
+  return rows.map((row) => parseCallLogRow(row as Record<string, unknown>))
 }
 
 function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {

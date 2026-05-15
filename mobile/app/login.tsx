@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter } from "expo-router"
 import { apiMutate } from "../lib/api"
+import { SITE_NAME } from "@/lib/brand"
 
 export default function LoginScreen() {
   const router = useRouter()
@@ -48,7 +49,7 @@ export default function LoginScreen() {
           <View style={styles.logo}>
             <Text style={styles.logoIcon}>📞</Text>
           </View>
-          <Text style={styles.title}>Sigo</Text>
+          <Text style={styles.title}>{SITE_NAME}</Text>
         </View>
 
         <Text style={styles.heading}>Welcome back</Text>

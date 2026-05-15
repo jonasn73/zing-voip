@@ -1,7 +1,7 @@
 "use client"
 
 // ============================================
-// Number transfer thread — read + reply (vendor-backed; UI stays Sigo-branded)
+// Number transfer thread — read + reply (vendor-backed; messaging is on-brand for Hey Sigo).
 // ============================================
 
 import { useState, useEffect } from "react"
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { displayPortingMessageBody } from "@/lib/porting-display"
+import { SITE_NAME } from "@/lib/brand"
 
 type CommentRow = { id: string; body: string; user_type: string; created_at: string }
 
@@ -107,7 +108,7 @@ export function PortingOrderCommentsDialog({
           </DialogTitle>
           <DialogDescription className="text-left text-xs">
             {phoneLabel} — updates from the people handling your transfer (PIN, deadlines, carrier questions). Replies
-            you send here are delivered to that team through Sigo.
+            you send here are delivered to that team through {SITE_NAME}.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">

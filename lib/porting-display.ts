@@ -1,9 +1,9 @@
 /**
- * User-facing copy helpers. Vendor APIs still store original text; this only changes *display* in Sigo.
+ * User-facing copy helpers. Vendor APIs still store original text; this only changes *display* in Hey Sigo.
  */
 
 /**
- * Neutralizes vendor names in toasts, help text, and port threads so the product reads as Sigo-first.
+ * Neutralizes vendor names in toasts, help text, and port threads so the product reads primarily as Hey Sigo.
  * Skips hostnames (e.g. *.telnyx.com) so links stay valid.
  */
 export function displayUserFacingMessage(raw: string): string {

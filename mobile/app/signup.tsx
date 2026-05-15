@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter } from "expo-router"
 import { apiMutate } from "../lib/api"
 import { SIGNUP_INDUSTRY_OPTIONS } from "../../lib/business-industries"
+import { SITE_NAME } from "@/lib/brand"
 
 export default function SignupScreen() {
   const router = useRouter()
@@ -61,7 +62,7 @@ export default function SignupScreen() {
           <View style={styles.logo}>
             <Text style={styles.logoIcon}>📞</Text>
           </View>
-          <Text style={styles.title}>Sigo</Text>
+          <Text style={styles.title}>{SITE_NAME}</Text>
         </View>
 
         <Text style={styles.heading}>Create your account</Text>

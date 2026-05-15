@@ -1,5 +1,5 @@
 // ============================================
-// Sigo — AI phone intake (industry-aware fallback)
+// Hey Sigo — AI phone intake (industry-aware fallback)
 // ============================================
 // user_ai_intake.config holds overrides; users.industry picks the default playbook
 // when profileId is not stored (follow industry).
@@ -14,6 +14,7 @@ import {
   buildRegistryPlaybook,
   defaultBusyForRegistryProfile,
 } from "./ai-intake-field-registry"
+import { SITE_NAME } from "./brand"
 
 export type { AiIntakeProfileId } from "./business-industries"
 
@@ -119,10 +120,10 @@ export function buildFullTelnyxInstructions(
   const base = buildIntakeSystemExtension(businessName, ownerPhone, businessHours, cfg)
   const extra = cfg.extraAiInstructions?.trim()
   if (!extra) return base
-  return `${base}\n\n## Additional instructions (from Sigo)\n${extra}`
+  return `${base}\n\n## Additional instructions (from ${SITE_NAME})\n${extra}`
 }
 
-/** Full system instructions for Telnyx Voice AI (Sigo syncs this when users activate or save AI call flow). */
+/** Full system instructions for Telnyx Voice AI (Hey Sigo syncs this when users activate or save AI call flow). */
 export function buildIntakeSystemExtension(
   businessName: string,
   ownerPhone: string,

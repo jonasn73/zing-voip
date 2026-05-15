@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router"
 import { Text, View, StyleSheet } from "react-native"
+import { SITE_NAME } from "@/lib/brand"
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return (
@@ -23,7 +24,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Sigo",
+          title: SITE_NAME,
           headerTitle: "Routing",
           tabBarLabel: "Routing",
           tabBarIcon: ({ focused }) => <TabIcon emoji="⚡" focused={focused} />,

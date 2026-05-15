@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils"
 import { signOutAndGoToLogin } from "@/lib/client-auth"
 import { Button } from "@/components/ui/button"
 import { AdminConsoleProvider, useAdminConsoleSection, type AdminConsoleSection } from "@/components/admin-console-context"
+import { SITE_NAME } from "@/lib/brand"
 
 const NAV: { id: AdminConsoleSection; label: string; description: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Overview", description: "Fleet health", icon: LayoutDashboard },
@@ -32,7 +33,7 @@ function AdminSidebar() {
             <Shield className="h-5 w-5 text-white" aria-hidden />
           </div>
           <div className="min-w-0 lg:mt-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300/90">Sigo Ops</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300/90">{SITE_NAME} Ops</p>
             <p className="truncate text-sm font-semibold text-slate-100">Operator console</p>
           </div>
         </div>

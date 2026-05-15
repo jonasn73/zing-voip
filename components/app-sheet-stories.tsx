@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react"
 import Link from "next/link"
-import { SITE_NAME } from "@/lib/brand"
+import { SITE_BRAND_STORY, SITE_NAME } from "@/lib/brand"
 
 export type AppSheetStory = {
   eyebrow: string
@@ -22,7 +22,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
     description: (
       <>
         <p>
-          Zing&apos;s promise is simple: <strong>one business number</strong>, you choose{" "}
+          {SITE_NAME}&apos;s promise is simple: <strong>one business number</strong>, you choose{" "}
           <strong>who rings first</strong> (you or your team), then a clear <strong>backup</strong> (cell, AI, voicemail).
         </p>
         <p className="mt-2">
@@ -134,7 +134,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
     description: (
       <>
         <p>
-          Porting moves an existing number from another carrier into Zing. Until it completes, inbound on that number may
+          Porting moves an existing number from another carrier into {SITE_NAME}. Until it completes, inbound on that number may
           still hit your old provider.
         </p>
         <p className="mt-2">
@@ -212,7 +212,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
     description: (
       <>
         <p>
-          When on, Zing should hold push and non-critical alerts so you are not pinged overnight. It does not by itself
+          When on, {SITE_NAME} should hold push and non-critical alerts so you are not pinged overnight. It does not by itself
           change <strong>who receives the phone call</strong> — that is still routing + carrier forwarding.
         </p>
         <p className="mt-2">Use it when you want the app quiet while still leaving Telnyx to ring the handset if configured.</p>
@@ -257,7 +257,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
           When enabled, every active teammate&apos;s phone that is eligible rings at once. First pickup wins; others drop.
           Great for urgent trades; noisy for large teams.
         </p>
-        <p className="mt-2">When off, Zing can use priority or round-robin style behavior depending on backend policy.</p>
+        <p className="mt-2">When off, {SITE_NAME} can use priority or round-robin style behavior depending on backend policy.</p>
       </>
     ),
   },
@@ -282,7 +282,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
     description: (
       <>
         <p>
-          Zing sells <strong>predictable escalation</strong>: ring people first, then optionally AI, voicemail, or your cell.
+          {SITE_NAME} sells <strong>predictable escalation</strong>: ring people first, then optionally AI, voicemail, or your cell.
           Playbook, voice, and limits live where you already tune the call flow.
         </p>
         <p className="mt-2">
@@ -332,7 +332,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
   },
   "help-feedback": {
     eyebrow: "Help story",
-    storyline: "Pricing context and a direct line to humans building Zing — same queue as in-app feedback.",
+    storyline: `Pricing context and a direct line to humans building ${SITE_NAME} — same queue as in-app feedback.`,
     title: "Help, pricing & feedback",
     description: (
       <>
@@ -368,7 +368,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
           <Link href={dash} className="font-medium text-primary underline-offset-4 hover:underline">
             Call console
           </Link>{" "}
-          — that is the hero story Zing sells.
+          — that is the hero story {SITE_NAME} sells.
         </p>
       </>
     ),
@@ -415,7 +415,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
     title: "Starter plan",
     description: (
       <>
-        <p>Lower monthly commitment, tighter included minutes — ideal for solo owners testing Zing alongside a cell.</p>
+        <p>Lower monthly commitment, tighter included minutes — ideal for solo owners testing {SITE_NAME} alongside a cell.</p>
         <p className="mt-2">Upgrade when simultaneous receptionists and higher minute pools matter.</p>
       </>
     ),
@@ -657,7 +657,7 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
     title: "Quick setup banner",
     description: (
       <>
-        <p>Step 1 ensures customers dial you on a Zing-owned or ported DID. Step 2 is routing. Step 3 is staffing receptionists when you are ready.</p>
+        <p>Step 1 ensures customers dial a business number you publish through {SITE_NAME} (bought here or ported in). Step 2 is routing. Step 3 is staffing receptionists when you are ready.</p>
         <p className="mt-2">You can skip Team if you are solo — owner phone first is a valid posture.</p>
       </>
     ),
@@ -780,7 +780,10 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
     title: "Welcome setup",
     description: (
       <>
-        <p>This wizard is a guided tour. Live routing always wins on the dashboard once you have real numbers from Settings.</p>
+        <p>{SITE_BRAND_STORY}</p>
+        <p className="mt-2">
+          This wizard is a guided tour. Live routing always wins on the dashboard once you have real numbers from Settings.
+        </p>
         <p className="mt-2">You can skip receptionists if you are solo — owner-first routing is valid.</p>
       </>
     ),

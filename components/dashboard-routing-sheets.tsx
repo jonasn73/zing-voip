@@ -28,6 +28,7 @@ import {
   type FallbackOption,
 } from "@/lib/dashboard-routing-utils"
 import { fallbackOptions } from "@/components/dashboard-routing-fallback-options"
+import { SITE_NAME } from "@/lib/brand"
 
 const AiIntakeFlowPanelLazy = dynamic(
   () => import("@/components/ai-intake-flow-panel").then((mod) => mod.AiIntakeFlowPanel),
@@ -311,7 +312,7 @@ export const DashboardRoutingSheets = memo(function DashboardRoutingSheets({
                 </select>
                 <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
                   This does <span className="font-medium text-foreground">not</span> add a delay before ringing starts — Telnyx rings your team (or you) right away. It is only how many seconds to wait for someone to{" "}
-                  <span className="font-medium text-foreground">answer</span> before Sigo runs your backup (voicemail, AI, or second number). Lower = faster switch to backup if nobody picks up.
+                  <span className="font-medium text-foreground">answer</span> before {SITE_NAME} runs your backup (voicemail, AI, or second number). Lower = faster switch to backup if nobody picks up.
                 </p>
               </div>
               <div>
@@ -547,7 +548,7 @@ export const DashboardRoutingSheets = memo(function DashboardRoutingSheets({
           />
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          Forwarded legs use your Sigo business number. We also send your line label as the outbound display name when
+          Forwarded legs use your {SITE_NAME} business number. We also send your line label as the outbound display name when
           your carrier supports it, so the person answering may see a name instead of only digits. Labels like spam
           risk are added by the receiving carrier from their own analytics; improving reputation usually means setting
           CNAM on the number in Telnyx, registering it with services such as the Free Caller Registry, then carrying

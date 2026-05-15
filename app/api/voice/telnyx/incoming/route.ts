@@ -11,6 +11,7 @@
 import { randomUUID } from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
+import { SITE_NAME } from "@/lib/brand"
 import { texmlSayNatural } from "@/lib/texml-say-voice"
 import { buildInboundLineWhisperPhrase } from "@/lib/inbound-line-whisper"
 import { buildTelnyxDialFromDisplayName } from "@/lib/telnyx-caller-display"
@@ -514,7 +515,7 @@ async function handleIncomingCall(
               lastResortConnectHit: useLastResortConnect ? lastResortHit : null, // null = disabled (default)
               note: useLastResortConnect
                 ? "Experimental: <Connect> on /incoming at lastResortConnectHit; next hit = give up. Telnyx may error — unset env to use silent cap only."
-                : `Last-resort <Connect> on /incoming is off. When incomingHitCount > ${SILENT_INCOMING_LOOP_CAP} we play Sigo give-up (not Telnyx error). Set ZING_AI_LAST_RESORT_CONNECT_HIT=N to try Connect on hit N.`,
+                : `Last-resort <Connect> on /incoming is off. When incomingHitCount > ${SILENT_INCOMING_LOOP_CAP} we play ${SITE_NAME} give-up (not Telnyx error). Set ZING_AI_LAST_RESORT_CONNECT_HIT=N to try Connect on hit N.`,
             })
           )
         }

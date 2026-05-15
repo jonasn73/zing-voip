@@ -1,11 +1,12 @@
 // ============================================
-// Sigo - Database Client
+// Hey Sigo - Database Client
 // ============================================
 // Uses Neon serverless when DATABASE_URL is set (production / live app).
 // Set DATABASE_URL in Vercel → Settings → Environment Variables, then run
 // scripts/001-create-schema.sql and scripts/002-add-password-hash.sql in your Neon SQL Editor.
 
 import { neon } from "@neondatabase/serverless"
+import { SITE_NAME } from "@/lib/brand"
 import type {
   RoutingConfig,
   Receptionist,
@@ -682,7 +683,7 @@ export async function repairBootstrapPlatformAdminAccount(params: {
       email,
       name: "Platform Admin",
       phone: "+10000000000",
-      business_name: "Sigo",
+      business_name: SITE_NAME,
       password_hash: params.passwordHash,
       industry: "generic",
     })

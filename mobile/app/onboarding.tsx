@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Activi
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter } from "expo-router"
 import { apiMutate } from "../lib/api"
+import { SITE_NAME } from "@/lib/brand"
 
 export default function OnboardingScreen() {
   const router = useRouter()
@@ -39,7 +40,7 @@ export default function OnboardingScreen() {
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: Math.max(48, insets.top + 16), paddingBottom: insets.bottom + 48 }]}>
       <View style={styles.header}>
         <Text style={styles.logo}>📞</Text>
-        <Text style={styles.title}>Sigo</Text>
+        <Text style={styles.title}>{SITE_NAME}</Text>
         <Text style={styles.steps}>Step {step} of 3</Text>
       </View>
 

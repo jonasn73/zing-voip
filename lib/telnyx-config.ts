@@ -5,14 +5,17 @@
 // and configuring phone numbers. Used by buy, configure, and porting routes.
 
 import { getAppUrl } from "@/lib/telnyx"
+import { SITE_NAME } from "@/lib/brand"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
 
-/** Telnyx TeXML app friendly names: new installs use Sigo; legacy accounts may still show Zing. */
-export const TEXML_ROUTER_NAMES = ["Sigo Call Router", "Zing Call Router"] as const
+/** Telnyx TeXML app friendly names: newest uses SITE_NAME; legacy rows may still show Sigo or Zing. */
+const TEXML_ROUTER_FRIENDLY_NAME = `${SITE_NAME} Call Router` as const
+export const TEXML_ROUTER_NAMES = [TEXML_ROUTER_FRIENDLY_NAME, "Sigo Call Router", "Zing Call Router"] as const
 
 /** Outbound voice profile names for the same reason. */
-const OUTBOUND_PROFILE_NAMES = ["Sigo Outbound", "Zing Outbound"] as const
+const OUTBOUND_VOICE_PROFILE_NAME = `${SITE_NAME} Outbound` as const
+const OUTBOUND_PROFILE_NAMES = [OUTBOUND_VOICE_PROFILE_NAME, "Sigo Outbound", "Zing Outbound"] as const
 
 export function getTelnyxApiKey(): string {
   const key = process.env.TELNYX_API_KEY
@@ -55,7 +58,7 @@ async function getOrCreateOutboundVoiceProfile(): Promise<string> {
     method: "POST",
     headers: telnyxHeaders(),
     body: JSON.stringify({
-      name: "Sigo Outbound",
+      name: OUTBOUND_VOICE_PROFILE_NAME,
       traffic_type: "conversational",
       whitelisted_destinations: ["US", "CA"],
     }),
@@ -70,7 +73,7 @@ async function getOrCreateOutboundVoiceProfile(): Promise<string> {
   return String(profileId)
 }
 
-// Find or create the Sigo Call Router TeXML application with outbound calling enabled
+// Find or create the Hey Sigo Call Router TeXML application with outbound calling enabled
 export async function getOrCreateTexmlApp(): Promise<string> {
   const appUrl = getAppUrl()
 
@@ -114,7 +117,7 @@ export async function getOrCreateTexmlApp(): Promise<string> {
     method: "POST",
     headers: telnyxHeaders(),
     body: JSON.stringify({
-      friendly_name: "Sigo Call Router",
+      friendly_name: TEXML_ROUTER_FRIENDLY_NAME,
       voice_url: `${appUrl}/api/voice/telnyx/incoming`,
       voice_method: "POST",
       voice_fallback_url: `${appUrl}/api/voice/telnyx/incoming`,

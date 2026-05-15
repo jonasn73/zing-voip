@@ -5,6 +5,7 @@
 // Docs: https://developers.telnyx.com/api-reference/assistants/create-an-assistant
 
 import { telnyxHeaders } from "@/lib/telnyx-config"
+import { SITE_NAME } from "@/lib/brand"
 
 /** Telnyx v2 API base (same as number purchase routes). */
 const TELNYX_BASE = "https://api.telnyx.com/v2"
@@ -185,7 +186,7 @@ function clampAssistantCreateFields(
     )
     instructions =
       instructions.slice(0, MAX_ASSISTANT_INSTRUCTIONS_CHARS) +
-      "\n\n[Sigo: instructions truncated for Telnyx — shorten extra notes in AI call flow if needed]"
+      `\n\n[${SITE_NAME}: instructions truncated for Telnyx — shorten extra notes in AI call flow if needed]`
   }
   let greeting = params.greeting
   if (greeting.length > MAX_ASSISTANT_GREETING_CHARS) {
@@ -285,7 +286,7 @@ export type UpdateTelnyxAssistantParams = {
 }
 
 /**
- * POST /v2/ai/assistants/{id} — push new instructions/greeting after user edits intake in Sigo.
+ * POST /v2/ai/assistants/{id} — push new instructions/greeting after user edits intake in Hey Sigo.
  */
 export async function telnyxUpdateAssistant(
   assistantId: string,

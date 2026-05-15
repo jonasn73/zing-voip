@@ -36,6 +36,7 @@ export type PageId =
   | "dashboard"
   | "activity"
   | "leads"
+  | "customers"
   | "contacts"
   | "analytics"
   | "settings"
@@ -59,6 +60,7 @@ const PAGE_HREF: Record<PageId, string> = {
   dashboard: "/dashboard",
   activity: "/dashboard/activity",
   leads: "/dashboard/leads",
+  customers: "/dashboard/customers",
   contacts: "/dashboard/contacts",
   analytics: "/dashboard/analytics",
   settings: "/dashboard/settings",

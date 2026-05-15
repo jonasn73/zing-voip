@@ -87,6 +87,25 @@ export interface Receptionist {
   created_at: string
 }
 
+/** Saved caller profile per account (`022-customers.sql`) — searchable on Customers. */
+export interface Customer {
+  id: string
+  user_id: string
+  phone_e164: string
+  display_name: string
+  company_name: string
+  address_line1: string
+  address_line2: string
+  city: string
+  region: string
+  postal_code: string
+  country: string
+  notes: string
+  source_last_call_log_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 // --- Routing Configuration ---
 export type FallbackType = "owner" | "ai" | "voicemail"
 

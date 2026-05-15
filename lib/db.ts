@@ -19,6 +19,7 @@ import type {
   AdminUserSummary,
   AdminUserDetail,
   FeedbackCategory,
+  Customer,
 } from "./types"
 import { defaultProfileFromUserIndustry } from "./business-industries"
 
@@ -37,7 +38,7 @@ function isMissingIndustryColumnError(e: unknown): boolean {
 }
 
 /** True when Postgres reports a missing table/view (42P01), e.g. before scripts/010-ai-leads-intake.sql is run in Neon. */
-function isUndefinedRelationError(e: unknown, relationName?: string): boolean {
+export function isUndefinedRelationError(e: unknown, relationName?: string): boolean {
   const code = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : ""
   if (code !== "42P01") return false
   if (!relationName) return true
@@ -1674,6 +1675,171 @@ export async function listLiveCallLogsForUser(userId: string): Promise<CallLog[]
     throw e
   }
   return rows.map((row) => parseCallLogRow(row as Record<string, unknown>))
+}
+
+/** Inbound calls that reached an “answered” state recently — drives the post-answer customer sheet. */
+export async function listRecentlyAnsweredIncomingCalls(
+  userId: string,
+  withinMinutes = 12
+): Promise<CallLog[]> {
+  const sql = getSql()
+  let rows: Record<string, unknown>[]
+  try {
+    rows = await sql`
+      SELECT * FROM call_logs
+      WHERE user_id = ${userId}
+        AND call_type = 'incoming'
+        AND answered_at IS NOT NULL
+        AND answered_at > (now() - (${withinMinutes}::numeric * interval '1 minute'))
+      ORDER BY answered_at DESC
+      LIMIT 40
+    `
+  } catch (e) {
+    if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("answered_at")) {
+      console.warn("[db] listRecentlyAnsweredIncomingCalls: answered_at missing — run scripts/007-call-quality-metrics.sql.")
+      return []
+    }
+    throw e
+  }
+  return rows.map((row) => parseCallLogRow(row as Record<string, unknown>))
+}
+
+function parseCustomerRow(row: Record<string, unknown>): Customer {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    phone_e164: String(row.phone_e164 ?? ""),
+    display_name: String(row.display_name ?? ""),
+    company_name: String(row.company_name ?? ""),
+    address_line1: String(row.address_line1 ?? ""),
+    address_line2: String(row.address_line2 ?? ""),
+    city: String(row.city ?? ""),
+    region: String(row.region ?? ""),
+    postal_code: String(row.postal_code ?? ""),
+    country: String(row.country ?? "US"),
+    notes: String(row.notes ?? ""),
+    source_last_call_log_id: row.source_last_call_log_id ? String(row.source_last_call_log_id) : null,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+  }
+}
+
+export async function listCustomersForUser(
+  userId: string,
+  options?: { q?: string; limit?: number }
+): Promise<Customer[]> {
+  const sql = getSql()
+  const limit = Math.min(Math.max(options?.limit ?? 80, 1), 200)
+  const q = (options?.q ?? "").trim()
+  let rows: Record<string, unknown>[]
+  try {
+    if (!q) {
+      rows = await sql`
+        SELECT * FROM customers
+        WHERE user_id = ${userId}
+        ORDER BY updated_at DESC
+        LIMIT ${limit}
+      `
+    } else {
+      const pat = `%${q}%`
+      rows = await sql`
+        SELECT * FROM customers
+        WHERE user_id = ${userId}
+          AND (
+            phone_e164 ILIKE ${pat}
+            OR display_name ILIKE ${pat}
+            OR company_name ILIKE ${pat}
+            OR address_line1 ILIKE ${pat}
+            OR address_line2 ILIKE ${pat}
+            OR city ILIKE ${pat}
+            OR region ILIKE ${pat}
+            OR postal_code ILIKE ${pat}
+            OR notes ILIKE ${pat}
+          )
+        ORDER BY updated_at DESC
+        LIMIT ${limit}
+      `
+    }
+  } catch (e) {
+    if (isUndefinedRelationError(e, "customers")) return []
+    throw e
+  }
+  return rows.map((r) => parseCustomerRow(r as Record<string, unknown>))
+}
+
+export async function getCustomerByPhoneForUser(userId: string, phoneE164: string): Promise<Customer | null> {
+  const sql = getSql()
+  const phone = normalizePhoneNumberE164(phoneE164)
+  let rows: Record<string, unknown>[]
+  try {
+    rows = await sql`
+      SELECT * FROM customers
+      WHERE user_id = ${userId} AND phone_e164 = ${phone}
+      LIMIT 1
+    `
+  } catch (e) {
+    if (isUndefinedRelationError(e, "customers")) return null
+    throw e
+  }
+  const row = rows[0] as Record<string, unknown> | undefined
+  return row ? parseCustomerRow(row) : null
+}
+
+export async function upsertCustomerForUser(params: {
+  userId: string
+  phoneE164: string
+  displayName: string
+  companyName: string
+  addressLine1: string
+  addressLine2: string
+  city: string
+  region: string
+  postalCode: string
+  country: string
+  notes: string
+  sourceLastCallLogId?: string | null
+}): Promise<Customer> {
+  const sql = getSql()
+  const phone = normalizePhoneNumberE164(params.phoneE164)
+  const sid = params.sourceLastCallLogId?.trim() || null
+  const rows = await sql`
+    INSERT INTO customers (
+      id, user_id, phone_e164, display_name, company_name, address_line1, address_line2,
+      city, region, postal_code, country, notes, source_last_call_log_id, created_at, updated_at
+    ) VALUES (
+      gen_random_uuid(),
+      ${params.userId},
+      ${phone},
+      ${params.displayName},
+      ${params.companyName},
+      ${params.addressLine1},
+      ${params.addressLine2},
+      ${params.city},
+      ${params.region},
+      ${params.postalCode},
+      ${params.country},
+      ${params.notes},
+      ${sid},
+      now(),
+      now()
+    )
+    ON CONFLICT (user_id, phone_e164) DO UPDATE SET
+      display_name = EXCLUDED.display_name,
+      company_name = EXCLUDED.company_name,
+      address_line1 = EXCLUDED.address_line1,
+      address_line2 = EXCLUDED.address_line2,
+      city = EXCLUDED.city,
+      region = EXCLUDED.region,
+      postal_code = EXCLUDED.postal_code,
+      country = EXCLUDED.country,
+      notes = EXCLUDED.notes,
+      source_last_call_log_id = COALESCE(EXCLUDED.source_last_call_log_id, customers.source_last_call_log_id),
+      updated_at = now()
+    RETURNING *
+  `
+  const row = rows[0] as Record<string, unknown> | undefined
+  if (!row) throw new Error("upsertCustomerForUser: no row returned")
+  return parseCustomerRow(row)
 }
 
 function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {

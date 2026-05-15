@@ -11,8 +11,9 @@ import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShell, type AccountHeaderState, type PageId } from "@/components/app-shell"
 import { DashboardPageView } from "@/components/dashboard-page-view"
+import { AnsweredCallCustomerPopup } from "@/components/answered-call-customer-popup"
 
-const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "contacts", "analytics", "settings", "help"]
+const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "analytics", "settings", "help"]
 
 function getActivePage(pathname: string): PageId {
   const segment = pathname.replace(/^\/dashboard\/?/, "").trim() || "dashboard"
@@ -80,6 +81,7 @@ export function DashboardShell({
   return (
     <AppShell activePage={activePage} pathname={pathname} accountHeader={accountHeader}>
       <DashboardPageView pathname={pathname}>{children}</DashboardPageView>
+      <AnsweredCallCustomerPopup enabled={accountHeader.kind === "ready"} />
     </AppShell>
   )
 }

@@ -11,9 +11,9 @@ export default function SignupPage() {
       onNavigate={(page) => {
         if (page === "landing") router.push("/")
         else if (page === "login") router.push("/login")
-        else if (page === "onboarding") router.push("/dashboard")
+        else if (page === "onboarding") router.push("/onboarding")
       }}
-      onAuth={(ctx) => router.push(ctx?.operator_access ? "/admin" : "/dashboard")}
+      onAuth={(ctx) => router.replace(ctx?.operator_access ? "/admin" : "/onboarding")}
     />
   )
 }

@@ -11,7 +11,7 @@ function postLoginPath(operator: boolean): string {
     if (next && next.startsWith("/admin")) return next
     return "/admin"
   }
-  if (next && next.startsWith("/dashboard")) return next
+  if (next && (next.startsWith("/dashboard") || next.startsWith("/onboarding"))) return next
   return "/dashboard"
 }
 

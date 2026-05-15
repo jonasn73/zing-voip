@@ -20,7 +20,10 @@ export function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set("x-sigo-pathname", pathname)
 
-  const needsSession = pathname.startsWith("/dashboard") || pathname.startsWith("/admin")
+  const needsSession =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/onboarding")
   if (!needsSession) {
     return NextResponse.next({
       request: { headers: requestHeaders },
@@ -38,5 +41,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard", "/dashboard/:path*", "/admin", "/admin/:path*"],
+  matcher: ["/dashboard", "/dashboard/:path*", "/admin", "/admin/:path*", "/onboarding", "/onboarding/:path*"],
 }

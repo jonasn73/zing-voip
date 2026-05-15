@@ -16,7 +16,10 @@ export function DashboardPageView({
   children: ReactNode
 }) {
   return (
-    <div key={pathname} className="min-h-full bg-background animate-sigo-page-enter">
+    <div
+      key={pathname}
+      className="min-h-full bg-background animate-sigo-page-enter px-5 pb-28 pt-5 sm:px-8 sm:pb-32 sm:pt-8"
+    >
       {children}
     </div>
   )

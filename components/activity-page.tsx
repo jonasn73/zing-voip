@@ -124,7 +124,7 @@ export function ActivityPage() {
 
   if (loadError && calls.length === 0) {
     return (
-      <div className="flex flex-col gap-4 p-4 pb-8">
+      <div className="flex flex-col gap-6 sm:gap-7">
         <EmptyState
           title="Could not load activity"
           description="Please refresh to try again. If this continues, check your network and API credentials."
@@ -134,7 +134,7 @@ export function ActivityPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-8">
+    <div className="flex flex-col gap-6 sm:gap-7">
       {refreshing && (
         <div
           className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground"

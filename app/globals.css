@@ -138,7 +138,7 @@
   }
 
   .sigo-section-header {
-    @apply mb-3 flex items-center justify-between;
+    @apply mb-5 flex items-center justify-between gap-3 sm:mb-6;
   }
 
   .sigo-section-title {

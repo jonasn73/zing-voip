@@ -131,7 +131,7 @@ export function ContactsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-8">
+    <div className="flex flex-col gap-6 sm:gap-7">
       {/* Header */}
       <div className="sigo-section-header">
         <div>

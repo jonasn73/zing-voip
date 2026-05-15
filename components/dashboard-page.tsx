@@ -398,9 +398,9 @@ export function DashboardPage() {
   }, [businessNumbers, routingBusinessNumber, toast, saveRouting, selectedReceptionistId])
 
   return (
-    <div className="flex flex-col gap-8 px-4 pb-28 pt-1 sm:px-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 sm:gap-14">
       {routingIntroHydrated && !routingIntroDismissed ? (
-        <div className="relative mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-border/60 bg-muted/15 p-4 shadow-sm sm:p-5">
+        <div className="relative w-full space-y-5 rounded-2xl border border-border/60 bg-muted/15 p-6 shadow-sm sm:space-y-6 sm:p-8">
           <button
             type="button"
             onClick={dismissRoutingIntro}
@@ -409,7 +409,7 @@ export function DashboardPage() {
           >
             <X className="h-4 w-4 shrink-0" aria-hidden />
           </button>
-          <header className="space-y-3 pr-10">
+          <header className="space-y-4 pr-10 sm:space-y-5">
             <div className="flex items-center gap-2 text-primary">
               <ListOrdered className="h-4 w-4 shrink-0" aria-hidden />
               <p className="text-[11px] font-bold uppercase tracking-[0.18em]">Start here</p>
@@ -423,7 +423,7 @@ export function DashboardPage() {
             </p>
             <nav
               aria-label="Recommended order"
-              className="flex flex-wrap items-center gap-x-1 gap-y-2 rounded-2xl border border-border/60 bg-muted/20 px-3 py-2.5 text-[11px] text-muted-foreground sm:text-xs"
+              className="flex flex-wrap items-center gap-x-2 gap-y-2.5 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 text-[11px] text-muted-foreground sm:text-xs"
             >
               <span className="mr-1 font-semibold text-foreground">Order on this page:</span>
               <span className="rounded-md bg-background/90 px-2 py-1 ring-1 ring-border/80">1 · Your line</span>
@@ -443,7 +443,7 @@ export function DashboardPage() {
             </nav>
           </header>
           {quickSetupDecided && isSetupComplete ? (
-            <div className="flex items-start gap-2.5 rounded-xl border border-success/25 bg-success/5 px-4 py-3 text-xs leading-snug text-foreground sm:items-center sm:text-sm">
+            <div className="flex items-start gap-3 rounded-xl border border-success/25 bg-success/5 px-4 py-4 text-xs leading-snug text-foreground sm:items-center sm:px-5 sm:text-sm">
               <Check className="mt-0.5 h-4 w-4 shrink-0 text-success sm:mt-0" aria-hidden />
               <p>
                 <span className="font-semibold">You&apos;re set up.</span> Use the call flow below to change who answers or
@@ -455,7 +455,7 @@ export function DashboardPage() {
       ) : null}
 
       {quickSetupDecided && !isSetupComplete && (
-        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-border/80 bg-card p-4 shadow-sm ring-1 ring-primary/10 sm:p-5">
+        <section className="w-full rounded-2xl border border-border/80 bg-card p-6 shadow-sm ring-1 ring-primary/10 sm:p-7">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12">
               <Check className="h-4 w-4 text-primary" aria-hidden />
@@ -473,7 +473,7 @@ export function DashboardPage() {
                 Complete these in order. When your line is in place, use the call flow card below to choose who answers and
                 what happens if nobody picks up.
               </p>
-              <div className="mt-4 flex flex-col gap-2.5">
+              <div className="mt-5 flex flex-col gap-4 sm:gap-5">
                 <div
                   className={cn(
                     "flex flex-col gap-2 rounded-xl border bg-background/60 px-3 py-2.5",
@@ -559,19 +559,19 @@ export function DashboardPage() {
         </section>
       )}
 
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="flex w-full flex-col space-y-8 sm:space-y-11">
         {/* Call flow — one column of decisions; calmer surface than the old “console” hero. */}
         <section
           id="dash-call-flow"
           className="overflow-hidden rounded-3xl border border-border/70 bg-card shadow-sm ring-1 ring-border/30"
         >
-          <div className="border-b border-border/60 bg-muted/15 px-4 py-4 sm:px-6 sm:py-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="border-b border-border/60 bg-muted/15 px-5 py-5 sm:px-7 sm:py-7">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
               <div className="flex min-w-0 flex-1 items-start gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10">
                   <PhoneForwarded className="h-5 w-5 text-primary" aria-hidden />
                 </div>
-                <div className="min-w-0 flex-1 space-y-2">
+                <div className="min-w-0 flex-1 space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">Call flow</h2>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success">
@@ -603,7 +603,7 @@ export function DashboardPage() {
                 </div>
               </div>
               <nav
-                className="flex flex-wrap gap-x-4 gap-y-2 border-t border-border/50 pt-3 text-[12px] sm:border-t-0 sm:pt-0"
+                className="flex flex-wrap gap-x-5 gap-y-3 border-t border-border/50 pt-4 text-[12px] sm:border-t-0 sm:pt-0"
                 aria-label="Shortcuts"
               >
                 <a href="#routing-lines" className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
@@ -635,7 +635,7 @@ export function DashboardPage() {
 
           <div className="divide-y divide-border/60">
             {businessNumbers.length > 1 && (
-              <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4 sm:px-7 sm:py-5">
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Step 1 · Line</p>
                   <p className="mt-0.5 max-w-xl text-[11px] leading-snug text-muted-foreground sm:text-xs">
@@ -651,13 +651,13 @@ export function DashboardPage() {
             )}
 
             {businessNumbers.length > 0 && (
-              <div id="routing-lines" className="px-4 py-4 sm:px-6">
+              <div id="routing-lines" className="px-5 py-5 sm:px-7 sm:py-6">
                 {businessNumbers.length > 1 ? (
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pick a line</p>
                 ) : (
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Your line</p>
                 )}
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-3">
                   {businessNumbers.map((bn) => {
                     const rs = bn.routing_summary
                     const ringId = rs?.ring_first_receptionist_id ?? null
@@ -727,7 +727,7 @@ export function DashboardPage() {
             )}
 
             {businessNumbers.length === 0 && quickSetupDecided && (
-              <div className="px-4 py-6 text-center sm:px-6">
+              <div className="px-5 py-10 text-center sm:px-7">
                 <p className="text-sm font-medium text-foreground">No business line yet</p>
                 <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
                   Add a number in Settings to unlock routing. Until then, callers cannot reach this account on a published
@@ -742,8 +742,8 @@ export function DashboardPage() {
               </div>
             )}
 
-            <div className="px-4 py-4 sm:px-6">
-              <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div className="px-5 py-6 sm:px-7">
+              <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Steps 2–4 · Open in order
@@ -766,14 +766,14 @@ export function DashboardPage() {
 
               <div
                 className={cn(
-                  "grid gap-3 sm:grid-cols-3",
+                  "grid gap-4 sm:grid-cols-3 sm:gap-5",
                   routingLineDetailLoading && "pointer-events-none opacity-50"
                 )}
               >
                 <button
                   type="button"
                   onClick={() => setWhoAnswersOpen(true)}
-                  className="group flex flex-col items-start gap-1 rounded-2xl border border-border/80 bg-background/90 p-4 text-left shadow-sm ring-1 ring-transparent transition-[transform,box-shadow,border-color] duration-200 hover:border-primary/40 hover:ring-primary/10 hover:shadow-md"
+                  className="group flex min-h-[10.5rem] flex-col items-start gap-2 rounded-2xl border border-border/80 bg-background/90 p-5 text-left shadow-sm ring-1 ring-transparent transition-[transform,box-shadow,border-color] duration-200 hover:border-primary/40 hover:ring-primary/10 hover:shadow-md sm:p-6"
                 >
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">A · Step 2</span>
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Who answers</span>
@@ -793,7 +793,7 @@ export function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setRingBackupOpen(true)}
-                    className="group flex h-full min-h-[9rem] w-full flex-col items-start gap-1 rounded-2xl border border-border/80 bg-background/90 p-4 text-left shadow-sm ring-1 ring-transparent transition-[transform,box-shadow,border-color] duration-200 hover:border-primary/40 hover:ring-primary/10 hover:shadow-md"
+                    className="group flex h-full min-h-[10.5rem] w-full flex-col items-start gap-2 rounded-2xl border border-border/80 bg-background/90 p-5 text-left shadow-sm ring-1 ring-transparent transition-[transform,box-shadow,border-color] duration-200 hover:border-primary/40 hover:ring-primary/10 hover:shadow-md sm:p-6"
                   >
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">B · Step 3</span>
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -811,7 +811,7 @@ export function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setShowFallbackSettings(true)}
-                  className="group flex flex-col items-start gap-1 rounded-2xl border border-border/80 bg-background/90 p-4 text-left shadow-sm ring-1 ring-transparent transition-[transform,box-shadow,border-color] duration-200 hover:border-primary/40 hover:ring-primary/10 hover:shadow-md"
+                  className="group flex min-h-[10.5rem] flex-col items-start gap-2 rounded-2xl border border-border/80 bg-background/90 p-5 text-left shadow-sm ring-1 ring-transparent transition-[transform,box-shadow,border-color] duration-200 hover:border-primary/40 hover:ring-primary/10 hover:shadow-md sm:p-6"
                 >
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">C · Step 4</span>
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -860,7 +860,7 @@ export function DashboardPage() {
           routingBusinessNumber={routingBusinessNumber}
         />
 
-        <section className="rounded-2xl border border-dashed border-border/70 bg-muted/10 px-4 py-4 text-center text-xs leading-relaxed text-muted-foreground sm:text-sm">
+        <section className="rounded-2xl border border-dashed border-border/70 bg-muted/10 px-5 py-6 text-center text-xs leading-relaxed text-muted-foreground sm:px-6 sm:py-7 sm:text-sm">
           <span className="font-medium text-foreground">Next elsewhere in the app:</span>{" "}
           <Link href="/dashboard/activity" className="font-semibold text-primary underline-offset-2 hover:underline">
             Activity &amp; recordings

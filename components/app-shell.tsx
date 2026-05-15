@@ -179,7 +179,7 @@ export function AppShell({
 
   return (
     <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-background">
-      <header className="sticky top-0 z-40 flex shrink-0 items-center gap-2 border-b border-border/70 bg-background px-3 py-2.5 sm:px-4 sm:py-3">
+      <header className="sticky top-0 z-40 flex shrink-0 items-center gap-2 border-b border-border/70 bg-background/95 px-3 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 sm:px-5 sm:py-3.5">
         {useLinks ? (
           <Link
             href="/dashboard"
@@ -239,7 +239,7 @@ export function AppShell({
 
       <main
         ref={mainRef}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background pb-[max(env(safe-area-inset-bottom),0px)]"
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-gradient-to-b from-background to-muted/15 pb-[max(env(safe-area-inset-bottom),0px)]"
       >
         {children}
       </main>
@@ -253,7 +253,7 @@ export function AppShell({
           Use the tabs below for the main sections. Press ⌘K or Ctrl+K to jump anywhere. Account menu at the top right
           includes settings, help, and sign out.
         </p>
-        <div className="mx-1 my-2 flex max-w-full items-center justify-around gap-0.5 overflow-x-auto rounded-2xl border border-border/60 bg-card/70 px-1 py-1.5 sm:mx-2 sm:gap-1 sm:px-2">
+        <div className="mx-2 my-3 flex max-w-full items-center justify-around gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/85 px-1.5 py-2 shadow-[0_-4px_24px_-12px_rgba(0,0,0,0.25)] backdrop-blur-sm sm:mx-3 sm:mb-4 sm:gap-1 sm:px-2.5">
           {bottomNavItems.map((item) => {
             const Icon = item.icon
             const isActive = activePage === item.id

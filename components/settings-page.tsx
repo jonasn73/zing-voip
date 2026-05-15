@@ -897,7 +897,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 pb-8">
+    <div className="flex w-full flex-col gap-7 sm:gap-9">
       {/* Profile card: main line = owner's cell (default destination for calls) */}
       <div className="flex items-center gap-4 rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm transition-colors">
         <Avatar className="h-14 w-14">

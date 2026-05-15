@@ -260,7 +260,7 @@ export function AnalyticsPage() {
     : 1
 
   return (
-    <div className="flex flex-col gap-5 p-4 pb-8">
+    <div className="flex w-full flex-col gap-6 sm:gap-8">
       {/* Header */}
       <div className="sigo-section-header">
         <div>

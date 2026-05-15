@@ -33,6 +33,149 @@ import {
 /** After dismiss or auto-hide, the routing “Start here” intro stays hidden in this browser. */
 const ROUTING_INTRO_DISMISSED_KEY = "zing_dash_routing_intro_dismissed_v1"
 
+/** Left column on large screens: current line, first answer, timeout, fallback (mirrors behavior, not persisted “last saved” time). */
+function RoutingLiveSummaryAside({
+  hasBusinessNumbers,
+  quickSetupDecided,
+  routingBusinessNumber,
+  businessNumbers,
+  routingLineDetailLoading,
+  isRoutingToOwner,
+  selectedReceptionist,
+  ownerPhoneDisplay,
+  ringTimeoutSec,
+  activeFallbackLabel,
+  fallback,
+  aiRingOwnerFirst,
+  setWhoAnswersOpen,
+  setRingBackupOpen,
+  setShowFallbackSettings,
+}: {
+  hasBusinessNumbers: boolean
+  quickSetupDecided: boolean
+  routingBusinessNumber: string | null
+  businessNumbers: DashboardBusinessNumber[]
+  routingLineDetailLoading: boolean
+  isRoutingToOwner: boolean
+  selectedReceptionist: Contact | null
+  ownerPhoneDisplay: string
+  ringTimeoutSec: number
+  activeFallbackLabel: string
+  fallback: FallbackOption
+  aiRingOwnerFirst: boolean
+  setWhoAnswersOpen: (v: boolean) => void
+  setRingBackupOpen: (v: boolean) => void
+  setShowFallbackSettings: (v: boolean) => void
+}) {
+  const lineLabel =
+    hasBusinessNumbers && routingBusinessNumber
+      ? formatPhoneDisplay(routingBusinessNumber)
+      : hasBusinessNumbers
+        ? formatPhoneDisplay(businessNumbers[0]?.number ?? "")
+        : quickSetupDecided
+          ? "No line yet"
+          : "Loading…"
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card/90 p-5 shadow-sm ring-1 ring-border/30 lg:sticky lg:top-[4.75rem] lg:self-start xl:p-6">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Live routing</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">What callers get now</p>
+        </div>
+        {routingLineDetailLoading ? (
+          <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+        ) : (
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success">
+            <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
+            Live
+          </span>
+        )}
+      </div>
+
+      <dl className="mt-5 space-y-4 text-sm">
+        <div>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Published line</dt>
+          <dd className="mt-1 font-semibold tracking-tight text-foreground">{lineLabel}</dd>
+          {!hasBusinessNumbers && quickSetupDecided ? (
+            <dd className="mt-2">
+              <Link href="/dashboard/settings#business-numbers" className="text-xs font-semibold text-primary hover:underline">
+                Add a number →
+              </Link>
+            </dd>
+          ) : null}
+        </div>
+        <div className="h-px bg-border/60" aria-hidden />
+        <div>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Rings first</dt>
+          <dd className="mt-1 font-semibold text-foreground">{isRoutingToOwner ? "Your phone" : selectedReceptionist?.name ?? "—"}</dd>
+          <dd className="mt-0.5 text-xs text-muted-foreground">
+            {isRoutingToOwner ? ownerPhoneDisplay : formatPhoneDisplay(selectedReceptionist?.phone)}
+          </dd>
+          <dd className="mt-3">
+            <button
+              type="button"
+              onClick={() => setWhoAnswersOpen(true)}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Change who answers
+            </button>
+          </dd>
+        </div>
+        <div className="h-px bg-border/60" aria-hidden />
+        <div>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">If nobody picks up</dt>
+          <dd className="mt-1 text-foreground">
+            <span className="font-semibold text-primary">{ringTimeoutSec}s</span>
+            <span className="text-muted-foreground"> ring, then </span>
+            <span className="font-semibold">{activeFallbackLabel}</span>
+          </dd>
+          {fallback === "ai" && aiRingOwnerFirst ? (
+            <dd className="mt-1 text-[11px] leading-snug text-muted-foreground">Your cell rings before Voice AI when that option is on.</dd>
+          ) : null}
+          <dd className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+            <button
+              type="button"
+              onClick={() => setRingBackupOpen(true)}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Ring &amp; backup
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFallbackSettings(true)}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Voice &amp; AI
+            </button>
+          </dd>
+        </div>
+      </dl>
+
+      <nav
+        className="mt-5 border-t border-border/60 pt-4 text-[12px]"
+        aria-label="Quick links"
+      >
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Shortcuts</p>
+        <div className="flex flex-col gap-2">
+          <a href="#routing-lines" className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
+            <PhoneForwarded className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Lines &amp; numbers
+          </a>
+          <Link href="/dashboard/settings#business-numbers" className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
+            <Settings2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Buy / manage numbers
+          </Link>
+          <Link href="/dashboard/activity" className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
+            <Activity className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Activity
+          </Link>
+        </div>
+      </nav>
+    </div>
+  )
+}
+
 export function DashboardPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -398,7 +541,7 @@ export function DashboardPage() {
   }, [businessNumbers, routingBusinessNumber, toast, saveRouting, selectedReceptionistId])
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 sm:gap-14">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 sm:gap-14">
       {routingIntroHydrated && !routingIntroDismissed ? (
         <div className="relative w-full space-y-5 rounded-2xl border border-border/60 bg-muted/15 p-6 shadow-sm sm:space-y-6 sm:p-8">
           <button
@@ -559,7 +702,28 @@ export function DashboardPage() {
         </section>
       )}
 
-      <div className="flex w-full flex-col space-y-8 sm:space-y-11">
+      <div className="flex w-full flex-col gap-10 lg:flex-row lg:items-start xl:gap-14">
+        <aside className="hidden shrink-0 lg:block lg:w-72 xl:w-80" aria-label="Routing summary">
+          <RoutingLiveSummaryAside
+            hasBusinessNumbers={hasBusinessNumbers}
+            quickSetupDecided={quickSetupDecided}
+            routingBusinessNumber={routingBusinessNumber}
+            businessNumbers={businessNumbers}
+            routingLineDetailLoading={routingLineDetailLoading}
+            isRoutingToOwner={isRoutingToOwner}
+            selectedReceptionist={selectedReceptionist}
+            ownerPhoneDisplay={ownerPhoneDisplay}
+            ringTimeoutSec={ringTimeoutSec}
+            activeFallbackLabel={activeFallbackMeta?.label ?? "Backup"}
+            fallback={fallback}
+            aiRingOwnerFirst={aiRingOwnerFirst}
+            setWhoAnswersOpen={setWhoAnswersOpen}
+            setRingBackupOpen={setRingBackupOpen}
+            setShowFallbackSettings={setShowFallbackSettings}
+          />
+        </aside>
+
+        <div className="min-w-0 flex-1 space-y-8 sm:space-y-11">
         {/* Call flow — one column of decisions; calmer surface than the old “console” hero. */}
         <section
           id="dash-call-flow"
@@ -591,7 +755,7 @@ export function DashboardPage() {
                     Cards read left to right: who answers → how long to ring → voice / AI fallback. Tap a card to open its
                     panel.
                   </p>
-                  <p className="text-sm text-foreground">
+                  <p className="lg:hidden text-sm text-foreground">
                     <span className="font-medium">{isRoutingToOwner ? "Your phone" : selectedReceptionist?.name ?? "—"}</span>
                     <span className="mx-1.5 text-muted-foreground">·</span>
                     <span className="text-muted-foreground">rings up to</span>{" "}
@@ -603,7 +767,7 @@ export function DashboardPage() {
                 </div>
               </div>
               <nav
-                className="flex flex-wrap gap-x-5 gap-y-3 border-t border-border/50 pt-4 text-[12px] sm:border-t-0 sm:pt-0"
+                className="flex flex-wrap gap-x-5 gap-y-3 border-t border-border/50 pt-4 text-[12px] sm:border-t-0 sm:pt-0 lg:hidden"
                 aria-label="Shortcuts"
               >
                 <a href="#routing-lines" className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
@@ -727,7 +891,7 @@ export function DashboardPage() {
             )}
 
             {businessNumbers.length === 0 && quickSetupDecided && (
-              <div className="px-5 py-10 text-center sm:px-7">
+              <div id="routing-lines" className="px-5 py-10 text-center sm:px-7">
                 <p className="text-sm font-medium text-foreground">No business line yet</p>
                 <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
                   Add a number in Settings to unlock routing. Until then, callers cannot reach this account on a published
@@ -874,6 +1038,7 @@ export function DashboardPage() {
             Settings
           </Link>
         </section>
+      </div>
       </div>
 
     </div>

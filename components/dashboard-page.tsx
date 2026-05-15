@@ -32,6 +32,10 @@ import {
 } from "@/components/ui/sheet"
 import { AiIntakeFlowPanel } from "@/components/ai-intake-flow-panel"
 import type { PhoneNumberRoutingSummary } from "@/lib/types"
+import { getAppSheetStory } from "@/components/app-sheet-stories"
+import { StorySheetHeader } from "@/components/story-sheet-header"
+import { SheetInfoTrigger } from "@/components/sheet-info-trigger"
+import { StoryPopoverInfo } from "@/components/story-popover-info"
 
 /** Ring timeout options in the dashboard (seconds); must match Telnyx `<Dial timeout>` sensible range. */
 const DASHBOARD_RING_TIMEOUT_CHOICES = [10, 12, 15, 20, 25, 30, 35, 40, 45, 60] as const
@@ -157,6 +161,8 @@ export function DashboardPage() {
   const [showFallbackSettings, setShowFallbackSettings] = useState(false)
   const [whoAnswersOpen, setWhoAnswersOpen] = useState(false)
   const [ringBackupOpen, setRingBackupOpen] = useState(false)
+  /** Extra story sheet from Call console page-level (i) icons — stacks above routing sheets (z-[110]). */
+  const [dashboardStoryKey, setDashboardStoryKey] = useState<string | null>(null)
   /** Ring duration for the first leg before no-answer fallback (from GET /api/routing). */
   const [ringTimeoutSec, setRingTimeoutSec] = useState(30)
 
@@ -469,7 +475,14 @@ export function DashboardPage() {
               <Check className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-foreground">Quick setup</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-semibold text-foreground">Quick setup</p>
+                <SheetInfoTrigger
+                  onPress={() => setDashboardStoryKey("dashboard-quick-setup")}
+                  label="About Quick setup"
+                  className="h-8 w-8 shrink-0"
+                />
+              </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Start with a business line, then choose who answers and what happens if nobody picks up. Add teammates when
                 you are ready.
@@ -586,6 +599,11 @@ export function DashboardPage() {
                     </span>
                     Live
                   </span>
+                  <SheetInfoTrigger
+                    onPress={() => setDashboardStoryKey("dashboard-call-console")}
+                    label="About Call console"
+                    className="h-8 w-8"
+                  />
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   Tap a card to open a sliding panel. Changes save as soon as you choose an option.
@@ -635,9 +653,16 @@ export function DashboardPage() {
           </div>
 
           {businessNumbers.length > 1 && (
-            <p className="max-w-xl text-[11px] text-muted-foreground">
-              Tap a number, then a panel — each line can ring your phone or a different teammate.
-            </p>
+            <div className="flex max-w-xl flex-wrap items-start justify-between gap-2">
+              <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
+                Tap a number, then a panel — each line can ring your phone or a different teammate.
+              </p>
+              <SheetInfoTrigger
+                onPress={() => setDashboardStoryKey("dashboard-per-line-chips")}
+                label="About multiple business lines"
+                className="h-8 w-8 shrink-0"
+              />
+            </div>
           )}
 
           {businessNumbers.length > 0 && (
@@ -799,6 +824,9 @@ export function DashboardPage() {
               </>
             }
           />
+          <div className="flex justify-end border-b border-border/60 px-3 py-1">
+            <StoryPopoverInfo storyKey="dashboard-sheet-who-answers" label="More about who answers first" />
+          </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2 pt-2">
               <div
@@ -928,9 +956,12 @@ export function DashboardPage() {
               )}
             >
               <div>
-                <label htmlFor="sigo-dash-ring-sec" className="text-[11px] text-muted-foreground">
-                  Max ring time (first target)
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="sigo-dash-ring-sec" className="text-[11px] text-muted-foreground">
+                    Max ring time (first target)
+                  </label>
+                  <StoryPopoverInfo storyKey="dashboard-ring-timeout-deep" label="Explain max ring time" triggerClassName="h-7 w-7" />
+                </div>
                 <select
                   id="sigo-dash-ring-sec"
                   className="mt-1.5 w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
@@ -954,27 +985,38 @@ export function DashboardPage() {
                 </p>
               </div>
               <div>
-                <p className="text-[11px] font-medium text-foreground">If no answer</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-medium text-foreground">If no answer</p>
+                  <StoryPopoverInfo storyKey="dashboard-no-answer-backup" label="Explain if no answer options" triggerClassName="h-7 w-7" />
+                </div>
                 <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="No-answer backup">
                   {fallbackOptions.map((opt) => {
                     const active = fallback === opt.id
+                    const storyKey =
+                      opt.id === "owner"
+                        ? "dashboard-fallback-owner"
+                        : opt.id === "ai"
+                          ? "dashboard-fallback-ai"
+                          : "dashboard-fallback-voicemail"
                     return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => {
-                          setFallback(opt.id)
-                          void saveRouting({ fallback_type: opt.id })
-                        }}
-                        className={cn(
-                          "rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors",
-                          active
-                            ? "border-primary bg-primary/15 text-primary"
-                            : "border-border/80 bg-card text-foreground hover:bg-secondary"
-                        )}
-                      >
-                        {opt.label}
-                      </button>
+                      <div key={opt.id} className="flex items-stretch gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFallback(opt.id)
+                            void saveRouting({ fallback_type: opt.id })
+                          }}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                            active
+                              ? "border-primary bg-primary/15 text-primary"
+                              : "border-border/80 bg-card text-foreground hover:bg-secondary"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                        <StoryPopoverInfo storyKey={storyKey} label={`About ${opt.label}`} triggerClassName="h-8 w-8 rounded-full" />
+                      </div>
                     )
                   })}
                 </div>
@@ -1038,38 +1080,49 @@ export function DashboardPage() {
               </>
             }
           />
+          <div className="flex justify-end border-b border-border/60 px-2 py-1">
+            <StoryPopoverInfo storyKey="dashboard-sheet-voice-layer" label="More about voice and greetings" />
+          </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               <div className="flex flex-col gap-1 p-2">
                 {fallbackOptions.map((option) => {
                   const Icon = option.icon
                   const isActive = fallback === option.id
+                  const storyKey =
+                    option.id === "owner"
+                      ? "dashboard-fallback-owner"
+                      : option.id === "ai"
+                        ? "dashboard-fallback-ai"
+                        : "dashboard-fallback-voicemail"
                   return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => {
-                        setFallback(option.id)
-                        void saveRouting({ fallback_type: option.id })
-                      }}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-3 text-left transition-all",
-                        isActive ? "bg-primary/5 ring-1 ring-primary/30" : "hover:bg-secondary"
-                      )}
-                    >
-                      <IconSurface className={cn("h-10 w-10", option.bgColor)}>
-                        <Icon className={cn("h-5 w-5", option.color)} />
-                      </IconSurface>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium leading-tight text-foreground">{option.label}</p>
-                        <p className="text-[11px] text-muted-foreground">{option.description}</p>
-                      </div>
-                      {isActive && (
-                        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary">
-                          <Check className="h-3 w-3 text-primary-foreground" />
+                    <div key={option.id} className="flex items-stretch gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFallback(option.id)
+                          void saveRouting({ fallback_type: option.id })
+                        }}
+                        className={cn(
+                          "flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-3 text-left transition-all",
+                          isActive ? "bg-primary/5 ring-1 ring-primary/30" : "hover:bg-secondary"
+                        )}
+                      >
+                        <IconSurface className={cn("h-10 w-10", option.bgColor)}>
+                          <Icon className={cn("h-5 w-5", option.color)} />
+                        </IconSurface>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium leading-tight text-foreground">{option.label}</p>
+                          <p className="text-[11px] text-muted-foreground">{option.description}</p>
                         </div>
-                      )}
-                    </button>
+                        {isActive && (
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary">
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          </div>
+                        )}
+                      </button>
+                      <StoryPopoverInfo storyKey={storyKey} label={`About ${option.label}`} triggerClassName="h-10 w-10 self-center rounded-lg" />
+                    </div>
                   )
                 })}
               </div>
@@ -1089,13 +1142,20 @@ export function DashboardPage() {
                         aria-labelledby="sigo-ai-ring-owner-first-label"
                       />
                       <div className="min-w-0 flex-1">
-                        <label
-                          id="sigo-ai-ring-owner-first-label"
-                          htmlFor="sigo-ai-ring-owner-first"
-                          className="text-xs font-semibold text-foreground"
-                        >
-                          Ring my phone first
-                        </label>
+                        <div className="flex items-start justify-between gap-2">
+                          <label
+                            id="sigo-ai-ring-owner-first-label"
+                            htmlFor="sigo-ai-ring-owner-first"
+                            className="text-xs font-semibold text-foreground"
+                          >
+                            Ring my phone first
+                          </label>
+                          <StoryPopoverInfo
+                            storyKey="dashboard-ai-ring-owner-first"
+                            label="About ring my phone first"
+                            triggerClassName="h-7 w-7 shrink-0"
+                          />
+                        </div>
                         <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
                           Callers hear normal ringing on your business line, then your cell rings for up to your ring time.
                           If you don&apos;t answer, Voice AI takes over — good for testing the full flow. Turn off to connect
@@ -1148,7 +1208,14 @@ export function DashboardPage() {
       </Sheet>
 
         <section id="routing-tips" className="rounded-2xl border border-border/60 bg-muted/15 p-5">
-          <h2 className="text-sm font-semibold text-foreground">Caller ID and spam labels</h2>
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Caller ID and spam labels</h2>
+            <SheetInfoTrigger
+              onPress={() => setDashboardStoryKey("dashboard-caller-id-tips")}
+              label="About caller ID and spam labels"
+              className="h-8 w-8 shrink-0"
+            />
+          </div>
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
             Forwarded legs use your Sigo business number. We also send your line label as the outbound display name when
             your carrier supports it, so the person answering may see a name instead of only digits. Labels like spam
@@ -1164,6 +1231,41 @@ export function DashboardPage() {
             — that label is what your team hears in the whisper (not your account business name).
           </p>
         </section>
+
+      <Sheet open={dashboardStoryKey != null} onOpenChange={(open) => !open && setDashboardStoryKey(null)} modal>
+        <SheetContent side="bottom" className="gap-0 p-0 sm:mx-auto sm:max-w-lg [&>button]:top-3">
+          {(() => {
+            const story = dashboardStoryKey ? getAppSheetStory(dashboardStoryKey) : null
+            if (!dashboardStoryKey) return null
+            if (!story) {
+              return (
+                <div className="p-6 text-sm text-muted-foreground">
+                  No story is defined for this control yet.
+                </div>
+              )
+            }
+            return (
+              <>
+                <StorySheetHeader {...story} />
+                <div className="border-t border-border/60 px-4 py-3">
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Change routing on the cards above, or open{" "}
+                    <Link href="/dashboard/settings" className="font-medium text-primary underline-offset-4 hover:underline">
+                      Settings
+                    </Link>{" "}
+                    for numbers and whispers.
+                  </p>
+                </div>
+                <SheetFooter className="border-t border-border/70 bg-secondary/15 px-4 py-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    (i) inside open panels opens a compact popover so you can read help without closing your place in the flow.
+                  </p>
+                </SheetFooter>
+              </>
+            )
+          })()}
+        </SheetContent>
+      </Sheet>
       </div>
 
     </div>

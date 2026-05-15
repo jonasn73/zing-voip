@@ -41,6 +41,7 @@ import { Sheet, SheetContent, SheetFooter } from "@/components/ui/sheet"
 import { StorySheetHeader } from "@/components/story-sheet-header"
 import { getAppSheetStory } from "@/components/app-sheet-stories"
 import { SheetInfoTrigger } from "@/components/sheet-info-trigger"
+import { StoryPopoverInfo } from "@/components/story-popover-info"
 
 interface SettingToggle {
   id: string
@@ -1548,7 +1549,10 @@ export function SettingsPage() {
               <div className="p-4">
                 {buyStep === "search" ? (
                   <div className="flex flex-col gap-3">
-                    <p className="text-xs text-muted-foreground">Search by area code to find available numbers.</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">Search by area code to find available numbers.</p>
+                      <StoryPopoverInfo storyKey="buy-step-search" label="About number search" triggerClassName="h-7 w-7" />
+                    </div>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <Hash className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -1572,11 +1576,13 @@ export function SettingsPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    <div className="mb-1 flex items-center justify-between">
+                    <div className="mb-1 flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground">
                         {availableNumbers.length} number{availableNumbers.length !== 1 ? "s" : ""} in ({selectedAreaCode})
                       </p>
-                      <button
+                      <div className="flex shrink-0 items-center gap-1">
+                        <StoryPopoverInfo storyKey="buy-step-purchase-label" label="About buying a number" triggerClassName="h-7 w-7" />
+                        <button
                         onClick={() => {
                           setBuyStep("search")
                           setAvailableNumbers([])
@@ -1586,9 +1592,10 @@ export function SettingsPage() {
                           setBuyAcquireBusinessName("")
                         }}
                         className="text-[11px] font-medium text-primary hover:underline"
-                      >
-                        Change
-                      </button>
+                        >
+                          Change
+                        </button>
+                      </div>
                     </div>
 
                     {buySuccess && (
@@ -1610,9 +1617,12 @@ export function SettingsPage() {
                         <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
                           Line label for your team. If the whisper is on in Settings, they hear this label only right after they answer (before the caller is connected). While ringing, caller ID is usually this business number.
                         </p>
-                        <label htmlFor="sigo-buy-line-name" className="mt-2 block text-[11px] font-semibold text-muted-foreground">
-                          Line label
-                        </label>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <label htmlFor="sigo-buy-line-name" className="text-[11px] font-semibold text-muted-foreground">
+                            Line label
+                          </label>
+                          <StoryPopoverInfo storyKey="buy-step-purchase-label" label="Why line label before purchase" triggerClassName="h-7 w-7" />
+                        </div>
                         <input
                           id="sigo-buy-line-name"
                           type="text"
@@ -1714,11 +1724,14 @@ export function SettingsPage() {
                     {/* Step 1: Phone number */}
                     {portStep === 1 && (
                       <>
-                        <div className="flex items-start gap-2.5 rounded-xl bg-secondary p-3">
-                          <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                          <p className="text-xs leading-relaxed text-muted-foreground">
-                            Port your existing business number to {SITE_NAME}. No downtime, no missed calls.
-                          </p>
+                        <div className="flex items-start justify-between gap-2 rounded-xl bg-secondary p-3">
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              Port your existing business number to {SITE_NAME}. No downtime, no missed calls.
+                            </p>
+                          </div>
+                          <StoryPopoverInfo storyKey="port-step1-number" label="About port step 1" triggerClassName="h-7 w-7 shrink-0" />
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Phone number to port</label>
@@ -1759,9 +1772,12 @@ export function SettingsPage() {
                     {/* Step 2: Account information */}
                     {portStep === 2 && (
                       <>
-                        <p className="text-xs text-muted-foreground">
-                          Enter the account details from your current phone provider. This authorizes the transfer.
-                        </p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            Enter the account details from your current phone provider. This authorizes the transfer.
+                          </p>
+                          <StoryPopoverInfo storyKey="port-step2-account" label="About port account step" triggerClassName="h-7 w-7 shrink-0" />
+                        </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Name on account</label>
                           <input type="text" placeholder="Your name or business name" value={portAccountName} onChange={(e) => setPortAccountName(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
@@ -1823,9 +1839,12 @@ export function SettingsPage() {
                     {/* Step 3: Service address + submit */}
                     {portStep === 3 && (
                       <>
-                        <p className="text-xs text-muted-foreground">
-                          Enter the address on file with your current carrier. This must match their records for the transfer to go through.
-                        </p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            Enter the address on file with your current carrier. This must match their records for the transfer to go through.
+                          </p>
+                          <StoryPopoverInfo storyKey="port-step3-address" label="About port address step" triggerClassName="h-7 w-7 shrink-0" />
+                        </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[11px] font-semibold text-muted-foreground">Street address</label>
                           <input type="text" placeholder="123 Main St" value={portStreet} onChange={(e) => setPortStreet(e.target.value)} className="w-full rounded-xl border border-border/70 bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" autoFocus />
@@ -1875,9 +1894,12 @@ export function SettingsPage() {
           <div className="fixed inset-x-4 top-16 z-[70] mx-auto max-h-[calc(100dvh-5rem)] max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border/70 bg-card pb-3 shadow-2xl animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200 [-webkit-overflow-scrolling:touch]">
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Route Calls</h3>
-                <p className="text-xs text-muted-foreground">{formatPhoneDisplay(routingModalNumber)}</p>
+              <div className="flex min-w-0 items-start gap-1">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-foreground">Route Calls</h3>
+                  <p className="text-xs text-muted-foreground">{formatPhoneDisplay(routingModalNumber)}</p>
+                </div>
+                <StoryPopoverInfo storyKey="route-modal-overview" label="About Route calls modal" triggerClassName="h-8 w-8" />
               </div>
               <button
                 onClick={() => setRoutingModalNumber(null)}
@@ -1894,9 +1916,12 @@ export function SettingsPage() {
                 const row = myNumbers.find((n) => n.number === routingModalNumber)
                 return (
                   <>
-                    <label htmlFor="sigo-settings-line-label" className="text-[11px] font-semibold text-muted-foreground">
-                      Line label
-                    </label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor="sigo-settings-line-label" className="text-[11px] font-semibold text-muted-foreground">
+                        Line label
+                      </label>
+                      <StoryPopoverInfo storyKey="route-modal-line-label" label="About line label" triggerClassName="h-7 w-7" />
+                    </div>
                     <input
                       id="sigo-settings-line-label"
                       type="text"
@@ -1940,6 +1965,10 @@ export function SettingsPage() {
               })()}
             </div>
 
+            <div className="flex items-center justify-between border-b border-border px-4 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">First ring</p>
+              <StoryPopoverInfo storyKey="route-modal-first-ring" label="About first ring target" triggerClassName="h-7 w-7" />
+            </div>
             <div className="flex flex-col py-1" role="listbox" aria-label="Select who receives calls for this number">
               {/* Option: Your Phone (owner) */}
               {(() => {

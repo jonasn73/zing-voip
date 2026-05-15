@@ -213,7 +213,10 @@ export function HelpPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="subj">Subject</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="subj">Subject</Label>
+                <SheetInfoTrigger onPress={() => setHelpSheetKey("help-feedback-subject")} label="About subject line" className="h-7 w-7" />
+              </div>
               <Input
                 id="subj"
                 value={subject}
@@ -224,7 +227,10 @@ export function HelpPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="body">Details</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="body">Details</Label>
+                <SheetInfoTrigger onPress={() => setHelpSheetKey("help-feedback-body")} label="About details field" className="h-7 w-7" />
+              </div>
               <Textarea
                 id="body"
                 value={body}

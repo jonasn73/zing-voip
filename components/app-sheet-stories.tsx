@@ -509,6 +509,281 @@ export const APP_SHEET_STORIES: Record<string, AppSheetStory> = {
       </>
     ),
   },
+  "help-feedback-subject": {
+    eyebrow: "Routing the ticket",
+    storyline: "Support scans subjects before bodies — make the first line carry the decision.",
+    title: "Subject line",
+    description: (
+      <>
+        <p>
+          Write <strong>what broke or what you want</strong> in five to eight words, plus the business line if relevant (last
+          four digits are fine).
+        </p>
+        <p className="mt-2">Bad: &quot;Help&quot;. Good: &quot;502 line rings wrong person after 4pm&quot;.</p>
+      </>
+    ),
+  },
+  "help-feedback-body": {
+    eyebrow: "Evidence",
+    storyline: "The body is where we reproduce routing, billing, or UI issues without guessing.",
+    title: "Details field",
+    description: (
+      <>
+        <p>
+          Include <strong>steps</strong>, <strong>expected vs actual</strong>, and <strong>time zone + approximate time</strong> for call issues.
+        </p>
+        <p className="mt-2">Paste error text verbatim. If billing, note whether the problem is balance, overage, or plan change.</p>
+      </>
+    ),
+  },
+
+  "route-modal-overview": {
+    eyebrow: "Per-line routing",
+    storyline: "This modal assigns who is dialed first for one published business number — not account-wide defaults unless marked Default.",
+    title: "Route calls",
+    description: (
+      <>
+        <p>
+          Pick <strong>Your phone</strong> to ring the owner main line first, or a receptionist to delegate. Saving updates{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-[10px]">routing_config</code> for this DID.
+        </p>
+        <p className="mt-2">Fallback (AI, voicemail, ring cell) is tuned on the Call console for the same line.</p>
+      </>
+    ),
+  },
+  "route-modal-line-label": {
+    eyebrow: "Whisper & CRM",
+    storyline: "The label is internal — customers still see the business number as caller ID while ringing.",
+    title: "Line label",
+    description: (
+      <>
+        <p>
+          Used in lists, porting threads, and the <strong>team whisper</strong> (if enabled) so staff know which brand or queue
+          answered.
+        </p>
+        <p className="mt-2">It is not the same as <strong>Account business name</strong> in Settings — that is account-wide trust branding.</p>
+      </>
+    ),
+  },
+  "route-modal-first-ring": {
+    eyebrow: "First leg",
+    storyline: "Telnyx forwards the inbound DID to exactly one target for the first ring phase.",
+    title: "Who receives calls first",
+    description: (
+      <>
+        <p>
+          <strong>Default</strong> means this target is the account fallback when no per-line override exists.{" "}
+          <strong>Selected</strong> means this line explicitly rings here.
+        </p>
+        <p className="mt-2">Changing first target does not change ring duration or no-answer path — set those on Routing.</p>
+      </>
+    ),
+  },
+
+  "buy-step-search": {
+    eyebrow: "Inventory",
+    storyline: "Area code search returns carrier-ready DIDs you can provision in minutes.",
+    title: "Search available numbers",
+    description: (
+      <>
+        <p>Enter a valid US area code (three digits). Results come from Telnyx; not every code has inventory every day.</p>
+        <p className="mt-2">After purchase you will name the line before it appears under Business numbers.</p>
+      </>
+    ),
+  },
+  "buy-step-purchase-label": {
+    eyebrow: "Label before buy",
+    storyline: "The label travels to your phone list and whisper — set it before clicking Purchase.",
+    title: "Line label when buying",
+    description: (
+      <>
+        <p>Pick something your team recognizes on caller ID context — &quot;Dispatch&quot;, &quot;Main&quot;, &quot;West store&quot;.</p>
+        <p className="mt-2">You can edit later in Route calls or Settings line fields.</p>
+      </>
+    ),
+  },
+
+  "port-step1-number": {
+    eyebrow: "LOA path",
+    storyline: "Porting proves you control the number at the losing carrier — paperwork, not instant magic.",
+    title: "Number & line label (step 1)",
+    description: (
+      <>
+        <p>Enter the full number you advertise today. The line label is required so your team can distinguish DIDs after port completes.</p>
+        <p className="mt-2">Inbound may still hit the old carrier until the port FOC completes — watch Transfer updates.</p>
+      </>
+    ),
+  },
+  "port-step2-account": {
+    eyebrow: "Carrier match",
+    storyline: "Account fields must match the bill you upload — mismatches are the top reason ports stall.",
+    title: "Account info (step 2)",
+    description: (
+      <>
+        <p>Name, authorized contact, optional account/PIN, and a recent invoice image or PDF prove ownership.</p>
+        <p className="mt-2">If the porting team pings you in Messages, reply with corrected PINs quickly — deadlines are real.</p>
+      </>
+    ),
+  },
+  "port-step3-address": {
+    eyebrow: "Service address",
+    storyline: "Carriers validate the address on file for the number being moved.",
+    title: "Service address (step 3)",
+    description: (
+      <>
+        <p>Use the service address your current provider shows on the bill, not a PO box unless that is what they have on file.</p>
+        <p className="mt-2">Typos here often cause automated rejection before a human ever reviews.</p>
+      </>
+    ),
+  },
+
+  "dashboard-call-console": {
+    eyebrow: "Live routing",
+    storyline: "This card is the hero surface: who rings, how long, then what the caller hears.",
+    title: "Call console",
+    description: (
+      <>
+        <p>
+          Tap <strong>Who answers</strong>, <strong>Ring & backup</strong>, or <strong>Voice & greetings</strong> to walk the three-part story without leaving the page.
+        </p>
+        <p className="mt-2">With multiple lines, pick the green chip first so you edit the right DID.</p>
+      </>
+    ),
+  },
+  "dashboard-quick-setup": {
+    eyebrow: "Onboarding",
+    storyline: "Three checkpoints mirror the same story we sell: number → people → optional team depth.",
+    title: "Quick setup banner",
+    description: (
+      <>
+        <p>Step 1 ensures customers dial you on a Zing-owned or ported DID. Step 2 is routing. Step 3 is staffing receptionists when you are ready.</p>
+        <p className="mt-2">You can skip Team if you are solo — owner phone first is a valid posture.</p>
+      </>
+    ),
+  },
+  "dashboard-per-line-chips": {
+    eyebrow: "Multi-DID",
+    storyline: "Each chip is one customer-facing number with its own first ring and fallback snapshot.",
+    title: "Business line chips",
+    description: (
+      <>
+        <p>Tap a chip before changing routing — otherwise updates can hit the account default row instead of the line you care about.</p>
+        <p className="mt-2">Badges show AI readiness or voicemail so you spot misconfigurations before customers do.</p>
+      </>
+    ),
+  },
+
+  "dashboard-sheet-who-answers": {
+    eyebrow: "Part 1 of 3",
+    storyline: "First hop on the PSTN bridge — owner pocket vs teammate.",
+    title: "Who answers first (this sheet)",
+    description: (
+      <>
+        <p>Choosing a receptionist forwards the business line to their handset on the first leg. Choosing your phone uses the main line from Settings.</p>
+        <p className="mt-2">Tap Next in the footer when you are ready to set ring duration and backup.</p>
+      </>
+    ),
+  },
+  "dashboard-ring-timeout-deep": {
+    eyebrow: "Part 2 of 3",
+    storyline: "Timeout is only how long we wait for an answer on the first target — not a post-answer delay.",
+    title: "Max ring time",
+    description: (
+      <>
+        <p>Shorter values move callers to voicemail, AI, or your backup phone faster when everyone is busy.</p>
+        <p className="mt-2">Telnyx starts ringing immediately; this control only bounds the hunt for a human pickup.</p>
+      </>
+    ),
+  },
+  "dashboard-no-answer-backup": {
+    eyebrow: "Part 2 of 3",
+    storyline: "These chips are the high-level backup after the first leg times out.",
+    title: "If no answer (summary)",
+    description: (
+      <>
+        <p>Owner rings your cell again, AI runs the voice assistant flow, voicemail captures a message — each is a different caller experience.</p>
+        <p className="mt-2">Fine-tune greetings and AI playbook under Voice & greetings (part 3).</p>
+      </>
+    ),
+  },
+  "dashboard-fallback-owner": {
+    eyebrow: "Backup",
+    storyline: "Still human-first — try the owner cell when the receptionist leg fails.",
+    title: "Ring your phone (fallback)",
+    description: (
+      <>
+        <p>Use when the first target is a teammate but you still want the owner to catch stragglers without turning AI on.</p>
+        <p className="mt-2">Pair with ring timeout so callers are not left ringing forever.</p>
+      </>
+    ),
+  },
+  "dashboard-fallback-ai": {
+    eyebrow: "Voice layer",
+    storyline: "AI answers with your configured assistant after timeouts — intake, SMS leads, etc.",
+    title: "AI receptionist (fallback)",
+    description: (
+      <>
+        <p>Requires a linked Telnyx assistant. Open Voice & greetings to attach playbook, voice, and optional ring-owner-first testing.</p>
+        <p className="mt-2">AI minutes bill like voice — watch Help balance and Activity.</p>
+      </>
+    ),
+  },
+  "dashboard-fallback-voicemail": {
+    eyebrow: "Capture",
+    storyline: "Voicemail is the calm default when you do not want AI or a second ring.",
+    title: "Voicemail (fallback)",
+    description: (
+      <>
+        <p>Callers hear your greeting then record. Good after-hours or when compliance prefers no AI on the line.</p>
+        <p className="mt-2">Recordings show up in Activity when enabled.</p>
+      </>
+    ),
+  },
+  "dashboard-sheet-voice-layer": {
+    eyebrow: "Part 3 of 3",
+    storyline: "Greetings, AI intake, and ring-my-phone-first live here — the emotional layer after routing math.",
+    title: "Voice & greetings sheet",
+    description: (
+      <>
+        <p>Select AI vs voicemail vs ring-owner, then expand the AI panel for scripts. This closes the loop for what the caller hears.</p>
+        <p className="mt-2">Changes autosave — watch for toast errors if Telnyx rejects a field.</p>
+      </>
+    ),
+  },
+  "dashboard-ai-ring-owner-first": {
+    eyebrow: "Testing & safety",
+    storyline: "Optional extra ring leg before AI so you can hear the real PSTN path.",
+    title: "Ring my phone first (AI)",
+    description: (
+      <>
+        <p>When AI is the fallback, this inserts your cell in front of the assistant so you can grab urgent calls personally.</p>
+        <p className="mt-2">Turn off for straight-to-AI after the first target times out — common for solo owners.</p>
+      </>
+    ),
+  },
+  "dashboard-caller-id-tips": {
+    eyebrow: "Trust",
+    storyline: "Forwarded Caller ID and CNAM are carrier politics — labels help humans, reputation is earned with traffic.",
+    title: "Caller ID & spam labels",
+    description: (
+      <>
+        <p>We send your business number on forwarded legs and may pass a display name when the carrier allows it.</p>
+        <p className="mt-2">Spam flags come from the receiving network — fix with accurate labels, registry listings, and consistent legitimate volume.</p>
+      </>
+    ),
+  },
+
+  "onboarding-overview": {
+    eyebrow: "First run",
+    storyline: "Three beats: published number → optional team → voice backup — same story as the live Call console.",
+    title: "Welcome setup",
+    description: (
+      <>
+        <p>This wizard is a guided tour. Live routing always wins on the dashboard once you have real numbers from Settings.</p>
+        <p className="mt-2">You can skip receptionists if you are solo — owner-first routing is valid.</p>
+      </>
+    ),
+  },
 }
 
 export function getAppSheetStory(key: string): AppSheetStory | null {

@@ -1,9 +1,14 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { DEFAULT_BUSY_GENERIC } from "@/lib/ai-intake-defaults" // Default opening line for the voice AI (high-volume tone, not "we're closed")
 import { cn } from "@/lib/utils"
 import { SITE_NAME } from "@/lib/brand"
+import { Sheet, SheetContent, SheetFooter } from "@/components/ui/sheet"
+import { StorySheetHeader } from "@/components/story-sheet-header"
+import { getAppSheetStory } from "@/components/app-sheet-stories"
+import { SheetInfoTrigger } from "@/components/sheet-info-trigger"
 import {
   Phone,
   ArrowRight,
@@ -23,6 +28,7 @@ interface OnboardingPageProps {
 export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const [step, setStep] = useState(1)
   const totalSteps = 3
+  const [onboardingSheetKey, setOnboardingSheetKey] = useState<string | null>(null)
 
   // Step 1 -- Get a number
   const [numberMethod, setNumberMethod] = useState<"buy" | "port" | null>(null)
@@ -89,6 +95,11 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                 )}
               />
             ))}
+            <SheetInfoTrigger
+              onPress={() => setOnboardingSheetKey("onboarding-overview")}
+              label="About this setup wizard"
+              className="h-8 w-8"
+            />
           </div>
           <span className="text-xs text-muted-foreground">
             {step} of {totalSteps}
@@ -425,6 +436,32 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
           )}
         </div>
       </main>
+
+      <Sheet open={onboardingSheetKey != null} onOpenChange={(open) => !open && setOnboardingSheetKey(null)} modal>
+        <SheetContent side="bottom" className="gap-0 p-0 sm:mx-auto sm:max-w-lg [&>button]:top-3">
+          {(() => {
+            const story = onboardingSheetKey ? getAppSheetStory(onboardingSheetKey) : null
+            if (!onboardingSheetKey || !story) return null
+            return (
+              <>
+                <StorySheetHeader {...story} />
+                <div className="border-t border-border/60 px-4 py-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    When you finish, open{" "}
+                    <Link href="/dashboard" className="font-medium text-primary underline-offset-4 hover:underline">
+                      Call console
+                    </Link>{" "}
+                    for live routing.
+                  </p>
+                </div>
+                <SheetFooter className="border-t border-border/70 bg-secondary/15 px-4 py-3">
+                  <p className="text-[11px] text-muted-foreground">Demo steps here may not call real Telnyx APIs until you add numbers in Settings.</p>
+                </SheetFooter>
+              </>
+            )
+          })()}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

@@ -77,6 +77,18 @@ function formatPhoneDisplay(phone: string | undefined | null): string {
   return phone
 }
 
+/** Carrier returns a plain-string error when the wallet cannot cover the DID order — surface add-credit UX. */
+function errorLooksLikeInsufficientAccountCredit(message: string): boolean {
+  const m = message.toLowerCase()
+  return (
+    m.includes("not enough credit") ||
+    m.includes("insufficient credit") ||
+    m.includes("insufficient funds") ||
+    m.includes("credit available") ||
+    /\b(low|no)\s+balance\b/.test(m)
+  )
+}
+
 export function SettingsPage() {
   const { toast } = useToast()
   const [signingOut, setSigningOut] = useState(false)
@@ -1671,7 +1683,40 @@ export function SettingsPage() {
                       </div>
                     )}
 
-                    {buyError && <p className="text-xs text-destructive">{buyError}</p>}
+                    {buyError && (
+                      <div
+                        role="alert"
+                        className="space-y-3 rounded-xl border border-destructive/35 bg-destructive/[0.07] p-3"
+                      >
+                        <p className="text-xs leading-snug text-destructive">{buyError}</p>
+                        {errorLooksLikeInsufficientAccountCredit(buyError) ? (
+                          <div className="space-y-2 border-t border-destructive/25 pt-3 text-[11px] leading-relaxed">
+                            <p className="font-semibold text-foreground">Need more prepaid credit</p>
+                            <p className="text-muted-foreground">
+                              Buying a number charges your prepaid balance (the message above shows what you have vs. what this
+                              order costs). Checkout for adding credit yourself is still rolling out — use Help for your balance
+                              and to request a top-up from support, then come back here and tap Purchase again.
+                            </p>
+                            <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
+                              <Link
+                                href="/dashboard/help#billing-account-balance"
+                                className="inline-flex items-center justify-center rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                                onClick={() => setShowNumberModal(false)}
+                              >
+                                View balance &amp; top-up steps
+                              </Link>
+                              <Link
+                                href="/dashboard/help?topic=need-credits#help-contact-support"
+                                className="inline-flex items-center justify-center rounded-xl border border-border/80 bg-background px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                                onClick={() => setShowNumberModal(false)}
+                              >
+                                Message support (billing / credits)
+                              </Link>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
 
                     {buyPendingNumber ? (
                       <div className="rounded-xl border border-primary/35 bg-primary/5 p-3">

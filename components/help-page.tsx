@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -38,6 +39,7 @@ type BillingSummary = {
 
 export function HelpPage() {
   const { toast } = useToast()
+  const searchParams = useSearchParams()
   const [user, setUser] = useState<SessionUser | null>(null)
   const [billing, setBilling] = useState<BillingSummary | null>(null)
   const [category, setCategory] = useState<string>("issue")
@@ -61,6 +63,13 @@ export function HelpPage() {
       })
       .catch(() => {})
   }, [])
+
+  /** Deep link from Settings “buy number” when carrier balance is too low — preselect billing and a sensible subject line. */
+  useEffect(() => {
+    if (searchParams.get("topic") !== "need-credits") return
+    setCategory("billing")
+    setSubject((prev) => (prev.trim().length === 0 ? "Add prepaid credit to buy a phone number" : prev))
+  }, [searchParams])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -98,7 +107,7 @@ export function HelpPage() {
       </div>
 
       {billing && (
-        <Card className="border-border/80 bg-card/90 shadow-sm">
+        <Card id="billing-account-balance" className="scroll-mt-28 border-border/80 bg-card/90 shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -179,7 +188,7 @@ export function HelpPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 bg-card/90 shadow-sm">
+      <Card id="help-contact-support" className="scroll-mt-28 border-border/80 bg-card/90 shadow-sm">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">

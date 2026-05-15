@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { BookUser, ChevronDown, Loader2, Search } from "lucide-react"
+import { BookUser, ChevronDown, Loader2, Pencil, Search } from "lucide-react"
 import type { Customer } from "@/lib/types"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import { IconSurface } from "@/components/ui/icon-surface"
@@ -130,7 +130,8 @@ export function CustomersPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground">Customers</h1>
           <p className="text-xs text-muted-foreground">
-            Search by name, phone, or address. Tap a row to edit — changes save automatically after you pause typing.
+            Search by name, phone, or address. Tap a row or the pencil to edit — changes save automatically after you pause
+            typing.
           </p>
         </div>
       </div>
@@ -161,11 +162,11 @@ export function CustomersPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((c) => (
-            <li key={c.id}>
+            <li key={c.id} className="flex overflow-hidden rounded-2xl border border-border/70 bg-card/85 shadow-sm transition-colors hover:border-primary/35 hover:bg-card">
               <button
                 type="button"
                 onClick={() => setDetail(c)}
-                className="w-full rounded-2xl border border-border/70 bg-card/85 p-4 text-left shadow-sm transition-colors hover:border-primary/35 hover:bg-card"
+                className="min-w-0 flex-1 p-4 text-left transition-colors hover:bg-card/50"
               >
                 <p className="text-sm font-semibold text-foreground">{c.display_name || "Unnamed caller"}</p>
                 <p className="text-xs text-muted-foreground">{formatPhoneDisplay(c.phone_e164)}</p>
@@ -175,6 +176,15 @@ export function CustomersPage() {
                     {[c.city, c.region].filter(Boolean).join(", ")}
                   </p>
                 ) : null}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetail(c)}
+                className="flex shrink-0 items-center justify-center border-l border-border/60 px-3.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                aria-label={`Edit customer ${c.display_name || formatPhoneDisplay(c.phone_e164)}`}
+                title="Edit"
+              >
+                <Pencil className="h-4 w-4 shrink-0" aria-hidden />
               </button>
             </li>
           ))}

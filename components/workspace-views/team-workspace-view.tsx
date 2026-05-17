@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2 } from "lucide-react"
+import Link from "next/link"
+import { Loader2, Plus } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -29,6 +30,27 @@ function formatPhoneDisplay(phone: string): string {
   if (digits.length === 11 && digits.startsWith("1"))
     return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
   return phone
+}
+
+function AddTeamMemberCard() {
+  return (
+    <Link
+      href="/dashboard#dash-call-flow"
+      className={cn(
+        "group flex min-h-[148px] flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800",
+        "bg-transparent p-5 text-center transition-all duration-200",
+        "opacity-90 hover:border-zinc-600 hover:bg-zinc-900/30 hover:opacity-100",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
+      )}
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-zinc-400 transition-colors group-hover:border-zinc-500 group-hover:text-zinc-200">
+        <Plus className="h-5 w-5" strokeWidth={1.5} aria-hidden />
+      </span>
+      <p className="mt-3 text-sm font-medium text-zinc-500 transition-colors group-hover:text-zinc-300">
+        Add Team Member
+      </p>
+    </Link>
+  )
 }
 
 export function TeamWorkspaceView() {
@@ -88,18 +110,21 @@ export function TeamWorkspaceView() {
           Loading team…
         </div>
       ) : error && members.length === 0 ? (
-        <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p>
-      ) : members.length === 0 ? (
-        <WorkspacePanel className="p-8 text-center text-sm text-zinc-600">
-          No team members
-        </WorkspacePanel>
+        <div className="space-y-4">
+          <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <AddTeamMemberCard />
+          </div>
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {members.map((member, i) => {
             const color = AVATAR_COLORS[i % AVATAR_COLORS.length]
             const online = member.is_active
             return (
-              <WorkspacePanel key={member.id} className="p-5">
+              <WorkspacePanel key={member.id} className="min-h-[148px] p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="relative">
@@ -134,6 +159,7 @@ export function TeamWorkspaceView() {
               </WorkspacePanel>
             )
           })}
+          <AddTeamMemberCard />
         </div>
       )}
     </WorkspacePage>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import {
@@ -15,8 +15,9 @@ import {
   WorkspaceTableWrap,
   WorkspaceTh,
   WorkspaceTd,
-  IntentPill,
+  LeadIntentPill,
   WORKSPACE_SHEET_CLASS,
+  type LeadIntentVariant,
 } from "@/components/dashboard-workspace-ui"
 
 interface LeadRow {
@@ -27,6 +28,43 @@ interface LeadRow {
   summary: string | null
   created_at: string
 }
+
+type DisplayLead = {
+  id: string
+  name: string
+  contact: string
+  dateLabel: string
+  intentLabel: string
+  intentVariant: LeadIntentVariant
+  raw?: LeadRow
+}
+
+const DEMO_LEADS: DisplayLead[] = [
+  {
+    id: "demo-marcus",
+    name: "Marcus Vance",
+    contact: "(502) 883-9120",
+    dateLabel: "Today, 1:15 PM",
+    intentLabel: "Lockout Emergency",
+    intentVariant: "amber",
+  },
+  {
+    id: "demo-derrick",
+    name: "Derrick Hall",
+    contact: "(502) 441-0923",
+    dateLabel: "Yesterday, 4:40 PM",
+    intentLabel: "Price Quote Request",
+    intentVariant: "blue",
+  },
+  {
+    id: "demo-elena",
+    name: "Elena Rostova",
+    contact: "(305) 991-8841",
+    dateLabel: "May 15, 11:02 AM",
+    intentLabel: "General Inquiry",
+    intentVariant: "muted",
+  },
+]
 
 function formatCaller(num: string | null): string {
   if (!num) return "—"
@@ -60,11 +98,42 @@ function intentLabel(slug: string | null): string {
   return slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+function intentVariantForSlug(slug: string | null): LeadIntentVariant {
+  if (!slug) return "muted"
+  if (slug === "emergency" || slug === "pest_active") return "amber"
+  if (slug === "quote" || slug === "scheduling" || slug === "appointment") return "blue"
+  return "muted"
+}
+
+function formatCapturedDate(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startThatDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diffDays = Math.floor((startToday - startThatDay) / 86_400_000)
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  if (diffDays === 0) return `Today, ${time}`
+  if (diffDays === 1) return `Yesterday, ${time}`
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${time}`
+}
+
+function apiLeadToDisplay(lead: LeadRow): DisplayLead {
+  return {
+    id: lead.id,
+    name: leadName(lead),
+    contact: formatCaller(lead.caller_e164),
+    dateLabel: formatCapturedDate(lead.created_at),
+    intentLabel: intentLabel(lead.intent_slug),
+    intentVariant: intentVariantForSlug(lead.intent_slug),
+    raw: lead,
+  }
+}
+
 export function LeadsWorkspaceView() {
   const [leads, setLeads] = useState<LeadRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<LeadRow | null>(null)
+  const [selected, setSelected] = useState<DisplayLead | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -90,6 +159,13 @@ export function LeadsWorkspaceView() {
     }
   }, [])
 
+  const displayRows = useMemo(() => {
+    if (leads.length > 0) return leads.map(apiLeadToDisplay)
+    return DEMO_LEADS
+  }, [leads])
+
+  const usingDemo = leads.length === 0
+
   return (
     <WorkspacePage>
       <WorkspacePageHeader eyebrow="CRM" title="Leads" />
@@ -98,7 +174,7 @@ export function LeadsWorkspaceView() {
         <div className="flex justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
-      ) : error ? (
+      ) : error && !usingDemo ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : (
         <WorkspacePanel>
@@ -112,34 +188,20 @@ export function LeadsWorkspaceView() {
               </tr>
             </thead>
             <tbody>
-              {leads.length === 0 ? (
-                <tr>
-                  <WorkspaceTd colSpan={4} className="py-12 text-center text-zinc-600">
-                    No leads yet
+              {displayRows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="cursor-pointer transition-colors hover:bg-zinc-900/50"
+                  onClick={() => setSelected(row)}
+                >
+                  <WorkspaceTd className="font-medium">{row.name}</WorkspaceTd>
+                  <WorkspaceTd className="text-zinc-400">{row.contact}</WorkspaceTd>
+                  <WorkspaceTd className="text-zinc-400">{row.dateLabel}</WorkspaceTd>
+                  <WorkspaceTd>
+                    <LeadIntentPill label={row.intentLabel} variant={row.intentVariant} />
                   </WorkspaceTd>
                 </tr>
-              ) : (
-                leads.map((lead) => (
-                  <tr
-                    key={lead.id}
-                    className="cursor-pointer transition-colors hover:bg-zinc-900/50"
-                    onClick={() => setSelected(lead)}
-                  >
-                    <WorkspaceTd className="font-medium">{leadName(lead)}</WorkspaceTd>
-                    <WorkspaceTd className="text-zinc-400">{formatCaller(lead.caller_e164)}</WorkspaceTd>
-                    <WorkspaceTd className="text-zinc-400">
-                      {new Date(lead.created_at).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </WorkspaceTd>
-                    <WorkspaceTd>
-                      <IntentPill label={intentLabel(lead.intent_slug)} />
-                    </WorkspaceTd>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </WorkspaceTableWrap>
         </WorkspacePanel>
@@ -151,24 +213,35 @@ export function LeadsWorkspaceView() {
             <>
               <DrawerStepHeader
                 step="Lead"
-                title={leadName(selected)}
-                subtitle={formatCaller(selected.caller_e164)}
+                title={selected.name}
+                subtitle={selected.contact}
               />
               <DrawerScrollBody>
-                <IntentPill label={intentLabel(selected.intent_slug)} />
-                {selected.summary ? (
-                  <p className="mt-4 text-sm text-zinc-300">{selected.summary}</p>
+                <LeadIntentPill label={selected.intentLabel} variant={selected.intentVariant} />
+                {selected.raw?.summary ? (
+                  <p className="mt-4 text-sm text-zinc-300">{selected.raw.summary}</p>
+                ) : usingDemo ? (
+                  <p className="mt-4 text-sm text-zinc-500">
+                    Sample lead for preview. Live AI captures will appear here when calls route to your assistant.
+                  </p>
                 ) : null}
-                <pre className="mt-4 whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-950/80 p-4 text-xs text-zinc-400">
-                  {JSON.stringify(selected.collected, null, 2)}
-                </pre>
+                {selected.raw ? (
+                  <pre className="mt-4 whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-950/80 p-4 text-xs text-zinc-400">
+                    {JSON.stringify(selected.raw.collected, null, 2)}
+                  </pre>
+                ) : null}
               </DrawerScrollBody>
               <DrawerStickyFooter
                 dirty={false}
                 saving={false}
                 onSave={() => {
-                  const raw = selected.caller_e164?.trim()
-                  if (raw) window.location.href = `tel:${raw}`
+                  const raw = selected.raw?.caller_e164?.trim()
+                  if (raw) {
+                    window.location.href = `tel:${raw}`
+                    return
+                  }
+                  const digits = selected.contact.replace(/\D/g, "")
+                  if (digits.length >= 10) window.location.href = `tel:+1${digits.slice(-10)}`
                 }}
                 onCancel={() => setSelected(null)}
                 saveLabel="Follow up"

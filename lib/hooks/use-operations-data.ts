@@ -9,7 +9,10 @@ export interface UiCallRecord {
   type: UiCallType
   callerName: string
   callerNumber: string
+  /** Business line dialed (E.164). */
+  targetLineE164: string
   routedTo: string
+  routedToReceptionistId: string | null
   routedInitials: string
   routedColor: string
   date: string
@@ -213,12 +216,15 @@ export function useOperationsData(options?: UseOperationsDataOptions) {
             const createdAtRaw = String(c.created_at || "")
             const createdAt = createdAtRaw ? new Date(createdAtRaw) : new Date()
             const routedTo = String(c.routed_to_name || c.routed_to_receptionist_id || "Owner")
+            const receptionistId = c.routed_to_receptionist_id ? String(c.routed_to_receptionist_id) : null
             return {
               id: String(c.id || c.provider_call_sid || c.twilio_call_sid || crypto.randomUUID()),
               type: normalizeCallType(c.call_type),
               callerName: String(c.caller_name || "Unknown Caller"),
               callerNumber: formatPhoneDisplay(String(c.from_number || "")),
+              targetLineE164: String(c.to_number || ""),
               routedTo,
+              routedToReceptionistId: receptionistId,
               routedInitials: initialsFromName(routedTo),
               routedColor: "bg-primary",
               date: getDateLabel(createdAt),

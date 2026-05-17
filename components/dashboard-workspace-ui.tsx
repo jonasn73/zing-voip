@@ -94,8 +94,25 @@ export function StatusPill({ label, tone }: { label: string; tone: StatusTone })
 }
 
 export function IntentPill({ label }: { label: string }) {
+  return <LeadIntentPill label={label} variant="blue" />
+}
+
+export type LeadIntentVariant = "amber" | "blue" | "muted"
+
+export function LeadIntentPill({ label, variant }: { label: string; variant: LeadIntentVariant }) {
+  const styles: Record<LeadIntentVariant, string> = {
+    amber:
+      "border-amber-500/50 bg-amber-500/10 text-amber-300 shadow-[0_0_14px_-4px_rgba(245,158,11,0.55)]",
+    blue: "border-sky-500/45 bg-sky-500/10 text-sky-300 shadow-[0_0_14px_-4px_rgba(56,189,248,0.45)]",
+    muted: "border-zinc-600/80 bg-zinc-900/60 text-zinc-400",
+  }
   return (
-    <span className="inline-flex items-center rounded-full border border-cyan-500/35 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-400">
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide",
+        styles[variant]
+      )}
+    >
       {label}
     </span>
   )

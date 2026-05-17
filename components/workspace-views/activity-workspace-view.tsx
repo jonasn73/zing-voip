@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -21,6 +21,11 @@ import {
   type ActivityCallStatus,
 } from "@/components/dashboard-workspace-ui"
 import { useOperationsData, type UiCallRecord } from "@/lib/hooks/use-operations-data"
+import {
+  buildBusinessLineLabelMap,
+  resolveBusinessLineLabel,
+  type LineLabelEntry,
+} from "@/lib/line-display"
 
 function formatDuration(seconds: number): string {
   if (seconds <= 0) return "—"
@@ -82,6 +87,28 @@ function CallLogSheet({ call, onClose }: { call: UiCallRecord; onClose: () => vo
 export function ActivityWorkspaceView() {
   const { calls, loading, loadError, refreshing } = useOperationsData()
   const [logCall, setLogCall] = useState<UiCallRecord | null>(null)
+  const [lineLabelMap, setLineLabelMap] = useState<Map<string, string>>(() => new Map())
+
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/numbers/mine", { credentials: "include" })
+      .then(async (res) => (res.ok ? res.json() : { numbers: [] }))
+      .then((data) => {
+        if (cancelled) return
+        const numbers = Array.isArray(data.numbers) ? data.numbers : []
+        const entries: LineLabelEntry[] = numbers.map((n: { number?: string; label?: string }) => ({
+          number: String(n.number ?? ""),
+          label: String(n.label ?? "Business Line"),
+        }))
+        setLineLabelMap(buildBusinessLineLabelMap(entries))
+      })
+      .catch(() => {
+        if (!cancelled) setLineLabelMap(new Map())
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const rows = useMemo(
     () => [...calls].sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`)),
@@ -92,9 +119,7 @@ export function ActivityWorkspaceView() {
     <WorkspacePage>
       <WorkspacePageHeader eyebrow="Live" title="Activity" />
 
-      {refreshing ? (
-        <p className="text-xs text-zinc-600">Refreshing…</p>
-      ) : null}
+      {refreshing ? <p className="text-xs text-zinc-600">Refreshing…</p> : null}
 
       {loading && calls.length === 0 ? (
         <div className="flex justify-center py-16">
@@ -124,6 +149,10 @@ export function ActivityWorkspaceView() {
               ) : (
                 rows.map((call) => {
                   const st = classifyCall(call)
+                  const targetLabel = resolveBusinessLineLabel(
+                    call.targetLineE164 || call.routedTo,
+                    lineLabelMap
+                  )
                   return (
                     <tr key={call.id} className="transition-colors hover:bg-zinc-900/50">
                       <WorkspaceTd>
@@ -136,7 +165,9 @@ export function ActivityWorkspaceView() {
                       <WorkspaceTd className="tabular-nums text-zinc-400">
                         {formatDuration(call.durationSeconds)}
                       </WorkspaceTd>
-                      <WorkspaceTd className="text-zinc-300">{call.routedTo}</WorkspaceTd>
+                      <WorkspaceTd>
+                        <p className="font-medium text-zinc-200">{targetLabel}</p>
+                      </WorkspaceTd>
                       <WorkspaceTd className="text-right">
                         <button
                           type="button"

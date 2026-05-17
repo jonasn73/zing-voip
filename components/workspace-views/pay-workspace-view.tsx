@@ -94,9 +94,9 @@ export function PayWorkspaceView() {
       </div>
 
       <WorkspacePanel>
-        <motionlessDiv className="border-b border-zinc-800 px-5 py-4">
+        <div className="border-b border-zinc-800 px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground">Invoice ledger</h2>
-        </motionlessDiv>
+        </div>
         <WorkspaceTableWrap>
           <thead>
             <tr>

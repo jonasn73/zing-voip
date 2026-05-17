@@ -1,5 +1,5 @@
 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="24" height="24" rx="6" fill="#5f6ef4"/>
+  <rect width="24" height="24" rx="6" fill="#00F5D4"/>
   <!-- lyncr monogram (same geometry as components/brand-mark.tsx) -->
   <rect x="8.25" y="5.5" width="2.35" height="13" rx="1.15" fill="#0c0a18"/>
   <path fill="#0c0a18" d="M8.42 18.5h7.35c.95 0 1.55.52 1.55 1.35 0 .88-.68 1.4-1.78 1.4H8.42V18.5z" opacity="0.92"/>

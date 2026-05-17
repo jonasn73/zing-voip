@@ -1,7 +1,6 @@
 "use client"
 
 import { memo, useEffect, useMemo, useState } from "react"
-import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   DrawerStepHeader,
@@ -16,8 +15,13 @@ import {
   WorkspaceTh,
   WorkspaceTd,
   ActivityStatusPill,
+  WORKSPACE_TABLE_ROW_CLASS,
   type ActivityCallStatus,
 } from "@/components/dashboard-workspace-ui"
+import {
+  ActivityTableSkeleton,
+  WorkspaceBloom,
+} from "@/components/workspace-content-skeletons"
 import {
   WorkspaceRightSheetGate,
   useWorkspaceRightSheet,
@@ -95,8 +99,8 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
   const openLog = useWorkspaceRightSheet<UiCallRecord>()
 
   return (
-    <WorkspacePanel className="min-h-[320px]">
-      <WorkspaceTableWrap>
+    <WorkspacePanel className="min-h-[380px]">
+      <WorkspaceTableWrap className="min-h-[340px]">
         <colgroup>
           <col className="w-[22%]" />
           <col className="w-[30%]" />
@@ -125,7 +129,7 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
               const st = classifyCall(call)
               const targetLabel = resolveBusinessLineLabel(call.targetLineE164, lineLabelMap)
               return (
-                <tr key={call.id} className="transition-colors hover:bg-zinc-900/50">
+                <tr key={call.id} className={cn("transition-colors hover:bg-zinc-900/50", WORKSPACE_TABLE_ROW_CLASS)}>
                   <WorkspaceTd>
                     <ActivityStatusPill status={st} />
                   </WorkspaceTd>
@@ -187,13 +191,13 @@ const ActivityWorkspaceBody = memo(function ActivityWorkspaceBody({
       {refreshing ? <p className="text-xs text-zinc-600">Refreshing…</p> : null}
 
       {loading && calls.length === 0 ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
+        <ActivityTableSkeleton />
       ) : loadError && calls.length === 0 ? (
-        <p className="text-sm text-destructive">{loadError}</p>
+        <p className="min-h-[380px] text-sm text-destructive">{loadError}</p>
       ) : (
-        <ActivityCallsTable rows={rows} lineLabelMap={lineLabelMap} />
+        <WorkspaceBloom>
+          <ActivityCallsTable rows={rows} lineLabelMap={lineLabelMap} />
+        </WorkspaceBloom>
       )}
     </WorkspacePage>
   )

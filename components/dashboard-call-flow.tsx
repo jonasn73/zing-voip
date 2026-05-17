@@ -22,6 +22,11 @@ import {
   type DashboardBusinessNumber,
 } from "@/lib/dashboard-routing-utils"
 import { DRAWER_SHEET_GPU } from "@/lib/workspace-sheet-classes"
+import {
+  CallFlowLinePickerSkeleton,
+  CallFlowStepsSkeleton,
+} from "@/components/workspace-content-skeletons"
+import { CALL_FLOW_STEPS_MIN_H } from "@/components/dashboard-workspace-ui"
 
 export const ROUTING_DRAWER_SHEET_CLASS =
   "gap-0 flex h-full flex-col p-0 sm:max-w-md md:max-w-lg lg:max-w-xl [&>button]:top-5 [&>button]:right-5 " +
@@ -68,7 +73,8 @@ function FlowStepCard({
       onClick={onOpen}
       disabled={loading}
       className={cn(
-        "group relative flex min-h-[12.5rem] min-w-0 flex-1 flex-col rounded-2xl border border-border/70 bg-gradient-to-b from-card to-background/80 p-5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200",
+        "group relative flex min-h-[12.5rem] min-w-0 flex-1 flex-col rounded-2xl border border-border/70 bg-gradient-to-b from-card to-background/80 p-5 text-left shadow-sm",
+        "transform-gpu will-change-[opacity,transform] backface-hidden transition-[border-color,box-shadow,opacity] duration-200",
         "hover:border-primary/45 hover:shadow-[0_0_32px_-12px_var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         loading && "pointer-events-none opacity-50"
       )}
@@ -132,7 +138,7 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
   return (
     <section
       id="dash-call-flow"
-      className="scroll-mt-24 overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-lg ring-1 ring-border/40"
+      className="scroll-mt-24 min-h-[22rem] overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-lg ring-1 ring-border/40"
     >
       <header className="border-b border-border/50 bg-gradient-to-b from-muted/20 to-transparent px-5 py-5 sm:px-8 sm:py-6">
         <div className="flex flex-col items-center gap-4">
@@ -153,7 +159,9 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
             ) : null}
           </div>
 
-          {businessNumbers.length > 0 ? (
+          {!quickSetupDecided ? (
+            <CallFlowLinePickerSkeleton />
+          ) : businessNumbers.length > 0 ? (
             <ActiveLinePicker
               businessNumbers={businessNumbers}
               activeLine={activeLine}
@@ -171,21 +179,26 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
         </div>
       </header>
 
-      <div className="px-4 py-6 sm:px-8 sm:py-8">
-        {businessNumbers.length === 0 && quickSetupDecided ? (
-          <div className="rounded-2xl border border-dashed border-border/70 bg-muted/10 px-6 py-12 text-center">
-            <p className="text-sm font-medium text-foreground">No business line yet</p>
-            <Link
-              href="/dashboard#dash-call-flow"
-              className="mt-4 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-            >
-              Add number in Settings
-            </Link>
+      <div className={cn("px-4 py-6 sm:px-8 sm:py-8", CALL_FLOW_STEPS_MIN_H)}>
+        {!quickSetupDecided ? (
+          <CallFlowStepsSkeleton />
+        ) : businessNumbers.length === 0 ? (
+          <div className="flex min-h-[14.5rem] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/10 px-6 py-12 text-center">
+            <div>
+              <p className="text-sm font-medium text-foreground">No business line yet</p>
+              <Link
+                href="/dashboard#dash-call-flow"
+                className="mt-4 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                Add number in Settings
+              </Link>
+            </div>
           </div>
         ) : (
           <div
             className={cn(
-              "flex flex-col gap-4 lg:flex-row lg:items-stretch",
+              "sigo-bloom-in-stagger flex flex-col gap-4 lg:flex-row lg:items-stretch",
+              CALL_FLOW_STEPS_MIN_H,
               routingLineDetailLoading && "opacity-60"
             )}
             aria-label="Call handling steps"

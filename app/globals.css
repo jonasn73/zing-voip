@@ -208,7 +208,51 @@
   }
 }
 
+@keyframes sigo-bloom-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 @layer utilities {
+  .sigo-bloom-in {
+    animation: sigo-bloom-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform: translateZ(0);
+    will-change: opacity, transform;
+    backface-visibility: hidden;
+  }
+
+  .sigo-bloom-in-stagger > * {
+    animation: sigo-bloom-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform: translateZ(0);
+    will-change: opacity, transform;
+    backface-visibility: hidden;
+  }
+
+  .sigo-bloom-in-stagger > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .sigo-bloom-in-stagger > *:nth-child(2) {
+    animation-delay: 50ms;
+  }
+  .sigo-bloom-in-stagger > *:nth-child(3) {
+    animation-delay: 100ms;
+  }
+  .sigo-bloom-in-stagger > *:nth-child(4) {
+    animation-delay: 150ms;
+  }
+  .sigo-bloom-in-stagger > *:nth-child(5) {
+    animation-delay: 200ms;
+  }
+  .sigo-bloom-in-stagger > *:nth-child(6) {
+    animation-delay: 250ms;
+  }
+
   .animate-sigo-page-enter {
     animation: sigo-page-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
@@ -243,10 +287,14 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .sigo-bloom-in,
+    .sigo-bloom-in-stagger > *,
     .animate-sigo-page-enter,
     .sigo-sheet-drawer-overlay,
     .sigo-sheet-drawer-panel {
       animation: none !important;
+      opacity: 1;
+      transform: none;
     }
 
     .sigo-sheet-drawer-panel[data-state="open"] {

@@ -45,6 +45,12 @@ export function WorkspacePanel({ children, className }: { children: ReactNode; c
   )
 }
 
+/** Fixed table row height — prevents row reflow when data mounts. */
+export const WORKSPACE_TABLE_ROW_CLASS = "h-[52px] [&>td]:h-[52px] [&>td]:align-middle"
+
+/** Call-flow step grid minimum footprint. */
+export const CALL_FLOW_STEPS_MIN_H = "min-h-[14.5rem]"
+
 export function WorkspaceStatCard({
   label,
   value,
@@ -63,7 +69,7 @@ export function WorkspaceStatCard({
         ? "border-amber-500/30 bg-amber-500/5"
         : "border-primary/30 bg-primary/5"
   return (
-    <div className={cn("rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5", accent && accentClass)}>
+    <div className={cn("min-h-[5.75rem] rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5", accent && accentClass)}>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
       {hint ? <p className="mt-1 text-xs text-zinc-500">{hint}</p> : null}

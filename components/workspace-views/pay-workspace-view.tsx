@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useState } from "react"
 import { Download } from "lucide-react"
+import { cn } from "@/lib/utils"
 import {
   WorkspacePage,
   WorkspacePageHeader,
@@ -10,7 +11,13 @@ import {
   WorkspaceTableWrap,
   WorkspaceTh,
   WorkspaceTd,
+  WORKSPACE_TABLE_ROW_CLASS,
 } from "@/components/dashboard-workspace-ui"
+import {
+  PayLedgerSkeleton,
+  PayStatCardsSkeleton,
+  WorkspaceBloom,
+} from "@/components/workspace-content-skeletons"
 
 type BillingSummary = {
   current_plan: string
@@ -25,10 +32,6 @@ const INVOICES = [
   { id: "inv_02", date: "Feb 1, 2026", amount: "$29.00" },
   { id: "inv_01", date: "Jan 15, 2026", amount: "$15.00" },
 ]
-
-function formatUsd(cents: number): string {
-  return (Math.round(cents) / 100).toLocaleString(undefined, { style: "currency", currency: "USD" })
-}
 
 export const PayWorkspaceView = memo(function PayWorkspaceView() {
   const [billing, setBilling] = useState<BillingSummary | null>(null)
@@ -68,12 +71,12 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
     }
   }, [])
 
-  const balanceLabel = loading ? "—" : billing?.credit_balance_label ?? "$0.00"
-  const usageLabel = loading ? "—" : "$0.00"
-  const aiLabel = loading ? "—" : "—"
+  const balanceLabel = billing?.credit_balance_label ?? "$0.00"
+  const usageLabel = "$0.00"
+  const aiLabel = "—"
 
   return (
-    <WorkspacePage>
+    <WorkspacePage className="min-h-[32rem]">
       <WorkspacePageHeader eyebrow="Billing" title="Pay" />
 
       {loadError ? (
@@ -82,53 +85,62 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
         </p>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <WorkspaceStatCard label="Account balance" value={balanceLabel} accent="primary" />
-        <WorkspaceStatCard
-          label="Current month usage"
-          value={usageLabel}
-          hint={billing ? `${billing.current_plan} plan` : undefined}
-          accent="warning"
-        />
-        <WorkspaceStatCard label="AI processing tokens" value={aiLabel} accent="success" />
-      </div>
+      {loading ? (
+        <>
+          <PayStatCardsSkeleton />
+          <PayLedgerSkeleton />
+        </>
+      ) : (
+        <WorkspaceBloom className="flex flex-col gap-8">
+          <div className="grid min-h-[5.75rem] gap-4 sm:grid-cols-3">
+            <WorkspaceStatCard label="Account balance" value={balanceLabel} accent="primary" />
+            <WorkspaceStatCard
+              label="Current month usage"
+              value={usageLabel}
+              hint={billing ? `${billing.current_plan} plan` : undefined}
+              accent="warning"
+            />
+            <WorkspaceStatCard label="AI processing tokens" value={aiLabel} accent="success" />
+          </div>
 
-      <WorkspacePanel>
-        <div className="border-b border-zinc-800 px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Invoice ledger</h2>
-        </div>
-        <WorkspaceTableWrap>
-          <colgroup>
-            <col className="w-[40%]" />
-            <col className="w-[35%]" />
-            <col className="w-[25%]" />
-          </colgroup>
-          <thead>
-            <tr>
-              <WorkspaceTh>Date</WorkspaceTh>
-              <WorkspaceTh>Amount</WorkspaceTh>
-              <WorkspaceTh> </WorkspaceTh>
-            </tr>
-          </thead>
-          <tbody>
-            {INVOICES.map((row) => (
-              <tr key={row.id} className="hover:bg-zinc-900/40">
-                <WorkspaceTd className="text-zinc-400">{row.date}</WorkspaceTd>
-                <WorkspaceTd className="font-medium tabular-nums">{row.amount}</WorkspaceTd>
-                <WorkspaceTd className="text-right">
-                  <button
-                    type="button"
-                    aria-label={`Download ${row.id}`}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-700 text-zinc-500 transition-colors hover:border-primary/40 hover:text-primary"
-                  >
-                    <Download className="h-4 w-4" />
-                  </button>
-                </WorkspaceTd>
-              </tr>
-            ))}
-          </tbody>
-        </WorkspaceTableWrap>
-      </WorkspacePanel>
+          <WorkspacePanel className="min-h-[300px]">
+            <div className="border-b border-zinc-800 px-5 py-4">
+              <h2 className="text-sm font-semibold text-foreground">Invoice ledger</h2>
+            </div>
+            <WorkspaceTableWrap>
+              <colgroup>
+                <col className="w-[40%]" />
+                <col className="w-[35%]" />
+                <col className="w-[25%]" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <WorkspaceTh>Date</WorkspaceTh>
+                  <WorkspaceTh>Amount</WorkspaceTh>
+                  <WorkspaceTh> </WorkspaceTh>
+                </tr>
+              </thead>
+              <tbody className="min-h-[208px]">
+                {INVOICES.map((row) => (
+                  <tr key={row.id} className={cn("hover:bg-zinc-900/40", WORKSPACE_TABLE_ROW_CLASS)}>
+                    <WorkspaceTd className="text-zinc-400">{row.date}</WorkspaceTd>
+                    <WorkspaceTd className="font-medium tabular-nums">{row.amount}</WorkspaceTd>
+                    <WorkspaceTd className="text-right">
+                      <button
+                        type="button"
+                        aria-label={`Download ${row.id}`}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-700 text-zinc-500 transition-colors hover:border-primary/40 hover:text-primary"
+                      >
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </WorkspaceTd>
+                  </tr>
+                ))}
+              </tbody>
+            </WorkspaceTableWrap>
+          </WorkspacePanel>
+        </WorkspaceBloom>
+      )}
     </WorkspacePage>
   )
 })

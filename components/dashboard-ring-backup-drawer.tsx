@@ -163,7 +163,7 @@ export function DashboardRingBackupDrawer({
                   type="button"
                   onClick={() => setDraftSeconds(snapDashboardRingTimeoutSec(preset.seconds))}
                   className={cn(
-                    "flex flex-col items-center rounded-xl border px-2 py-3 text-center transition-all duration-200",
+                    "flex flex-col items-center rounded-xl border px-2 py-3 text-center transition-[border-color,background-color,color] duration-200",
                     active
                       ? "border-primary/60 bg-primary/10 shadow-[0_0_20px_-8px_var(--primary)]"
                       : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-600"
@@ -203,7 +203,7 @@ export function DashboardRingBackupDrawer({
                   type="button"
                   onClick={() => setDraftStrategy(opt.value)}
                   className={cn(
-                    "flex w-full items-start gap-3 rounded-xl border px-4 py-3.5 text-left transition-all duration-200",
+                    "flex w-full items-start gap-3 rounded-xl border px-4 py-3.5 text-left transition-[border-color,background-color] duration-200",
                     active
                       ? "border-primary/60 bg-primary/10 shadow-[0_0_20px_-8px_var(--primary)]"
                       : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-600"

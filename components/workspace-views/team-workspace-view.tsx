@@ -38,7 +38,7 @@ function AddTeamMemberCard() {
       className={cn(
         "flex min-h-[148px] flex-col items-center justify-center border-dashed border-zinc-800",
         "bg-transparent p-5 shadow-none ring-0",
-        "opacity-90 transition-all duration-200",
+        "opacity-90 transition-[opacity,border-color,background-color] duration-200",
         "hover:border-zinc-600 hover:bg-zinc-900/30 hover:opacity-100"
       )}
     >

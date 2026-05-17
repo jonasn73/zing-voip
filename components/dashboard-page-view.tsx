@@ -1,22 +1,14 @@
 "use client"
 
-// ============================================
-// Stable frame for dashboard tab content
-// ============================================
-// Avoid `key={pathname}` on workspace tabs — remounting caused layout stutter. Enter
-// animation runs only for Routing and other non-cached routes (see `animateEnter`).
-
-import { type ReactNode } from "react"
+import { memo, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
-export function DashboardPageView({
+export const DashboardPageView = memo(function DashboardPageView({
   children,
   animateEnter = false,
 }: {
   children: ReactNode
-  /** Legacy prop — pathname is unused; kept so callers need not churn. */
   pathname?: string
-  /** Page-enter keyframes (Routing, Help, etc.) — off for cached workspace tabs. */
   animateEnter?: boolean
 }) {
   return (
@@ -29,4 +21,4 @@ export function DashboardPageView({
       {children}
     </div>
   )
-}
+})

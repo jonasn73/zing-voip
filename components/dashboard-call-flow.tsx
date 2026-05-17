@@ -1,5 +1,6 @@
 "use client"
 
+import { memo } from "react"
 import Link from "next/link"
 import type { LucideIcon } from "lucide-react"
 import {
@@ -66,7 +67,7 @@ function FlowStepCard({
       onClick={onOpen}
       disabled={loading}
       className={cn(
-        "group relative flex min-h-[12.5rem] min-w-0 flex-1 flex-col rounded-2xl border border-border/70 bg-gradient-to-b from-card to-background/80 p-5 text-left shadow-sm transition-all duration-200",
+        "group relative flex min-h-[12.5rem] min-w-0 flex-1 flex-col rounded-2xl border border-border/70 bg-gradient-to-b from-card to-background/80 p-5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200",
         "hover:border-primary/45 hover:shadow-[0_0_32px_-12px_var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         loading && "pointer-events-none opacity-50"
       )}
@@ -82,7 +83,7 @@ function FlowStepCard({
         <p className="text-lg font-semibold leading-tight text-foreground sm:text-xl">{value}</p>
         <p className="text-xs leading-snug text-muted-foreground">{detail}</p>
       </div>
-      <span className="mt-5 inline-flex w-full items-center justify-center rounded-lg border border-border/70 bg-transparent px-4 py-2.5 text-xs font-semibold text-muted-foreground transition-all duration-200 group-hover:border-primary/50 group-hover:bg-primary/10 group-hover:text-primary">
+      <span className="mt-5 inline-flex w-full items-center justify-center rounded-lg border border-border/70 bg-transparent px-4 py-2.5 text-xs font-semibold text-muted-foreground transition-[border-color,background-color,color] duration-200 group-hover:border-primary/50 group-hover:bg-primary/10 group-hover:text-primary">
         Configure
       </span>
     </button>
@@ -106,7 +107,7 @@ export type DashboardCallFlowProps = {
   setShowFallbackSettings: (v: boolean) => void
 }
 
-export function DashboardCallFlow({
+export const DashboardCallFlow = memo(function DashboardCallFlow({
   businessNumbers,
   routingBusinessNumber,
   setRoutingBusinessNumber,
@@ -227,7 +228,7 @@ export function DashboardCallFlow({
       </div>
     </section>
   )
-}
+})
 
 function ActiveLinePicker({
   businessNumbers,

@@ -81,7 +81,7 @@ function WaveformBars({ active }: { active: boolean }) {
         <div
           key={i}
           className={cn(
-            "w-[3px] rounded-full bg-primary/70 transition-all duration-300",
+            "w-[3px] rounded-full bg-primary/70 transition-[height,opacity] duration-300",
             active && "animate-pulse"
           )}
           style={{ height: `${Math.round(h * 100)}%`, animationDelay: active ? `${i * 45}ms` : undefined }}
@@ -501,7 +501,7 @@ function VoiceAiDrawerBody({
                 type="button"
                 onClick={() => setPersona(v.id)}
                 className={cn(
-                  "relative rounded-xl border px-3 py-3.5 text-left transition-all duration-200",
+                  "relative rounded-xl border px-3 py-3.5 text-left transition-[border-color,background-color] duration-200",
                   active
                     ? "border-primary/60 bg-primary/10 shadow-[0_0_20px_-8px_var(--primary)]"
                     : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-600"

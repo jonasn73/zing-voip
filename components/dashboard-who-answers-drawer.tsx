@@ -136,7 +136,7 @@ export function DashboardWhoAnswersDrawer({
                 aria-checked={selected}
                 onClick={() => setPrimaryId(row.id)}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left transition-all duration-200",
+                  "flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left transition-[border-color,background-color] duration-200",
                   selected
                     ? "border-primary/60 bg-primary/10 shadow-[0_0_24px_-10px_var(--primary)]"
                     : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-600"

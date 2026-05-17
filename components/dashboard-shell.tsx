@@ -1,14 +1,9 @@
 "use client"
 
-// ============================================
-// Client chrome for /dashboard/* (nav + session check).
-// ============================================
-
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, memo } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShell, type AccountHeaderState, type PageId } from "@/components/app-shell"
-import { DashboardPageView } from "@/components/dashboard-page-view"
-import { DashboardTabHost, isWorkspaceTab } from "@/components/dashboard-tab-views"
+import { DashboardMainContent } from "@/components/dashboard-main-content"
 import { AnsweredCallCustomerPopup } from "@/components/answered-call-customer-popup"
 
 const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "help"]
@@ -17,6 +12,15 @@ function getActivePage(pathname: string): PageId {
   const segment = pathname.replace(/^\/dashboard\/?/, "").trim() || "dashboard"
   return VALID_PAGES.includes(segment as PageId) ? (segment as PageId) : "dashboard"
 }
+
+/** Popup enabled flag only — avoids passing full account object into memoized children. */
+const DashboardAnsweredCallPopup = memo(function DashboardAnsweredCallPopup({
+  enabled,
+}: {
+  enabled: boolean
+}) {
+  return <AnsweredCallCustomerPopup enabled={enabled} />
+})
 
 export function DashboardShell({
   children,
@@ -82,32 +86,15 @@ export function DashboardShell({
 
   const activePage = getActivePage(pathname)
 
-  const workspacePanel = useMemo(() => {
-    if (!isWorkspaceTab(activePage)) return null
-    return (
-      <DashboardPageView>
-        <DashboardTabHost activeTab={activePage} />
-      </DashboardPageView>
-    )
-  }, [activePage])
-
-  const routedPanel = useMemo(
-    () => (
-      <DashboardPageView pathname={pathname} animateEnter>
-        {children}
-      </DashboardPageView>
-    ),
-    [pathname, children]
+  const popupEnabled = useMemo(
+    () => accountHeader.kind === "ready" && accountHeader.answeredCallCustomerPopupEnabled,
+    [accountHeader]
   )
-
-  const mainPanel = isWorkspaceTab(activePage) ? workspacePanel : routedPanel
 
   return (
     <AppShell activePage={activePage} pathname={pathname} accountHeader={accountHeader}>
-      {mainPanel}
-      <AnsweredCallCustomerPopup
-        enabled={accountHeader.kind === "ready" && accountHeader.answeredCallCustomerPopupEnabled}
-      />
+      <DashboardMainContent activePage={activePage} routedChildren={children} />
+      <DashboardAnsweredCallPopup enabled={popupEnabled} />
     </AppShell>
   )
 }

@@ -1,6 +1,14 @@
 "use client"
 
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, memo } from "react"
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  memo,
+} from "react"
 import Link from "next/link"
 import {
   Users,
@@ -95,15 +103,15 @@ const AppShellBottomNav = memo(function AppShellBottomNav({
         Use the tabs below for the main sections. Press ⌘K or Ctrl+K to jump anywhere. Account menu at the top right
         includes settings, help, and sign out.
       </p>
-      <div className="mx-2 my-3 flex max-w-full items-center justify-around gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/85 px-1.5 py-2 shadow-[0_-4px_24px_-12px_rgba(0,0,0,0.25)] backdrop-blur-sm sm:mx-3 sm:mb-4 sm:gap-1 sm:px-2.5">
+      <div className="mx-2 my-3 flex max-w-full items-center justify-around gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card px-1.5 py-2 shadow-[0_-4px_24px_-12px_rgba(0,0,0,0.25)] sm:mx-3 sm:mb-4 sm:gap-1 sm:px-2.5">
         {bottomNavItems.map((item) => {
           const Icon = item.icon
           const isActive = activePage === item.id
           const className = cn(
             "flex min-h-11 min-w-[52px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 sm:min-w-[58px] sm:px-3",
-            "transition-[background-color,color,transform,box-shadow] duration-200 ease-out motion-safe:active:scale-[0.96]",
+            "transition-[background-color,color,transform] duration-200 ease-out motion-safe:active:scale-[0.96]",
             isActive
-              ? "bg-primary/12 text-primary shadow-[0_0_20px_-8px_var(--primary)]"
+              ? "bg-primary/12 text-primary"
               : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
           )
           const inner = (
@@ -111,7 +119,7 @@ const AppShellBottomNav = memo(function AppShellBottomNav({
               <Icon
                 className={cn(
                   "h-5 w-5 transition-transform duration-200 ease-out",
-                  isActive && "scale-105 drop-shadow-[0_0_6px_var(--primary)]"
+                  isActive && "scale-105"
                 )}
               />
               <span className="text-[11px] font-medium">{item.label}</span>
@@ -164,7 +172,7 @@ const AppShellHeader = memo(function AppShellHeader({
   onCommandOpenChange: (open: boolean) => void
 }) {
   return (
-    <header className="sticky top-0 z-40 flex shrink-0 items-center gap-2 border-b border-border/70 bg-background/95 px-3 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 sm:px-5 sm:py-3.5">
+    <header className="sticky top-0 z-40 flex shrink-0 items-center gap-2 border-b border-border/70 bg-background px-3 py-3 sm:px-5 sm:py-3.5">
       {useLinks ? (
         <Link
           href="/dashboard"
@@ -286,7 +294,7 @@ const HeaderAccountMenu = memo(function HeaderAccountMenu({ name, email }: { nam
   )
 })
 
-export function AppShell({
+function AppShellInner({
   activePage,
   pathname,
   accountHeader,
@@ -294,18 +302,15 @@ export function AppShell({
   children,
 }: {
   activePage: PageId
-  /** Set on real routes (e.g. /dashboard/*) — bottom nav uses Link for correct App Router transitions */
   pathname?: string
-  /** Dashboard: session for header menu (settings, help, sign out). */
   accountHeader?: AccountHeaderState
-  /** Set on the marketing / root in-memory shell — tab switches without changing URL */
   onNavigate?: (page: PageId) => void
   children: ReactNode
 }) {
   const useLinks = Boolean(pathname)
   const mainRef = useRef<HTMLElement>(null)
-  /** Jump palette (⌘K / Ctrl+K) — only used on real dashboard URLs. */
   const [commandOpen, setCommandOpen] = useState(false)
+  const handleCommandOpenChange = useCallback((open: boolean) => setCommandOpen(open), [])
 
   useLayoutEffect(() => {
     if (!pathname) return
@@ -332,7 +337,7 @@ export function AppShell({
         accountHeader={accountHeader}
         onNavigate={onNavigate}
         commandOpen={commandOpen}
-        onCommandOpenChange={setCommandOpen}
+        onCommandOpenChange={handleCommandOpenChange}
       />
 
       <main
@@ -346,3 +351,5 @@ export function AppShell({
     </div>
   )
 }
+
+export const AppShell = memo(AppShellInner)

@@ -8,8 +8,6 @@ import {
   Loader2,
   Settings2,
   ChevronRight,
-  ListOrdered,
-  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
@@ -26,10 +24,6 @@ import {
   type DashboardBusinessNumber,
   type FallbackOption,
 } from "@/lib/dashboard-routing-utils"
-
-/** After dismiss or auto-hide, the routing “Start here” intro stays hidden in this browser. */
-const ROUTING_INTRO_DISMISSED_KEY = "zing_dash_routing_intro_dismissed_v1"
-
 
 export function DashboardPage() {
   const searchParams = useSearchParams()
@@ -67,11 +61,6 @@ export function DashboardPage() {
   const [numbersRoutingFetchDone, setNumbersRoutingFetchDone] = useState(false)
   const quickSetupDecided =
     sessionFetchDone && receptionistsFetchDone && numbersRoutingFetchDone
-
-  /** False until we read localStorage so the server and first client paint match. */
-  const [routingIntroHydrated, setRoutingIntroHydrated] = useState(false)
-  /** When true, the Start here header + optional success strip are hidden for this browser. */
-  const [routingIntroDismissed, setRoutingIntroDismissed] = useState(false)
 
   // Fire session, receptionists, and numbers in parallel (single effect = one cleanup, faster wall-clock than chaining).
   useEffect(() => {
@@ -140,16 +129,6 @@ export function DashboardPage() {
     }
   }, [])
 
-  // Restore intro visibility from localStorage so returning users do not see the onboarding strip again.
-  useEffect(() => {
-    try {
-      setRoutingIntroDismissed(window.localStorage.getItem(ROUTING_INTRO_DISMISSED_KEY) === "1")
-    } catch {
-      setRoutingIntroDismissed(false)
-    }
-    setRoutingIntroHydrated(true)
-  }, [])
-
   // Bookmark / Settings link: /dashboard?ai=1 opens fallback sheet (playbook lives here now).
   useEffect(() => {
     if (searchParams.get("ai") !== "1") return
@@ -207,30 +186,6 @@ export function DashboardPage() {
   const hasReceptionists = receptionists.length > 0
   const isSetupComplete = hasBusinessNumbers && (hasReceptionists || Boolean(mainLinePhone))
   const activeFallbackMeta = fallbackOptions.find((o) => o.id === fallback)
-
-  /** Persists “intro dismissed” so this browser does not show the Start here strip again. */
-  const dismissRoutingIntro = useCallback(() => {
-    try {
-      window.localStorage.setItem(ROUTING_INTRO_DISMISSED_KEY, "1")
-    } catch {
-      // Storage can be blocked in private mode; still hide for this session.
-    }
-    setRoutingIntroDismissed(true)
-  }, [])
-
-  /** After setup completes, tuck the intro away automatically so the call flow is unobstructed. */
-  useEffect(() => {
-    if (!routingIntroHydrated || routingIntroDismissed) return
-    if (!quickSetupDecided || !isSetupComplete) return
-    const id = window.setTimeout(() => dismissRoutingIntro(), 3200)
-    return () => window.clearTimeout(id)
-  }, [
-    routingIntroHydrated,
-    routingIntroDismissed,
-    quickSetupDecided,
-    isSetupComplete,
-    dismissRoutingIntro,
-  ])
 
   // Save routing for the line shown in the UI (`routingBusinessNumber`), or the account default when you have no numbers yet.
   // When fallback_type is "ai", the API auto-provisions voice AI and returns voiceAi.
@@ -397,60 +352,6 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 sm:gap-14">
-      {routingIntroHydrated && !routingIntroDismissed ? (
-        <div className="relative w-full space-y-5 rounded-2xl border border-border/60 bg-muted/15 p-6 shadow-sm sm:space-y-6 sm:p-8">
-          <button
-            type="button"
-            onClick={dismissRoutingIntro}
-            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground"
-            aria-label="Dismiss getting started"
-          >
-            <X className="h-4 w-4 shrink-0" aria-hidden />
-          </button>
-          <header className="space-y-4 pr-10 sm:space-y-5">
-            <div className="flex items-center gap-2 text-primary">
-              <ListOrdered className="h-4 w-4 shrink-0" aria-hidden />
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em]">Start here</p>
-            </div>
-            <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Who should answer your business line?
-            </h1>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
-              Work top to bottom on this page: confirm your published number, choose who rings first, then set how long to
-              wait and what happens next. Each card opens a side panel with the details.
-            </p>
-            <nav
-              aria-label="Recommended order"
-              className="flex flex-wrap items-center gap-x-2 gap-y-2.5 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 text-[11px] text-muted-foreground sm:text-xs"
-            >
-              <span className="mr-1 font-semibold text-foreground">Order on this page:</span>
-              <span className="rounded-md bg-background/90 px-2 py-1 ring-1 ring-border/80">1 · Your line</span>
-              <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-border" aria-hidden />
-              <span className="rounded-md bg-background/90 px-2 py-1 ring-1 ring-border/80">2 · Who answers</span>
-              <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-border" aria-hidden />
-              <span className="rounded-md bg-background/90 px-2 py-1 ring-1 ring-border/80">3 · Wait &amp; backup</span>
-              <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-border" aria-hidden />
-              <span className="rounded-md bg-background/90 px-2 py-1 ring-1 ring-border/80">4 · Voice &amp; AI</span>
-              <ChevronRight className="mx-0.5 h-3 w-3 shrink-0 text-border" aria-hidden />
-              <a
-                href="#routing-tips"
-                className="rounded-md bg-background/90 px-2 py-1 ring-1 ring-border/80 transition-colors hover:bg-muted/60"
-              >
-                5 · Caller ID <span className="text-muted-foreground">(optional)</span>
-              </a>
-            </nav>
-          </header>
-          {quickSetupDecided && isSetupComplete ? (
-            <div className="flex items-start gap-3 rounded-xl border border-success/25 bg-success/5 px-4 py-4 text-xs leading-snug text-foreground sm:items-center sm:px-5 sm:text-sm">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-success sm:mt-0" aria-hidden />
-              <p>
-                <span className="font-semibold">You&apos;re set up.</span> Use the call flow below to change who answers or
-                your backup anytime — same three cards, same order.
-              </p>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
 
       {quickSetupDecided && !isSetupComplete && (
         <section className="w-full rounded-2xl border border-border/80 bg-card p-6 shadow-sm ring-1 ring-primary/10 sm:p-7">
@@ -493,14 +394,14 @@ export function DashboardPage() {
                   ) : null}
                   {!hasBusinessNumbers ? (
                     <Link
-                      href="/dashboard/settings#business-numbers"
+                      href="/dashboard#dash-call-flow"
                       className="inline-flex w-fit items-center justify-center rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                     >
                       Add number in Settings
                     </Link>
                   ) : (
                     <Link
-                      href="/dashboard/settings#business-numbers"
+                      href="/dashboard#dash-call-flow"
                       className="w-fit text-[11px] font-semibold text-primary hover:underline"
                     >
                       Manage numbers

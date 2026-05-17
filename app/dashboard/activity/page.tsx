@@ -1,5 +1,5 @@
-import { OperationsPage } from "@/features/operations/components/operations-page"
+import { DashboardTabView } from "@/components/dashboard-tab-views"
 
 export default function ActivityRoute() {
-  return <OperationsPage />
+  return <DashboardTabView tab="activity" />
 }

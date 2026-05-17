@@ -1,5 +1,5 @@
-import { SettingsPage } from "@/components/settings-page"
+import { DashboardTabView } from "@/components/dashboard-tab-views"
 
 export default function SettingsRoute() {
-  return <SettingsPage />
+  return <DashboardTabView tab="settings" />
 }

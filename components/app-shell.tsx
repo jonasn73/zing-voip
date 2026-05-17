@@ -38,7 +38,7 @@ export type PageId =
   | "leads"
   | "customers"
   | "contacts"
-  | "analytics"
+  | "pay"
   | "settings"
   | "help"
 
@@ -48,7 +48,7 @@ const bottomNavItems = [
   { id: "activity" as const, label: "Activity", icon: ClipboardList },
   { id: "leads" as const, label: "Leads", icon: Inbox },
   { id: "contacts" as const, label: "Team", icon: Users },
-  { id: "analytics" as const, label: "Pay", icon: BarChart3 },
+  { id: "pay" as const, label: "Pay", icon: BarChart3 },
   { id: "settings" as const, label: "Settings", icon: Settings },
 ] as const
 
@@ -64,7 +64,7 @@ const PAGE_HREF: Record<PageId, string> = {
   leads: "/dashboard/leads",
   customers: "/dashboard/customers",
   contacts: "/dashboard/contacts",
-  analytics: "/dashboard/analytics",
+  pay: "/dashboard/pay",
   settings: "/dashboard/settings",
   help: "/dashboard/help",
 }

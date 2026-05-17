@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next"
 import { Inter, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
+import { Analytics as VercelWebAnalytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/ui/toaster"
 import {
   SITE_CANONICAL_URL,
@@ -87,7 +87,7 @@ export default function RootLayout({
             }),
           }}
         />
-        <Analytics />
+        <VercelWebAnalytics />
       </body>
     </html>
   )

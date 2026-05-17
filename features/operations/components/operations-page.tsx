@@ -1,7 +1,7 @@
 "use client"
 
-import { ActivityPage } from "@/components/activity-page"
+import { DashboardTabView } from "@/components/dashboard-tab-views"
 
 export function OperationsPage() {
-  return <ActivityPage />
+  return <DashboardTabView tab="activity" />
 }

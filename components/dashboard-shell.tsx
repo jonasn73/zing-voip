@@ -13,7 +13,7 @@ import { AppShell, type AccountHeaderState, type PageId } from "@/components/app
 import { DashboardPageView } from "@/components/dashboard-page-view"
 import { AnsweredCallCustomerPopup } from "@/components/answered-call-customer-popup"
 
-const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "analytics", "settings", "help"]
+const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "help"]
 
 function getActivePage(pathname: string): PageId {
   const segment = pathname.replace(/^\/dashboard\/?/, "").trim() || "dashboard"

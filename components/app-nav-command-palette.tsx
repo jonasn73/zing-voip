@@ -34,7 +34,7 @@ const JUMP_PAGES = [
   { id: "leads", label: "Leads", href: "/dashboard/leads", icon: Inbox },
   { id: "customers", label: "Customers", href: "/dashboard/customers", icon: BookUser },
   { id: "contacts", label: "Team", href: "/dashboard/contacts", icon: Users },
-  { id: "analytics", label: "Pay", href: "/dashboard/analytics", icon: BarChart3 },
+  { id: "pay", label: "Pay", href: "/dashboard/pay", icon: BarChart3 },
   { id: "settings", label: "Settings", href: "/dashboard/settings", icon: Settings },
   { id: "help", label: "Help & feedback", href: "/dashboard/help", icon: LifeBuoy },
 ] as const
@@ -79,7 +79,7 @@ export function AppNavCommandPalette({ enabled, open, onOpenChange }: AppNavComm
           ))}
         </CommandGroup>
         <CommandGroup heading="Quick actions">
-          <CommandItem value="numbers phone add business" onSelect={() => go("/dashboard/settings#business-numbers")}>
+          <CommandItem value="numbers phone add business" onSelect={() => go("/dashboard#dash-call-flow")}>
             <Hash className="size-4 shrink-0" aria-hidden />
             <span>Business numbers</span>
           </CommandItem>

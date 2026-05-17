@@ -1,5 +1,5 @@
-import { ContactsPage } from "@/components/contacts-page"
+import { DashboardTabView } from "@/components/dashboard-tab-views"
 
 export default function ContactsRoute() {
-  return <ContactsPage />
+  return <DashboardTabView tab="contacts" />
 }

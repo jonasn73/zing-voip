@@ -100,7 +100,7 @@ export const DashboardRoutingSheets = memo(function DashboardRoutingSheets({
         </p>
         <p className="mt-3 max-w-3xl text-xs text-zinc-400 sm:text-[13px]">
           Give each number a clear line label in{" "}
-          <Link href="/dashboard/settings#business-numbers" className="font-semibold text-primary underline underline-offset-2">
+          <Link href="/dashboard#dash-call-flow" className="font-semibold text-primary underline underline-offset-2">
             Settings
           </Link>{" "}
           — that label is what your team hears in the whisper (not your account business name).

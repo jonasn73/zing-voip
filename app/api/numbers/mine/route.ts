@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { getPhoneNumbers, getRoutingConfigForNumber, getUser, ensureOnboardingLineFromProfile } from "@/lib/db"
+import { getPhoneNumbers, getRoutingConfigForNumber, getUser, ensureOnboardingLineFromProfile, retryProvisionOnboardingBuyLine } from "@/lib/db"
 import type { FallbackType, PhoneNumberRoutingSummary } from "@/lib/types"
 
 export async function GET(req: NextRequest) {
@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     await ensureOnboardingLineFromProfile(userId).catch((e) => {
       console.error("[numbers/mine] onboarding line backfill:", e)
     })
+    await retryProvisionOnboardingBuyLine(userId)
     const [numbers, account] = await Promise.all([getPhoneNumbers(userId), getUser(userId)])
     const assistantLinked = Boolean(account?.telnyx_ai_assistant_id?.trim())
 

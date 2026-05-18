@@ -7,14 +7,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { insertPhoneNumber } from "@/lib/db"
-import {
-  getTelnyxApiKey,
-  telnyxHeaders,
-  getOrCreateTexmlApp,
-  configureNumberVoice,
-} from "@/lib/telnyx-config"
+import { getTelnyxApiKey } from "@/lib/telnyx-config"
+import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
 
-const TELNYX_BASE = "https://api.telnyx.com/v2"
 const MAX_LINE_BUSINESS_NAME_LEN = 120
 
 export async function POST(req: NextRequest) {
@@ -23,7 +18,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
 
-  // Verify API key is available
   getTelnyxApiKey()
 
   try {
@@ -42,60 +36,30 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Step 1: Purchase the number
-    const res = await fetch(`${TELNYX_BASE}/number_orders`, {
-      method: "POST",
-      headers: telnyxHeaders(),
-      body: JSON.stringify({
-        phone_numbers: [{ phone_number }],
-      }),
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      const errMsg = data?.errors?.[0]?.detail || data?.errors?.[0]?.title || "Purchase failed"
-      console.error("[Telnyx] Buy error:", errMsg)
-      return NextResponse.json({ error: errMsg }, { status: res.status })
+    const purchase = await purchaseAndConfigureTelnyxLine(phone_number)
+    if (!purchase.ok) {
+      return NextResponse.json({ error: purchase.error }, { status: 422 })
     }
 
-    const orderId = data?.data?.id || ""
-    const boughtNumber = data?.data?.phone_numbers?.[0]?.phone_number || phone_number
-
-    // Step 2: Configure the number with our TeXML webhook so calls route to the app
-    // Telnyx sometimes needs a moment after purchase before the number is configurable
-    const texmlAppId = await getOrCreateTexmlApp()
-    try {
-      await configureNumberVoice(boughtNumber, texmlAppId)
-    } catch {
-      await new Promise((r) => setTimeout(r, 3000))
-      try {
-        await configureNumberVoice(boughtNumber, texmlAppId)
-      } catch (retryErr) {
-        console.error("[Sigo] Voice config failed after retry (number still purchased):", retryErr)
-      }
-    }
-
-    // Step 3: Save to database
     const saved = await insertPhoneNumber({
       user_id: userId,
-      number: boughtNumber,
-      friendly_name: boughtNumber,
+      number: purchase.phone_number,
+      friendly_name: purchase.phone_number,
       label,
       type: "local",
       status: "active",
-      provider_number_sid: orderId,
+      provider_number_sid: purchase.order_id,
     })
 
-    console.log(`[Sigo] Number ${boughtNumber} purchased, configured, and saved (order: ${orderId}, db: ${saved.id})`)
+    console.log(`[Sigo] Number ${purchase.phone_number} purchased, configured, and saved (order: ${purchase.order_id}, db: ${saved.id})`)
 
     return NextResponse.json({
       success: true,
       number: {
         id: saved.id,
-        telnyx_order_id: orderId,
-        number: boughtNumber,
-        friendly_name: boughtNumber,
+        telnyx_order_id: purchase.order_id,
+        number: purchase.phone_number,
+        friendly_name: purchase.phone_number,
         label: saved.label,
       },
     })

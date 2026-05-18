@@ -24,6 +24,7 @@ import type {
   UpdateOnboardingProfileRequest,
 } from "./types"
 import { defaultProfileFromUserIndustry } from "./business-industries"
+import { purchaseAndConfigureTelnyxLine } from "./telnyx-purchase-line"
 
 /** True when Postgres/Neon rejects SELECT/INSERT because `users.industry` was not migrated yet (011-user-industry.sql). */
 function isMissingIndustryColumnError(e: unknown): boolean {
@@ -3047,6 +3048,99 @@ export async function syncOnboardingLineToPhoneNumbers(
   })
 }
 
+/** Buy the reserved DID on Telnyx (buy flow) and upsert `phone_numbers` with the order id. */
+async function deleteUnprovisionedPhoneNumberPlaceholders(userId: string, keepId: string): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`
+      DELETE FROM phone_numbers
+      WHERE user_id = ${userId}
+        AND id <> ${keepId}
+        AND (provider_number_sid IS NULL OR provider_number_sid = '')
+    `
+  } catch (e) {
+    console.error("[deleteUnprovisionedPhoneNumberPlaceholders]", e)
+  }
+}
+
+export async function provisionOnboardingBuyLine(
+  userId: string,
+  profile: Pick<
+    OnboardingProfile,
+    "reserved_number" | "reserved_number_display" | "reserved_number_method" | "has_active_subscription"
+  >
+): Promise<PhoneNumber> {
+  if (profile.reserved_number_method === "port") {
+    const row = await syncOnboardingLineToPhoneNumbers(userId, profile)
+    if (!row) throw new Error("Could not save porting line.")
+    return row
+  }
+
+  const e164 = profile.reserved_number?.trim()
+  if (!e164) throw new Error("No business number to provision.")
+
+  const normalized = normalizePhoneNumberE164(e164)
+  const existing = await getPhoneNumbers(userId)
+  const row = existing.find((r) => normalizePhoneNumberE164(r.number) === normalized)
+  if (row?.provider_number_sid?.trim()) {
+    return row
+  }
+
+  const purchase = await purchaseAndConfigureTelnyxLine(normalized)
+  if (!purchase.ok) {
+    throw new Error(purchase.error)
+  }
+
+  const user = await getUser(userId)
+  const label = user?.business_name?.trim() || "Business Line"
+  const friendly = profile.reserved_number_display?.trim() || purchase.phone_number
+
+  if (row) {
+    await updatePhoneNumber(row.id, userId, {
+      provider_number_sid: purchase.order_id,
+      status: "active",
+    })
+    const updated = await getPhoneNumbers(userId)
+    const found = updated.find((r) => r.id === row.id)
+    if (found) {
+      await deleteUnprovisionedPhoneNumberPlaceholders(userId, found.id)
+      return found
+    }
+  }
+
+  const saved = await insertPhoneNumber({
+    user_id: userId,
+    number: purchase.phone_number,
+    friendly_name: friendly,
+    label,
+    type: inferOnboardingLineType(purchase.phone_number),
+    status: "active",
+    provider_number_sid: purchase.order_id,
+  })
+  await deleteUnprovisionedPhoneNumberPlaceholders(userId, saved.id)
+  return saved
+}
+
+/** If checkout saved a buy line but Telnyx purchase never ran, try once (non-fatal for GET). */
+export async function retryProvisionOnboardingBuyLine(userId: string): Promise<void> {
+  const profile = await getOnboardingProfile(userId)
+  if (!profile?.has_active_subscription || !profile.reserved_number?.trim()) return
+  if (profile.reserved_number_method === "port") return
+
+  const normalized = normalizePhoneNumberE164(profile.reserved_number)
+  const existing = await getPhoneNumbers(userId)
+  const row =
+    existing.find((r) => normalizePhoneNumberE164(r.number) === normalized) ??
+    existing.find((r) => !r.provider_number_sid?.trim())
+  if (row?.provider_number_sid?.trim()) return
+
+  try {
+    await provisionOnboardingBuyLine(userId, profile)
+  } catch (e) {
+    console.error("[retryProvisionOnboardingBuyLine]", userId, e)
+  }
+}
+
 /** Backfill `phone_numbers` when checkout finished but the line row was never created (older deploys). */
 export async function ensureOnboardingLineFromProfile(userId: string): Promise<PhoneNumber | null> {
   const profile = await getOnboardingProfile(userId)
@@ -3094,9 +3188,12 @@ export async function completeOnboardingCheckout(
     ...(fallback_type !== undefined ? { fallback_type } : {}),
   })
   try {
-    await syncOnboardingLineToPhoneNumbers(userId, profile)
+    if (profile.reserved_number?.trim()) {
+      await provisionOnboardingBuyLine(userId, profile)
+    }
   } catch (e) {
-    console.error("[completeOnboardingCheckout] sync phone_numbers:", e)
+    console.error("[completeOnboardingCheckout] provision line:", e)
+    throw e instanceof Error ? e : new Error("Could not provision your business line on Telnyx.")
   }
   const greeting = opening_line?.trim()
   const fb = fallback_type

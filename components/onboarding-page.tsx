@@ -247,6 +247,12 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
       setLaunchError("Choose a business number in step 1 before launching.")
       return
     }
+    if (bufferedLine.method === "buy" && bufferedLine.fromTelnyx === false) {
+      setLaunchError(
+        "That number was only a preview. Search your area code again, pick a line from Telnyx inventory, then launch."
+      )
+      return
+    }
     try {
       const profile = await completeOnboardingCheckoutClient({
         reserved_number: bufferedLine.e164,

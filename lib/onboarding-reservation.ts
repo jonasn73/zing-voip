@@ -15,6 +15,8 @@ export type OnboardingLineReservation = {
   trialNote: string
   afterTrialPrice?: string
   portCarrier?: string
+  /** False when the row was a random demo preview (not purchasable on Telnyx). */
+  fromTelnyx?: boolean
 }
 
 const STORAGE_KEY = "lyncr:onboarding-line-reservation"
@@ -38,6 +40,7 @@ export function buildBuyReservation(row: OnboardingNumberOption): OnboardingLine
     lineType: row.type,
     trialNote: row.trialNote,
     afterTrialPrice: row.afterTrialPrice,
+    fromTelnyx: row.fromTelnyx,
   }
 }
 

@@ -1,8 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import Link from "next/link"
 import { DEFAULT_BUSY_GENERIC } from "@/lib/ai-intake-defaults" // Default opening line for the voice AI (high-volume tone, not "we're closed")
+import {
+  buildOnboardingNumberInventory,
+  type OnboardingNumberOption,
+} from "@/lib/onboarding-number-inventory"
 import { cn } from "@/lib/utils"
 import { BrandMark } from "@/components/brand-mark"
 import { BrandWordmark } from "@/components/brand-wordmark"
@@ -18,9 +22,14 @@ import {
   Loader2,
   Check,
   Plus,
+  RefreshCw,
   X,
   Sparkles,
 } from "lucide-react"
+
+const INVENTORY_REFRESH_MS = 300
+/** Locks list height so Continue row does not jump when numbers refresh (4 × ~3.5rem rows + gaps). */
+const ONBOARDING_NUMBER_LIST_MIN_H = "min-h-[17.75rem]"
 
 interface OnboardingPageProps {
   onComplete: () => void
@@ -37,6 +46,10 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const [searching, setSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [selectedNumber, setSelectedNumber] = useState("")
+  const [inventoryNumbers, setInventoryNumbers] = useState<OnboardingNumberOption[]>(() =>
+    buildOnboardingNumberInventory("502")
+  )
+  const [refreshingInventory, setRefreshingInventory] = useState(false)
   const [portNumber, setPortNumber] = useState("")
   const [portCarrier, setPortCarrier] = useState("")
 
@@ -50,16 +63,24 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const [aiEnabled, setAiEnabled] = useState(true)
   const [aiGreeting, setAiGreeting] = useState(DEFAULT_BUSY_GENERIC) // Same default as dashboard / AI flow
 
-  const availableNumbers = [
-    { number: `(${areaCode || "555"}) 100-4001`, type: "Local", price: "$2.99/mo" },
-    { number: `(${areaCode || "555"}) 100-4022`, type: "Local", price: "$2.99/mo" },
-    { number: `(${areaCode || "555"}) 888-7100`, type: "Toll-Free", price: "$4.99/mo" },
-    { number: `(${areaCode || "555"}) 200-3055`, type: "Local", price: "$2.99/mo" },
-  ]
+  const refreshInventory = useCallback(() => {
+    if (refreshingInventory || areaCode.length < 3) return
+    setRefreshingInventory(true)
+    window.setTimeout(() => {
+      const next = buildOnboardingNumberInventory(areaCode)
+      setInventoryNumbers(next)
+      setSelectedNumber((prev) => (next.some((n) => n.number === prev) ? prev : ""))
+      setRefreshingInventory(false)
+    }, INVENTORY_REFRESH_MS)
+  }, [areaCode, refreshingInventory])
 
   function handleSearch() {
+    const ac = areaCode.replace(/\D/g, "").slice(0, 3)
+    if (ac.length < 3) return
     setSearching(true)
-    setTimeout(() => {
+    setSelectedNumber("")
+    window.setTimeout(() => {
+      setInventoryNumbers(buildOnboardingNumberInventory(ac))
       setSearching(false)
       setShowResults(true)
     }, 800)
@@ -185,40 +206,84 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs text-muted-foreground">Available in ({areaCode})</p>
-                        <button
-                          onClick={() => { setShowResults(false); setSelectedNumber("") }}
-                          className="text-xs font-medium text-primary hover:underline"
-                        >
-                          Change
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            disabled={refreshingInventory}
+                            onClick={refreshInventory}
+                            className={cn(
+                              "inline-flex items-center gap-1 text-xs font-semibold text-primary",
+                              "transition-[opacity,transform] duration-200",
+                              "hover:scale-[1.03] hover:opacity-90 active:scale-[0.98]",
+                              "disabled:pointer-events-none disabled:opacity-40"
+                            )}
+                          >
+                            <RefreshCw
+                              className={cn("h-3 w-3", refreshingInventory && "animate-spin")}
+                              aria-hidden
+                            />
+                            ↻ Refresh options
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowResults(false)
+                              setSelectedNumber("")
+                            }}
+                            className="text-xs font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
+                          >
+                            Change
+                          </button>
+                        </div>
                       </div>
-                      {availableNumbers.map((num) => (
+
+                      <div className={cn("relative", ONBOARDING_NUMBER_LIST_MIN_H)}>
+                        <div
+                          className={cn(
+                            "flex flex-col gap-3 transition-[opacity,transform] duration-300",
+                            refreshingInventory && "pointer-events-none scale-[0.985] opacity-40"
+                          )}
+                        >
+                      {inventoryNumbers.map((num) => (
                         <button
-                          key={num.number}
+                          key={num.id}
+                          type="button"
                           onClick={() => setSelectedNumber(num.number)}
                           className={cn(
-                            "flex items-center justify-between rounded-xl border p-3.5 text-left transition-all",
+                            "flex h-[3.5rem] shrink-0 items-center justify-between rounded-xl border p-3.5 text-left transition-[border-color,background-color]",
                             selectedNumber === num.number
-                              ? "border-primary bg-primary/5"
+                              ? "border-primary bg-primary/5 shadow-[0_0_20px_-10px_var(--primary)]"
                               : "border-border bg-card hover:border-primary/30"
                           )}
                         >
                           <div>
-                            <p className="text-sm font-medium text-foreground">{num.number}</p>
+                            <p className="text-sm font-medium tabular-nums text-foreground">{num.number}</p>
                             <p className="text-[11px] text-muted-foreground">{num.type}</p>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-foreground">{num.price}</span>
-                            {selectedNumber === num.number && (
+                            {selectedNumber === num.number ? (
                               <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
                                 <Check className="h-3 w-3 text-primary-foreground" />
                               </div>
+                            ) : (
+                              <span className="h-5 w-5 shrink-0" aria-hidden />
                             )}
                           </div>
                         </button>
                       ))}
+                        </div>
+                        {refreshingInventory ? (
+                          <div
+                            className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
+                            aria-hidden
+                          >
+                            <div className="absolute inset-0 animate-pulse bg-gradient-to-b from-primary/5 via-primary/10 to-primary/5" />
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   )}
                 </div>

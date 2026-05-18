@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getOnboardingProfile, updateOnboardingProfile } from "@/lib/db"
+import { isReservedLineCarrierLive } from "@/lib/onboarding-line-carrier-status"
 import type { UpdateOnboardingProfileRequest } from "@/lib/types"
 
 export function parsePatchBody(body: unknown): UpdateOnboardingProfileRequest {
@@ -50,7 +51,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const profile = await getOnboardingProfile(userId)
-    return NextResponse.json({ data: profile })
+    const carrier_live = profile?.reserved_number
+      ? await isReservedLineCarrierLive(userId, profile.reserved_number)
+      : false
+    return NextResponse.json({ data: profile, carrier_live })
   } catch (e) {
     console.error("[onboarding/profile GET]", e)
     const msg = e instanceof Error ? e.message : "Failed to load profile"

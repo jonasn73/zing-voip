@@ -126,7 +126,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
     void (async () => {
       let hydratedLine: OnboardingLineReservation | null = null
       try {
-        const profile = await fetchOnboardingProfile()
+        const { profile } = await fetchOnboardingProfile()
         if (cancelled) return
         if (profile?.reserved_number) {
           hydratedLine = {

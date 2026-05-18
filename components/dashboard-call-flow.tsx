@@ -133,7 +133,7 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
 }: DashboardCallFlowProps) {
   const { openBuyModal } = useDashboardNumbersModal()
   const activation = useDashboardActivationOptional()
-  const subscriptionLive = activation?.subscriptionActive === true
+  const subscriptionLive = activation?.lineCarrierLive === true
   const activeLine =
     routingBusinessNumber && businessNumbers.some((b) => businessNumbersMatch(b.number, routingBusinessNumber))
       ? routingBusinessNumber

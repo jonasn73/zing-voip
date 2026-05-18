@@ -6,7 +6,7 @@ import { useDashboardActivationOptional } from "@/components/dashboard-activatio
 
 export const DashboardActivationBanner = memo(function DashboardActivationBanner() {
   const activation = useDashboardActivationOptional()
-  if (!activation || activation.loading || activation.subscriptionActive) {
+  if (!activation || activation.loading || activation.lineCarrierLive) {
     return null
   }
   if (!activation.reservedDisplay) {

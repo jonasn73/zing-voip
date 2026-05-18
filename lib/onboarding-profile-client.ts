@@ -1,14 +1,27 @@
 import type { OnboardingProfile, UpdateOnboardingProfileRequest } from "@/lib/types"
 
-export async function fetchOnboardingProfile(): Promise<OnboardingProfile | null> {
+export type OnboardingProfileSnapshot = {
+  profile: OnboardingProfile | null
+  /** True when the reserved DID has a carrier SID and is active — calls can route. */
+  carrierLive: boolean
+}
+
+export async function fetchOnboardingProfile(): Promise<OnboardingProfileSnapshot> {
   const res = await fetch("/api/onboarding/profile", { credentials: "include" })
-  if (res.status === 401) return null
-  const json = (await res.json().catch(() => ({}))) as { data?: OnboardingProfile; error?: string }
+  if (res.status === 401) return { profile: null, carrierLive: false }
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: OnboardingProfile
+    carrier_live?: boolean
+    error?: string
+  }
   if (!res.ok) {
-    if (json.error?.includes("025-onboarding-profiles")) return null
+    if (json.error?.includes("025-onboarding-profiles")) return { profile: null, carrierLive: false }
     throw new Error(json.error || "Could not load onboarding profile")
   }
-  return json.data ?? null
+  return {
+    profile: json.data ?? null,
+    carrierLive: json.carrier_live === true,
+  }
 }
 
 export async function patchOnboardingProfile(
@@ -87,7 +100,11 @@ export async function reserveOnboardingNumberClient(payload: {
   return { profile: json.data, simulation_mode: json.simulation_mode !== false }
 }
 
-export async function activateSubscriptionClient(): Promise<{ message: string; profile: OnboardingProfile }> {
+export async function activateSubscriptionClient(): Promise<{
+  message: string
+  profile: OnboardingProfile
+  carrierLive: boolean
+}> {
   const res = await fetch("/api/onboarding/profile/activate", {
     method: "POST",
     credentials: "include",
@@ -96,15 +113,20 @@ export async function activateSubscriptionClient(): Promise<{ message: string; p
   })
   const json = (await res.json().catch(() => ({}))) as {
     data?: OnboardingProfile
+    carrier_live?: boolean
     message?: string
     error?: string
   }
   if (!res.ok) throw new Error(json.error || "Could not activate subscription")
   if (!json.data) throw new Error("No profile returned")
+  const display = json.data.reserved_number_display ?? json.data.reserved_number ?? "your line"
   return {
     profile: json.data,
+    carrierLive: json.carrier_live === true,
     message:
       json.message ||
-      `Subscription activated! Telnyx carrier routing provisioning successfully initiated for ${json.data.reserved_number_display ?? json.data.reserved_number ?? "your line"}.`,
+      (json.carrier_live
+        ? `Live production enabled for ${display}.`
+        : `Payment saved for ${display}. Line remains in sandbox until Telnyx provisioning completes.`),
   }
 }

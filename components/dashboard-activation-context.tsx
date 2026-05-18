@@ -14,7 +14,10 @@ export const SUBSCRIPTION_ACTIVATED_EVENT = "zing-subscription-activated"
 type DashboardActivationContextValue = {
   profile: OnboardingProfile | null
   loading: boolean
+  /** Billing flag from Neon — payment method on file. */
   subscriptionActive: boolean
+  /** Carrier owns the DID — inbound calls can route (Telnyx SID + active status). */
+  lineCarrierLive: boolean
   reservedDisplay: string | null
   simulationMode: boolean
   refreshProfile: () => Promise<void>
@@ -25,6 +28,7 @@ const DashboardActivationContext = createContext<DashboardActivationContextValue
 
 export function DashboardActivationProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<OnboardingProfile | null>(null)
+  const [carrierLive, setCarrierLive] = useState(false)
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [provisionMode, setProvisionMode] = useState<OnboardingProvisionMode>({
@@ -35,11 +39,13 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
   const refreshProfile = useCallback(async () => {
     setLoading(true)
     try {
-      const [p, mode] = await Promise.all([fetchOnboardingProfile(), fetchOnboardingProvisionMode()])
-      setProfile(p)
+      const [snapshot, mode] = await Promise.all([fetchOnboardingProfile(), fetchOnboardingProvisionMode()])
+      setProfile(snapshot.profile)
+      setCarrierLive(snapshot.carrierLive)
       setProvisionMode(mode)
     } catch {
       setProfile(null)
+      setCarrierLive(false)
     } finally {
       setLoading(false)
     }
@@ -63,12 +69,13 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
       profile,
       loading,
       subscriptionActive: profile?.has_active_subscription === true,
+      lineCarrierLive: carrierLive,
       reservedDisplay,
       simulationMode: provisionMode.simulation_mode,
       refreshProfile,
       openActivateModal: () => setModalOpen(true),
     }),
-    [profile, loading, reservedDisplay, provisionMode.simulation_mode, refreshProfile]
+    [profile, loading, carrierLive, reservedDisplay, provisionMode.simulation_mode, refreshProfile]
   )
 
   return (

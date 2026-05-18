@@ -58,7 +58,7 @@ export function ActivateLineModal({
       await new Promise((resolve) => window.setTimeout(resolve, 450))
       const result = await activateSubscriptionClient()
       toast({
-        title: "Live production enabled",
+        title: result.carrierLive ? "Live production enabled" : "Payment saved — still in sandbox",
         description: result.message,
       })
       onOpenChange(false)

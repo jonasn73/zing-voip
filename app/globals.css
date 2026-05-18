@@ -159,6 +159,23 @@
   }
 }
 
+/* Onboarding / panel swap — opacity + translate3d (hardware-accelerated). */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@utility animate-fade-in {
+  animation: fade-in 200ms ease-out both;
+  will-change: opacity, transform;
+}
+
 /* GPU-friendly route / panel enter — opacity + translate3d only. */
 @keyframes sigo-page-enter {
   from {

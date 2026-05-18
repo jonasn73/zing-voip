@@ -1,0 +1,84 @@
+"use client"
+
+import { CreditCard, Lock, Phone } from "lucide-react"
+import type { OnboardingLineReservation } from "@/lib/onboarding-reservation"
+import { cn } from "@/lib/utils"
+
+type OnboardingBillingStepProps = {
+  reservedLine: OnboardingLineReservation | null
+  onLaunch: () => void
+}
+
+/**
+ * Billing handshake placeholder.
+ * On successful Stripe payment method submission, call a unified backend route that:
+ * 1) Activates the account tier (billing_plan / subscription)
+ * 2) Executes Telnyx line purchase or port webhook for `reservedLine.e164`
+ * in one atomic sequence — no carrier provision before this step.
+ */
+export function OnboardingBillingStep({ reservedLine, onLaunch }: OnboardingBillingStepProps) {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Start your trial</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Add a card to activate your line. You are not charged for the number until the trial ends.
+        </p>
+      </div>
+
+      {reservedLine ? (
+        <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-[var(--electric-glow)]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+            <Phone className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Reserved for checkout</p>
+            <p className="truncate text-sm font-semibold tabular-nums text-foreground">{reservedLine.display}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {reservedLine.method === "port" ? "Port request" : reservedLine.lineType ?? "Local"} ·{" "}
+              {reservedLine.trialNote}
+              {reservedLine.afterTrialPrice ? ` · ${reservedLine.afterTrialPrice}` : null}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="rounded-xl border border-dashed border-border bg-card/50 px-4 py-3 text-xs text-muted-foreground">
+          No line reserved in this session. Go back to pick a number before checkout.
+        </p>
+      )}
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+          <CreditCard className="h-4 w-4 text-primary" />
+          Payment method
+        </div>
+        <div className="space-y-3">
+          <div className="h-10 rounded-lg border border-dashed border-border bg-muted/30 px-3 text-xs leading-10 text-muted-foreground">
+            Stripe Elements — card number (placeholder)
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="h-10 rounded-lg border border-dashed border-border bg-muted/30" />
+            <div className="h-10 rounded-lg border border-dashed border-border bg-muted/30" />
+          </div>
+        </div>
+        <p className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <Lock className="h-3 w-3 shrink-0" aria-hidden />
+          {/* POST /api/onboarding/complete-checkout — bind tier + provision line */}
+          After Stripe confirms, one backend call provisions your line and activates your plan.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onLaunch}
+        disabled={!reservedLine}
+        className={cn(
+          "flex items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground",
+          "shadow-[var(--electric-glow)] transition-colors hover:bg-primary/90 disabled:opacity-40"
+        )}
+      >
+        Launch My Business Line
+      </button>
+    </div>
+  )
+}

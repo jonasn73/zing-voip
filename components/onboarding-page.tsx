@@ -1,16 +1,43 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { DEFAULT_BUSY_GENERIC } from "@/lib/ai-intake-defaults" // Default opening line for the voice AI (high-volume tone, not "we're closed")
+import { useRouter } from "next/navigation"
+import {
+  getOnboardingOpeningLine,
+  ONBOARDING_DEFAULT_VOICEMAIL_GREETING,
+  ONBOARDING_FALLBACK_DEFAULT,
+  ONBOARDING_TRADE_DEFAULT,
+  ONBOARDING_TRADE_OPTIONS,
+  type OnboardingFallbackStrategy,
+  type OnboardingTradeCategory,
+} from "@/lib/onboarding-ai-trade-scripts"
 import {
   buildOnboardingNumberInventory,
   type OnboardingNumberOption,
 } from "@/lib/onboarding-number-inventory"
+import {
+  buildBuyReservation,
+  buildPortReservation,
+  parseReservationFromSearchParams,
+  readOnboardingReservation,
+  reservationToSearchParams,
+  writeOnboardingReservation,
+  clearOnboardingReservation,
+  type OnboardingLineReservation,
+} from "@/lib/onboarding-reservation"
+import { OnboardingBillingStep } from "@/components/onboarding-billing-step"
 import { cn } from "@/lib/utils"
 import { BrandMark } from "@/components/brand-mark"
 import { BrandWordmark } from "@/components/brand-wordmark"
 import { SITE_NAME } from "@/lib/brand"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Sheet, SheetContent, SheetFooter } from "@/components/ui/sheet"
 import { StorySheetHeader } from "@/components/story-sheet-header"
 import { getAppSheetStory } from "@/components/app-sheet-stories"
@@ -25,19 +52,21 @@ import {
   RefreshCw,
   X,
   Sparkles,
+  CassetteTape,
 } from "lucide-react"
 
 const INVENTORY_REFRESH_MS = 300
 /** Locks list height so Continue row does not jump when numbers refresh (4 × ~3.5rem rows + gaps). */
-const ONBOARDING_NUMBER_LIST_MIN_H = "min-h-[17.75rem]"
+const ONBOARDING_NUMBER_LIST_MIN_H = "min-h-[20.5rem]"
 
 interface OnboardingPageProps {
   onComplete: () => void
 }
 
 export function OnboardingPage({ onComplete }: OnboardingPageProps) {
+  const router = useRouter()
   const [step, setStep] = useState(1)
-  const totalSteps = 3
+  const totalSteps = 4
   const [onboardingSheetKey, setOnboardingSheetKey] = useState<string | null>(null)
 
   // Step 1 -- Get a number
@@ -46,6 +75,8 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const [searching, setSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [selectedNumber, setSelectedNumber] = useState("")
+  /** Deferred checkout — provisioned only after billing (step 4), not on Continue. */
+  const [bufferedLine, setBufferedLine] = useState<OnboardingLineReservation | null>(null)
   const [inventoryNumbers, setInventoryNumbers] = useState<OnboardingNumberOption[]>(() =>
     buildOnboardingNumberInventory("502")
   )
@@ -59,9 +90,30 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const [receptionistRate, setReceptionistRate] = useState("")
   const [addedReceptionist, setAddedReceptionist] = useState(false)
 
-  // Step 3 -- Configure AI fallback
-  const [aiEnabled, setAiEnabled] = useState(true)
-  const [aiGreeting, setAiGreeting] = useState(DEFAULT_BUSY_GENERIC) // Same default as dashboard / AI flow
+  // Step 3 -- AI receptionist vs classic voicemail fallback
+  const [fallbackStrategy, setFallbackStrategy] = useState<OnboardingFallbackStrategy>(ONBOARDING_FALLBACK_DEFAULT)
+  const [aiTradeCategory, setAiTradeCategory] = useState<OnboardingTradeCategory>(ONBOARDING_TRADE_DEFAULT)
+  const [aiGreeting, setAiGreeting] = useState(() => getOnboardingOpeningLine(ONBOARDING_TRADE_DEFAULT))
+  const [voicemailGreeting, setVoicemailGreeting] = useState(ONBOARDING_DEFAULT_VOICEMAIL_GREETING)
+
+  function handleAiTradeCategoryChange(category: OnboardingTradeCategory) {
+    setAiTradeCategory(category)
+    setAiGreeting(getOnboardingOpeningLine(category))
+  }
+
+  useEffect(() => {
+    const fromStorage = readOnboardingReservation()
+    if (fromStorage) {
+      setBufferedLine(fromStorage)
+      return
+    }
+    if (typeof window === "undefined") return
+    const fromUrl = parseReservationFromSearchParams(new URLSearchParams(window.location.search))
+    if (fromUrl) {
+      setBufferedLine(fromUrl)
+      writeOnboardingReservation(fromUrl)
+    }
+  }, [])
 
   const refreshInventory = useCallback(() => {
     if (refreshingInventory || areaCode.length < 3) return
@@ -95,6 +147,28 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
     (numberMethod === "port" && portNumber && portCarrier)
 
   const canProceedStep2 = true // optional step
+
+  function handleContinueFromNumberStep() {
+    let reservation: OnboardingLineReservation | null = null
+    if (numberMethod === "buy") {
+      const row = inventoryNumbers.find((n) => n.number === selectedNumber)
+      if (!row) return
+      reservation = buildBuyReservation(row)
+    } else if (numberMethod === "port" && portNumber && portCarrier) {
+      reservation = buildPortReservation(portNumber, portCarrier)
+    }
+    if (!reservation) return
+    setBufferedLine(reservation)
+    writeOnboardingReservation(reservation)
+    const params = reservationToSearchParams(reservation)
+    router.replace(`/onboarding?${params.toString()}`, { scroll: false })
+    setStep(2)
+  }
+
+  function handleLaunchAfterBilling() {
+    clearOnboardingReservation()
+    onComplete()
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -246,34 +320,35 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                             refreshingInventory && "pointer-events-none scale-[0.985] opacity-40"
                           )}
                         >
-                      {inventoryNumbers.map((num) => (
-                        <button
-                          key={num.id}
-                          type="button"
-                          onClick={() => setSelectedNumber(num.number)}
-                          className={cn(
-                            "flex h-[3.5rem] shrink-0 items-center justify-between rounded-xl border p-3.5 text-left transition-[border-color,background-color]",
-                            selectedNumber === num.number
-                              ? "border-primary bg-primary/5 shadow-[0_0_20px_-10px_var(--primary)]"
-                              : "border-border bg-card hover:border-primary/30"
-                          )}
-                        >
-                          <div>
-                            <p className="text-sm font-medium tabular-nums text-foreground">{num.number}</p>
-                            <p className="text-[11px] text-muted-foreground">{num.type}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-foreground">{num.price}</span>
-                            {selectedNumber === num.number ? (
-                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                                <Check className="h-3 w-3 text-primary-foreground" />
-                              </div>
-                            ) : (
-                              <span className="h-5 w-5 shrink-0" aria-hidden />
+                      {inventoryNumbers.map((num) => {
+                        const isSelected = selectedNumber === num.number
+                        return (
+                          <button
+                            key={num.id}
+                            type="button"
+                            onClick={() => setSelectedNumber(num.number)}
+                            className={cn(
+                              "relative flex min-h-[4rem] shrink-0 items-center justify-between rounded-xl border p-3.5 pt-8 text-left transition-[border-color,background-color,box-shadow]",
+                              isSelected
+                                ? "border-primary bg-primary/5 shadow-[var(--electric-glow)] ring-1 ring-primary/40"
+                                : "border-border bg-card hover:border-primary/30"
                             )}
-                          </div>
-                        </button>
-                      ))}
+                          >
+                            {isSelected ? (
+                              <span className="absolute right-3 top-2 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                                <Check className="h-3 w-3" aria-hidden />
+                                Selected
+                              </span>
+                            ) : null}
+                            <div>
+                              <p className="text-sm font-medium tabular-nums text-foreground">{num.number}</p>
+                              <p className="text-[11px] text-muted-foreground">{num.type}</p>
+                              <p className="text-[10px] font-medium text-primary">{num.trialNote}</p>
+                              <p className="text-[10px] text-muted-foreground">{num.afterTrialPrice}</p>
+                            </div>
+                          </button>
+                        )
+                      })}
                         </div>
                         {refreshingInventory ? (
                           <div
@@ -322,7 +397,8 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
               )}
 
               <button
-                onClick={() => setStep(2)}
+                type="button"
+                onClick={handleContinueFromNumberStep}
                 disabled={!canProceedStep1}
                 className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
               >
@@ -418,87 +494,147 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
             </div>
           )}
 
-          {/* Step 3: AI fallback */}
+          {/* Step 3: Fallback strategy (AI vs voicemail) */}
           {step === 3 && (
             <div className="flex flex-col gap-6">
               <div>
-                <h1 className="text-2xl font-bold text-foreground">Set up AI fallback</h1>
+                <h1 className="text-2xl font-bold text-foreground">Set up your fallback</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  When nobody picks up, your AI receptionist answers with a script for your trade, captures job details, and can text you leads.
+                  When nobody picks up, choose how callers are handled — live AI intake or a classic voicemail box.
                 </p>
               </div>
 
-              {/* Toggle */}
-              <button
-                onClick={() => setAiEnabled(!aiEnabled)}
-                className={cn(
-                  "flex items-center justify-between rounded-xl border p-4 transition-all",
-                  aiEnabled ? "border-primary bg-primary/5" : "border-border bg-card"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-lg",
-                    aiEnabled ? "bg-primary/10" : "bg-secondary"
-                  )}>
-                    <Sparkles className={cn("h-5 w-5", aiEnabled ? "text-primary" : "text-muted-foreground")} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-foreground">AI receptionist</p>
-                    <p className="text-[11px] text-muted-foreground">Voice AI for missed calls — industry intake and lead capture</p>
-                  </div>
-                </div>
-                <div
-                  className={cn(
-                    "relative flex h-7 w-12 items-center rounded-full px-0.5 transition-all",
-                    aiEnabled ? "bg-primary" : "bg-muted-foreground/30"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "h-6 w-6 rounded-full shadow-sm transition-all",
-                      aiEnabled ? "translate-x-5 bg-primary-foreground" : "translate-x-0 bg-background"
-                    )}
-                  />
-                </div>
-              </button>
-
-              {/* Greeting editor */}
-              {aiEnabled && (
-                <div className="flex flex-col gap-3">
-                  <label className="text-xs font-semibold text-muted-foreground">Opening line (first thing AI says)</label>
-                  <textarea
-                    value={aiGreeting}
-                    onChange={(e) => setAiGreeting(e.target.value)}
-                    rows={4}
-                    className="resize-none rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
-                  />
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      "Industry-smart intake",
-                      "Lead capture",
-                      "Optional SMS to your cell",
-                      "Business hours",
-                    ].map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary"
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    {
+                      id: "ai" as const,
+                      title: "AI Receptionist",
+                      subtext: "Dynamic live lead intake and information gathering.",
+                      icon: Sparkles,
+                    },
+                    {
+                      id: "voicemail" as const,
+                      title: "Classic Voicemail",
+                      subtext: "Traditional audio recording box for busy windows.",
+                      icon: CassetteTape,
+                    },
+                  ] as const
+                ).map((option) => {
+                  const Icon = option.icon
+                  const isActive = fallbackStrategy === option.id
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setFallbackStrategy(option.id)}
+                      className={cn(
+                        "flex flex-col gap-2.5 rounded-xl border p-3.5 text-left transition-[border-color,background-color,box-shadow] duration-200",
+                        isActive
+                          ? "border-primary bg-primary/5 shadow-[var(--electric-glow)] ring-1 ring-primary/40"
+                          : "border-border bg-card hover:border-primary/30"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "flex h-9 w-9 items-center justify-center rounded-lg",
+                          isActive ? "bg-primary/15" : "bg-secondary"
+                        )}
                       >
-                        {tag}
-                      </span>
-                    ))}
+                        <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-foreground">{option.title}</p>
+                        <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{option.subtext}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="min-h-[15.75rem]">
+                {fallbackStrategy === "ai" ? (
+                  <div
+                    key="fallback-ai"
+                    className="animate-fade-in flex flex-col gap-3 duration-200 will-change-[opacity,transform]"
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <label
+                        htmlFor="onboarding-trade-category"
+                        className="text-xs font-semibold text-muted-foreground"
+                      >
+                        Select your trade service category:
+                      </label>
+                      <Select value={aiTradeCategory} onValueChange={handleAiTradeCategoryChange}>
+                        <SelectTrigger
+                          id="onboarding-trade-category"
+                          className="h-10 w-full border-border bg-card text-sm text-foreground shadow-none"
+                        >
+                          <SelectValue placeholder="General / Other Trades" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ONBOARDING_TRADE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Opening line (first thing AI says)
+                    </label>
+                    <textarea
+                      value={aiGreeting}
+                      onChange={(e) => setAiGreeting(e.target.value)}
+                      rows={4}
+                      className="resize-none rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+                    />
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Industry-smart intake",
+                        "Lead capture",
+                        "Optional SMS to your cell",
+                        "Business hours",
+                      ].map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div
+                    key="fallback-voicemail"
+                    className="animate-fade-in flex flex-col gap-3 duration-200 will-change-[opacity,transform]"
+                  >
+                    <label className="text-xs font-semibold text-muted-foreground">Voicemail Greeting Script:</label>
+                    <textarea
+                      value={voicemailGreeting}
+                      onChange={(e) => setVoicemailGreeting(e.target.value)}
+                      rows={5}
+                      className="resize-none rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
 
               <button
-                onClick={onComplete}
+                type="button"
+                onClick={() => setStep(4)}
                 className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
               >
-                Launch My Business Line
+                Continue
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
+          )}
+
+          {step === 4 && (
+            <OnboardingBillingStep reservedLine={bufferedLine} onLaunch={handleLaunchAfterBilling} />
           )}
         </div>
       </main>

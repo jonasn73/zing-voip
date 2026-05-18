@@ -4,7 +4,10 @@ export type OnboardingNumberOption = {
   id: string
   number: string
   type: "Local" | "Toll-Free"
+  /** Legacy label — prefer trialNote + afterTrialPrice in UI */
   price: string
+  trialNote: string
+  afterTrialPrice: string
 }
 
 export const ONBOARDING_INVENTORY_SIZE = 4
@@ -30,11 +33,14 @@ export function buildOnboardingNumberInventory(areaCode: string, count = ONBOARD
     used.add(display)
     const tollFree =
       i === count - 1 || exchangeStartsTollFree(display) || Math.random() < 0.12
+    const afterTrialPrice = tollFree ? "$4.99/mo after trial" : "$2.99/mo after trial"
     out.push({
       id: `${ac}-${display}-${i}-${Math.random().toString(36).slice(2, 9)}`,
       number: display,
       type: tollFree ? "Toll-Free" : "Local",
       price: tollFree ? "$4.99/mo" : "$2.99/mo",
+      trialNote: "Included in trial",
+      afterTrialPrice,
     })
   }
 

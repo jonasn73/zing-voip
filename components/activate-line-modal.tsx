@@ -6,6 +6,7 @@ import { submitFormEvent } from "@/lib/form-keyboard"
 import { cn } from "@/lib/utils"
 import { activateSubscriptionClient } from "@/lib/onboarding-profile-client"
 import { useToast } from "@/hooks/use-toast"
+import type { OnboardingProfile } from "@/lib/types"
 import {
   Dialog,
   DialogContent,
@@ -32,7 +33,7 @@ type ActivateLineModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   reservedDisplay: string | null
-  onActivated: () => void | Promise<void>
+  onActivated: (profile: OnboardingProfile) => void | Promise<void>
 }
 
 export function ActivateLineModal({
@@ -58,14 +59,14 @@ export function ActivateLineModal({
       await new Promise((resolve) => window.setTimeout(resolve, 450))
       const result = await activateSubscriptionClient()
       toast({
-        title: result.carrierLive ? "Live production enabled" : "Payment saved — still in sandbox",
+        title: result.profile.has_active_subscription ? "Subscription activated" : "Activation incomplete",
         description: result.message,
       })
       onOpenChange(false)
       setCardNumber("")
       setExpiry("")
       setCvc("")
-      await onActivated()
+      await onActivated(result.profile)
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Activation failed"
       setError(msg)

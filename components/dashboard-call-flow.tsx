@@ -277,14 +277,14 @@ function LineConnectionState({ subscriptionActive }: { subscriptionActive: boole
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]"
           aria-hidden
         />
-        Live & Connected
+        • Live & Connected
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-500">
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-600/55" aria-hidden />
-      Inactive (Pending Payment)
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#71717a]">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d97706]" aria-hidden />
+      • Inactive (Pending Payment)
     </span>
   )
 }
@@ -353,7 +353,7 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
       >
         {businessNumbers.map((bn) => {
           const conn = lineCarrierLive ? "Live Production" : "Trial Mode"
-          const link = subscriptionActive ? "Live & Connected" : "Inactive (Pending Payment)"
+          const link = subscriptionActive ? "• Live & Connected" : "• Inactive (Pending Payment)"
           return (
             <option key={bn.number} value={bn.number}>
               {formatPhoneDisplay(bn.number)} — {conn} · {link}

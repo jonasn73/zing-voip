@@ -14,13 +14,16 @@ export const SUBSCRIPTION_ACTIVATED_EVENT = "zing-subscription-activated"
 type DashboardActivationContextValue = {
   profile: OnboardingProfile | null
   loading: boolean
-  /** Billing flag from Neon — payment method on file. */
+  /** Billing flag from Neon — payment method on file (`has_active_subscription`). */
   subscriptionActive: boolean
+  /** True when trial banner should show (reserved line, payment not activated). */
+  showTrialBanner: boolean
   /** Carrier owns the DID — inbound calls can route (Telnyx SID + active status). */
   lineCarrierLive: boolean
   reservedDisplay: string | null
   simulationMode: boolean
-  refreshProfile: () => Promise<void>
+  refreshProfile: (opts?: { silent?: boolean }) => Promise<void>
+  applyActivatedProfile: (profile: OnboardingProfile) => void
   openActivateModal: () => void
 }
 
@@ -36,19 +39,25 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
     notice: null,
   })
 
-  const refreshProfile = useCallback(async () => {
-    setLoading(true)
+  const refreshProfile = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     try {
       const [snapshot, mode] = await Promise.all([fetchOnboardingProfile(), fetchOnboardingProvisionMode()])
       setProfile(snapshot.profile)
       setCarrierLive(snapshot.carrierLive)
       setProvisionMode(mode)
     } catch {
-      setProfile(null)
-      setCarrierLive(false)
+      if (!opts?.silent) {
+        setProfile(null)
+        setCarrierLive(false)
+      }
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
+  }, [])
+
+  const applyActivatedProfile = useCallback((activated: OnboardingProfile) => {
+    setProfile(activated)
   }, [])
 
   useEffect(() => {
@@ -64,18 +73,33 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
   const reservedDisplay =
     profile?.reserved_number_display?.trim() || profile?.reserved_number?.trim() || null
 
+  const subscriptionActive = profile?.has_active_subscription === true
+  const showTrialBanner = Boolean(reservedDisplay) && !subscriptionActive
+
   const value = useMemo(
     (): DashboardActivationContextValue => ({
       profile,
       loading,
-      subscriptionActive: profile?.has_active_subscription === true,
+      subscriptionActive,
+      showTrialBanner,
       lineCarrierLive: carrierLive,
       reservedDisplay,
       simulationMode: provisionMode.simulation_mode,
       refreshProfile,
+      applyActivatedProfile,
       openActivateModal: () => setModalOpen(true),
     }),
-    [profile, loading, carrierLive, reservedDisplay, provisionMode.simulation_mode, refreshProfile]
+    [
+      profile,
+      loading,
+      subscriptionActive,
+      showTrialBanner,
+      carrierLive,
+      reservedDisplay,
+      provisionMode.simulation_mode,
+      refreshProfile,
+      applyActivatedProfile,
+    ]
   )
 
   return (
@@ -85,8 +109,9 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
         open={modalOpen}
         onOpenChange={setModalOpen}
         reservedDisplay={reservedDisplay}
-        onActivated={async () => {
-          await refreshProfile()
+        onActivated={async (activatedProfile) => {
+          applyActivatedProfile(activatedProfile)
+          await refreshProfile({ silent: true })
           window.dispatchEvent(new Event(SUBSCRIPTION_ACTIVATED_EVENT))
         }}
       />

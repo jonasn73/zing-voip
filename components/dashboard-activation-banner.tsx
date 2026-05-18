@@ -6,10 +6,10 @@ import { useDashboardActivationOptional } from "@/components/dashboard-activatio
 
 export const DashboardActivationBanner = memo(function DashboardActivationBanner() {
   const activation = useDashboardActivationOptional()
-  if (!activation || activation.loading || activation.lineCarrierLive) {
+  if (!activation || activation.loading) {
     return null
   }
-  if (!activation.reservedDisplay) {
+  if (!activation.showTrialBanner) {
     return null
   }
 

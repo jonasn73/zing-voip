@@ -6,6 +6,7 @@
 // scripts/001-create-schema.sql and scripts/002-add-password-hash.sql in your Neon SQL Editor.
 
 import { neon } from "@neondatabase/serverless"
+import { resolveNeonDatabaseUrl } from "@/lib/neon-database-url"
 import { SITE_NAME } from "@/lib/brand"
 import type {
   RoutingConfig,
@@ -100,14 +101,23 @@ function pgErrorMessage(e: unknown): string {
   return (e instanceof Error ? e.message : String(e)).toLowerCase()
 }
 
-// Lazy Neon client so we only connect when DATABASE_URL is set
+// Lazy Neon client so we only connect when DATABASE_URL is set (prefers pooled endpoint).
 let cachedSql: ReturnType<typeof neon> | null = null
 function getSql(): ReturnType<typeof neon> {
   if (cachedSql) return cachedSql
-  const url = process.env.DATABASE_URL
-  if (!url) throw new Error("DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables (and in .env.local for local dev).")
+  const url = resolveNeonDatabaseUrl()
   cachedSql = neon(url)
   return cachedSql
+}
+
+/** Warm the Neon HTTP driver on cold start (voice webhooks call this at module load). */
+export async function warmDatabasePool(): Promise<void> {
+  try {
+    const sql = getSql()
+    await sql`SELECT 1 AS ok`
+  } catch (e) {
+    console.warn("[db] warmDatabasePool failed:", e)
+  }
 }
 
 // --- Query functions ---
@@ -194,7 +204,7 @@ export type IncomingRoutingRow = {
 type IncomingRoutingByNumber = IncomingRoutingRow | null
 
 const incomingRoutingCache = new Map<string, { expiresAt: number; value: IncomingRoutingByNumber }>()
-const INCOMING_ROUTING_CACHE_TTL_MS = 10_000
+const INCOMING_ROUTING_CACHE_TTL_MS = 30_000
 
 /** Clear cached routing so voice webhooks see updated fallback_type immediately after dashboard saves. */
 export function clearIncomingRoutingCache(): void {

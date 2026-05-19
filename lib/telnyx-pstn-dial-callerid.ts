@@ -50,12 +50,12 @@ export function origFromQuerySuffixFromRaw(inboundFromRaw: string): string {
 
 /**
  * Twilio/Telnyx `<Dial answerOnBridge>`.
- * **Default `false`:** the inbound caller leg is answered when `<Dial>` runs so the PSTN bridge can complete sooner when
- * the teammate answers (reduces “caller still ringing after I picked up”).
- * **Set `ZING_INBOUND_DIAL_ANSWER_ON_BRIDGE=1`:** wait to answer the caller until the callee answers (classic ringback).
+ * **Default `true`:** preserve caller-side ringing (US ringback via `ringTone`) until the teammate answers.
+ * **Set `ZING_INBOUND_DIAL_ANSWER_ON_BRIDGE=0`:** answer the inbound leg immediately when `<Dial>` runs (legacy behavior).
  */
 export function readTelnyxDialAnswerOnBridge(): boolean {
-  return ["1", "true", "yes", "on"].includes(
-    (process.env.ZING_INBOUND_DIAL_ANSWER_ON_BRIDGE || "").trim().toLowerCase()
-  )
+  const raw = (process.env.ZING_INBOUND_DIAL_ANSWER_ON_BRIDGE || "").trim().toLowerCase()
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return true
+  return true
 }

@@ -27,6 +27,7 @@ import {
   bumpTelnyxAiIncomingHitCount,
   isTelnyxInboundDialCallerLegDone,
   markTelnyxInboundDialCallerLegDone,
+  warmDatabasePool,
 } from "@/lib/db"
 import type { RoutingConfig } from "@/lib/types"
 import {
@@ -44,9 +45,20 @@ import {
   resolvePstnDialCallerIdForInboundForward,
 } from "@/lib/telnyx-pstn-dial-callerid"
 import { shouldEmitVoiceHotPathDebugLogs } from "@/lib/voice-log-gate"
+import {
+  buildInboundEarlyMediaTexml,
+  buildInboundPstnDialAttributes,
+  buildInboundPstnNumberAttributes,
+  buildInboundRoutingContinueUrl,
+  finalizeInboundTexmlXml,
+  readInboundEarlyMediaEnabled,
+} from "@/lib/telnyx-inbound-media-quality"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
+
+// Warm Neon pool on cold start so the first real inbound call skips connection setup latency.
+void warmDatabasePool()
 
 /** Set to `0` / `false` / `no` to skip the short line-ID whisper on the callee leg. */
 const INBOUND_RECEPTIONIST_WHISPER_DISABLED = ["0", "false", "no"].includes(
@@ -82,7 +94,6 @@ function pickField(fields: Record<string, string>, keys: string[]): string {
   return ""
 }
 
-/** Only treat “Dial completed” on the voice URL as terminal when Telnyx sent real dial metadata (avoids hanging up before the first `<Dial>`). */
 function hasVoiceUrlDialCompletedEvidence(fields: Record<string, string>): boolean {
   const sid = pickField(fields, [
     "DialCallSid",
@@ -143,6 +154,40 @@ function resolveCalledParty(fields: Record<string, string>): string {
   return inferE164FromFieldMap(fields)
 }
 
+/** Pass 1 only — instant TeXML before DB routing (pass 2 sets `zingRoute=1` on the URL). */
+function shouldServeEarlyMediaPass(url: URL, fields: Record<string, string>): boolean {
+  if (!readInboundEarlyMediaEnabled()) return false
+  if (url.searchParams.get("zingRoute") === "1") return false
+
+  const dialOutcome = pickField(fields, [
+    "DialCallStatus",
+    "DialStatus",
+    "DialCallLegStatus",
+    "DialCallLegState",
+    "dial_call_status",
+  ])
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-")
+
+  const dialOutcomeIsNonLive = (s: string) =>
+    ["ringing", "ring", "queued", "init", "in-progress", "inprogress", "answered", "early-media", ""].includes(s)
+
+  if (dialOutcome && !dialOutcomeIsNonLive(dialOutcome)) return false
+  if (dialOutcome === "completed" && hasVoiceUrlDialCompletedEvidence(fields)) return false
+  return true
+}
+
+function resolveReceptionistDialE164(rawPhone: string): string {
+  const fromRow = normalizePhoneNumberE164(rawPhone)
+  if (fromRow && isReasonablePstnDialString(fromRow)) return fromRow
+  const digits = rawPhone.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (digits.length >= 10 && digits.length <= 15) return `+${digits}`
+  return ""
+}
+
 async function readWebhookFields(req: NextRequest): Promise<Record<string, string>> {
   const contentType = (req.headers.get("content-type") || "").toLowerCase()
   if (contentType.includes("application/json")) {
@@ -199,7 +244,7 @@ async function handleIncomingCall(
 
     // 1. Resolve routing and “first leg ended” flag together — both hit the DB independently.
     const [routing, firstLegDone] = await Promise.all([
-      getIncomingRoutingByNumber(calledNumber, { bypassCache: true }),
+      getIncomingRoutingByNumber(calledNumber),
       isTelnyxInboundDialCallerLegDone(callSid),
     ])
     if (!routing) {
@@ -320,24 +365,25 @@ async function handleIncomingCall(
     let receptionistDialE164 = ""
     let receptionistDisplayName = routing.receptionist_name
     if (selectedReceptionistId) {
-      const rec = await getReceptionist(selectedReceptionistId)
-      const recOk = Boolean(rec && String(rec.user_id) === String(routing.user_id))
-      if (recOk && rec) {
-        receptionistDisplayName = rec.name ?? receptionistDisplayName
-        if (rec.phone?.trim()) {
-          const fromRow = normalizePhoneNumberE164(rec.phone)
-          if (fromRow && isReasonablePstnDialString(fromRow)) {
-            receptionistDialE164 = fromRow
-          }
-          if (!receptionistDialE164) {
-            const digits = rec.phone.replace(/\D/g, "")
-            if (digits.length === 10) receptionistDialE164 = `+1${digits}`
-            else if (digits.length === 11 && digits.startsWith("1")) receptionistDialE164 = `+${digits}`
-            else if (digits.length >= 10 && digits.length <= 15) receptionistDialE164 = `+${digits}`
-            if (receptionistDialE164) {
+      const routingStillMatches =
+        selectedReceptionistId === (routing.selected_receptionist_id?.trim() || "")
+      if (routingStillMatches && routing.receptionist_phone?.trim()) {
+        receptionistDialE164 = resolveReceptionistDialE164(routing.receptionist_phone)
+        if (receptionistDialE164) {
+          receptionistDisplayName = routing.receptionist_name ?? receptionistDisplayName
+        }
+      }
+      if (!receptionistDialE164) {
+        const rec = await getReceptionist(selectedReceptionistId)
+        const recOk = Boolean(rec && String(rec.user_id) === String(routing.user_id))
+        if (recOk && rec) {
+          receptionistDisplayName = rec.name ?? receptionistDisplayName
+          if (rec.phone?.trim()) {
+            receptionistDialE164 = resolveReceptionistDialE164(rec.phone)
+            if (receptionistDialE164 && !routingStillMatches) {
               console.log(
                 JSON.stringify({
-                  zing: "telnyx-incoming-receptionist-phone-relaxed-digits",
+                  zing: "telnyx-incoming-receptionist-phone-from-db",
                   userId: routing.user_id,
                   receptionistId: selectedReceptionistId,
                   callSid,
@@ -346,17 +392,17 @@ async function handleIncomingCall(
             }
           }
         }
-      }
-      if (!receptionistDialE164) {
-        console.error(
-          JSON.stringify({
-            zing: "telnyx-incoming-receptionist-phone-missing",
-            userId: routing.user_id,
-            receptionistId: selectedReceptionistId,
-            callSid,
-            getReceptionistFound: recOk,
-          })
-        )
+        if (!receptionistDialE164) {
+          console.error(
+            JSON.stringify({
+              zing: "telnyx-incoming-receptionist-phone-missing",
+              userId: routing.user_id,
+              receptionistId: selectedReceptionistId,
+              callSid,
+              getReceptionistFound: recOk,
+            })
+          )
+        }
       }
     }
     const hasReceptionist = Boolean(selectedReceptionistId && receptionistDialE164)
@@ -662,34 +708,38 @@ async function handleIncomingCall(
       lineLbl && lineLbl.toLowerCase() !== "main line" ? lineLbl : routing.business_name
     const fromDisplayName = buildTelnyxDialFromDisplayName(fromDisplaySource)
 
+    const pstnNumberAttrs = buildInboundPstnNumberAttributes()
+
     if (hasReceptionist) {
       const recPhone = receptionistDialE164
       if (debug) console.log(`[Sigo] Routing to receptionist: ${receptionistDisplayName || "Receptionist"} (${recPhone})`)
-      // Receptionist leg: omit `fromDisplayName` — Telnyx often fails or drops the PSTN B-leg when CNAM + forwarded mobile combine.
-      const dial = texml.dial({
-        ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
-        answerOnBridge,
-        timeout: receptionistRingSec,
-        action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${origFromQuery}`,
-        method: "POST",
-      } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
-      dial.number(recPhone)
+      const dial = texml.dial(
+        buildInboundPstnDialAttributes({
+          ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
+          answerOnBridge,
+          timeout: receptionistRingSec,
+          action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${origFromQuery}`,
+          method: "POST",
+        }) as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0]
+      )
+      dial.number(pstnNumberAttrs, recPhone)
     } else {
       const ownerPhone = normalizePhoneNumberE164(routing.owner_phone)
       if (debug) console.log(`[Sigo] No receptionist assigned, routing to owner: ${ownerPhone}`)
-      // Same as receptionist path: if your phone does not answer, POST to fallback so AI / voicemail / second leg can run.
-      const dial = texml.dial({
-        ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
-        ...(fromDisplayName ? { fromDisplayName } : {}),
-        answerOnBridge,
-        timeout: ownerRingSec,
-        action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first${bnQuery}${fbQuery}${modeQuery}${origFromQuery}`,
-        method: "POST",
-      } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
+      const dial = texml.dial(
+        buildInboundPstnDialAttributes({
+          ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
+          ...(fromDisplayName ? { fromDisplayName } : {}),
+          answerOnBridge,
+          timeout: ownerRingSec,
+          action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}&primary=owner&leg=owner-first${bnQuery}${fbQuery}${modeQuery}${origFromQuery}`,
+          method: "POST",
+        }) as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0]
+      )
       if (whisperPhrase.trim()) {
-        dial.number({ url: receptionistWhisperScreenUrl(whisperPhrase) }, ownerPhone)
+        dial.number({ ...pstnNumberAttrs, url: receptionistWhisperScreenUrl(whisperPhrase) }, ownerPhone)
       } else {
-        dial.number(ownerPhone)
+        dial.number(pstnNumberAttrs, ownerPhone)
       }
     }
   } catch (error) {
@@ -702,8 +752,20 @@ async function handleIncomingCall(
   return { kind: "twiml", texml }
 }
 
+function texmlResponseBody(out: IncomingCallResult): string {
+  const raw = out.kind === "raw" ? out.xml : out.texml.toString()
+  return out.kind === "raw" ? raw : finalizeInboundTexmlXml(raw)
+}
+
 export async function POST(req: NextRequest) {
   const fields = await readWebhookFields(req)
+  const reqUrl = new URL(req.url)
+  if (shouldServeEarlyMediaPass(reqUrl, fields)) {
+    const continueUrl = buildInboundRoutingContinueUrl(req.url)
+    return new NextResponse(buildInboundEarlyMediaTexml(continueUrl), {
+      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+    })
+  }
   if (process.env.NODE_ENV !== "production") {
     console.log("[Sigo] Telnyx webhook fields:", JSON.stringify(fields))
   }
@@ -730,7 +792,7 @@ export async function POST(req: NextRequest) {
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
   const out = await handleIncomingCall(calledNumberRaw, callerNumber, callSid, callerName, Object.keys(fields), fields)
-  const body = out.kind === "raw" ? out.xml : out.texml.toString()
+  const body = texmlResponseBody(out)
 
   return new NextResponse(body, {
     headers: { "Content-Type": "text/xml" },
@@ -740,6 +802,12 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const fields = searchParamsToFields(url)
+  if (shouldServeEarlyMediaPass(url, fields)) {
+    const continueUrl = buildInboundRoutingContinueUrl(req.url)
+    return new NextResponse(buildInboundEarlyMediaTexml(continueUrl), {
+      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+    })
+  }
   const calledNumberRaw = resolveCalledParty(fields)
   if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
     console.log(
@@ -759,7 +827,7 @@ export async function GET(req: NextRequest) {
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
   const out = await handleIncomingCall(calledNumberRaw, callerNumber, callSid, callerName, Object.keys(fields), fields)
-  const body = out.kind === "raw" ? out.xml : out.texml.toString()
+  const body = texmlResponseBody(out)
 
   return new NextResponse(body, {
     headers: { "Content-Type": "text/xml" },

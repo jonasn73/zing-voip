@@ -2056,9 +2056,15 @@ export async function ensurePortingLineRecord(params: {
 export async function updatePhoneNumber(
   phoneNumberId: string,
   userId: string,
-  updates: Partial<Pick<PhoneNumber, "provider_number_sid" | "status">>
+  updates: Partial<Pick<PhoneNumber, "provider_number_sid" | "status" | "number" | "friendly_name">>
 ): Promise<void> {
   const sql = getSql()
+  if (updates.number !== undefined) {
+    await sql`UPDATE phone_numbers SET number = ${updates.number} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
+  }
+  if (updates.friendly_name !== undefined) {
+    await sql`UPDATE phone_numbers SET friendly_name = ${updates.friendly_name} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
+  }
   if (updates.provider_number_sid !== undefined) {
     await sql`UPDATE phone_numbers SET provider_number_sid = ${updates.provider_number_sid}, twilio_sid = ${updates.provider_number_sid} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
   }

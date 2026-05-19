@@ -10,6 +10,24 @@ export const DashboardActivationBanner = memo(function DashboardActivationBanner
   if (!activation || activation.loading) {
     return null
   }
+
+  if (activation.showProvisioningBanner) {
+    return (
+      <div
+        className={cn(
+          "shrink-0 border-b border-primary/35 bg-primary/10 backdrop-blur-sm",
+          "px-4 py-2.5 sm:px-6 sm:py-3"
+        )}
+        role="status"
+      >
+        <p className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center text-sm leading-relaxed text-foreground/90 sm:justify-start sm:text-left">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
+          Payment received — purchasing your business line on Telnyx. Calls will connect in a moment.
+        </p>
+      </div>
+    )
+  }
+
   if (!activation.showTrialBanner) {
     return null
   }

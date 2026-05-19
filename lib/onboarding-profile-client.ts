@@ -133,6 +133,29 @@ export async function confirmStripeSubscriptionAfterCheckout(
   if (!res.ok) throw new Error(json.error || "Could not sync subscription")
 }
 
+/** Buy/provision the reserved DID on Telnyx after subscription is active. */
+export async function provisionLineAfterPayment(): Promise<{
+  phone_number: string
+  substituted: boolean
+}> {
+  const res = await fetch("/api/billing/stripe/provision-line", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  })
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: { phone_number?: string; substituted?: boolean }
+    error?: string
+  }
+  if (!res.ok) throw new Error(json.error || "Could not provision your line")
+  if (!json.data?.phone_number) throw new Error("Provision response missing phone number")
+  return {
+    phone_number: json.data.phone_number,
+    substituted: json.data.substituted === true,
+  }
+}
+
 /** @deprecated Use startStripeSubscriptionCheckout — activation completes via Stripe webhook. */
 export async function activateSubscriptionClient(opts?: {
   saveBillingMethod?: boolean

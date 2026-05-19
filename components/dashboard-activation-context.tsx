@@ -6,9 +6,11 @@ import {
   fetchOnboardingProfile,
   fetchOnboardingProvisionMode,
   confirmStripeSubscriptionAfterCheckout,
+  provisionLineAfterPayment,
   startStripeSubscriptionCheckout,
   type OnboardingProvisionMode,
 } from "@/lib/onboarding-profile-client"
+import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import type { OnboardingProfile } from "@/lib/types"
 import { isVerifiedActiveSubscription } from "@/lib/onboarding-subscription-status"
 import { useToast } from "@/hooks/use-toast"
@@ -21,6 +23,7 @@ type DashboardActivationContextValue = {
   activating: boolean
   subscriptionActive: boolean
   showTrialBanner: boolean
+  showProvisioningBanner: boolean
   lineCarrierLive: boolean
   billingCycleEnd: string | null
   reservedDisplay: string | null
@@ -86,6 +89,7 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
 
   const subscriptionActive = isVerifiedActiveSubscription(profile, carrierLive)
   const showTrialBanner = Boolean(reservedDisplay) && !subscriptionActive
+  const showProvisioningBanner = Boolean(reservedDisplay) && subscriptionActive && !carrierLive
   const billingCycleEnd = profile?.billing_cycle_end?.trim() || null
 
   useEffect(() => {
@@ -111,6 +115,28 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
       }
     })()
   }, [loading, subscriptionActive, profile?.reserved_number, refreshProfile])
+
+  useEffect(() => {
+    if (loading || !profile?.reserved_number || carrierLive || !subscriptionActive) return
+    if (sessionStorage.getItem("lyncr-line-provision")) return
+    sessionStorage.setItem("lyncr-line-provision", "1")
+    void (async () => {
+      try {
+        const result = await provisionLineAfterPayment()
+        if (result.substituted) {
+          toast({
+            title: "Line updated",
+            description: `Your original number was unavailable. We assigned ${formatPhoneDisplay(result.phone_number)} in the same area code.`,
+          })
+        }
+        await refreshProfile({ silent: true })
+      } catch (e) {
+        sessionStorage.removeItem("lyncr-line-provision")
+        const msg = e instanceof Error ? e.message : "Could not provision your line on Telnyx."
+        toast({ variant: "destructive", title: "Line not live yet", description: msg })
+      }
+    })()
+  }, [loading, profile?.reserved_number, carrierLive, subscriptionActive, refreshProfile, toast])
 
   useEffect(() => {
     const checkout = searchParams.get("stripe_checkout")
@@ -158,6 +184,7 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
       activating,
       subscriptionActive,
       showTrialBanner,
+      showProvisioningBanner,
       lineCarrierLive: carrierLive,
       billingCycleEnd,
       reservedDisplay,
@@ -172,6 +199,7 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
       activating,
       subscriptionActive,
       showTrialBanner,
+      showProvisioningBanner,
       carrierLive,
       billingCycleEnd,
       reservedDisplay,

@@ -9,7 +9,12 @@ import {
   updateOnboardingProfile,
   updatePhoneNumber,
 } from "@/lib/db"
+import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
+
+export type ProvisionLineResult =
+  | { ok: true; phone_number: string; substituted: boolean }
+  | { ok: false; error: string }
 
 function stripePeriodToIso(unixSec: number | null | undefined): string | null {
   if (unixSec == null || !Number.isFinite(unixSec)) return null
@@ -27,46 +32,62 @@ function resolveUserIdFromStripeObject(obj: {
 }
 
 /** Buy reserved DID on Telnyx after Stripe payment — always live, skips simulation gate. */
-export async function provisionReservedLineAfterStripePayment(userId: string): Promise<void> {
+export async function provisionReservedLineAfterStripePayment(userId: string): Promise<ProvisionLineResult> {
   const profile = await getOnboardingProfile(userId)
-  if (!profile?.reserved_number?.trim()) return
+  if (!profile?.reserved_number?.trim()) {
+    return { ok: false, error: "No reserved business line on file." }
+  }
 
   if (profile.reserved_number_method === "port") {
     await syncOnboardingLineToPhoneNumbers(userId, profile)
-    return
+    return { ok: true, phone_number: profile.reserved_number, substituted: false }
   }
 
   const normalized = normalizePhoneNumberE164(profile.reserved_number)
   const existing = await getPhoneNumbers(userId)
   const row = existing.find((r) => normalizePhoneNumberE164(r.number) === normalized)
-  if (row?.provider_number_sid?.trim()) return
+  if (row?.provider_number_sid?.trim()) {
+    return { ok: true, phone_number: row.number, substituted: false }
+  }
 
-  const purchase = await purchaseAndConfigureTelnyxLine(normalized)
+  const purchase = await purchaseAndConfigureTelnyxLine(normalized, { allowAreaFallback: true })
   if (!purchase.ok) {
-    throw new Error(purchase.error)
+    return { ok: false, error: purchase.error }
+  }
+
+  if (purchase.substituted) {
+    await updateOnboardingProfile(userId, {
+      reserved_number: purchase.phone_number,
+      reserved_number_display: formatPhoneDisplay(purchase.phone_number),
+    })
   }
 
   const user = await getUser(userId)
   const label = user?.business_name?.trim() || "Business Line"
-  const friendly = profile.reserved_number_display?.trim() || purchase.phone_number
+  const friendly =
+    (purchase.substituted ? formatPhoneDisplay(purchase.phone_number) : profile.reserved_number_display?.trim()) ||
+    purchase.phone_number
 
   if (row) {
     await updatePhoneNumber(row.id, userId, {
+      number: purchase.phone_number,
+      friendly_name: friendly,
       provider_number_sid: purchase.order_id,
       status: "active",
     })
-    return
+  } else {
+    await insertPhoneNumber({
+      user_id: userId,
+      number: purchase.phone_number,
+      friendly_name: friendly,
+      label,
+      type: "local",
+      status: "active",
+      provider_number_sid: purchase.order_id,
+    })
   }
 
-  await insertPhoneNumber({
-    user_id: userId,
-    number: purchase.phone_number,
-    friendly_name: friendly,
-    label,
-    type: "local",
-    status: "active",
-    provider_number_sid: purchase.order_id,
-  })
+  return { ok: true, phone_number: purchase.phone_number, substituted: purchase.substituted }
 }
 
 /** Apply Stripe subscription billing state to Neon and provision Telnyx. */
@@ -90,7 +111,10 @@ export async function syncStripeSubscriptionToNeon(
     stripe_subscription_id: subscription.id,
   })
 
-  await provisionReservedLineAfterStripePayment(userId)
+  const provision = await provisionReservedLineAfterStripePayment(userId)
+  if (!provision.ok) {
+    console.error("[stripe] Telnyx provision after payment failed:", provision.error)
+  }
 }
 
 export async function handleStripeSubscriptionCreated(subscription: Stripe.Subscription): Promise<void> {

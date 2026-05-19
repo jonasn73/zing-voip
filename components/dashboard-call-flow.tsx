@@ -133,6 +133,7 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
   const { openBuyModal } = useDashboardNumbersModal()
   const activation = useDashboardActivationOptional()
   const subscriptionActive = activation?.subscriptionActive === true
+  const lineCarrierLive = activation?.lineCarrierLive === true
   const activeLine =
     routingBusinessNumber && businessNumbers.some((b) => businessNumbersMatch(b.number, routingBusinessNumber))
       ? routingBusinessNumber
@@ -170,6 +171,7 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
               activeLine={activeLine}
               onSelect={setRoutingBusinessNumber}
               subscriptionActive={subscriptionActive}
+              lineCarrierLive={lineCarrierLive}
             />
           ) : quickSetupDecided ? (
             <button
@@ -244,8 +246,14 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
   )
 })
 
-function LineConnectionState({ subscriptionActive }: { subscriptionActive: boolean }) {
-  if (subscriptionActive) {
+function LineConnectionState({
+  subscriptionActive,
+  lineCarrierLive,
+}: {
+  subscriptionActive: boolean
+  lineCarrierLive: boolean
+}) {
+  if (lineCarrierLive) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300/95">
         <span
@@ -253,6 +261,14 @@ function LineConnectionState({ subscriptionActive }: { subscriptionActive: boole
           aria-hidden
         />
         • Live & Connected
+      </span>
+    )
+  }
+  if (subscriptionActive) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-200/90">
+        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-400" aria-hidden />
+        • Activating line…
       </span>
     )
   }
@@ -264,8 +280,14 @@ function LineConnectionState({ subscriptionActive }: { subscriptionActive: boole
   )
 }
 
-function LineStatusIndicator({ subscriptionActive }: { subscriptionActive: boolean }) {
-  return <LineConnectionState subscriptionActive={subscriptionActive} />
+function LineStatusIndicator({
+  subscriptionActive,
+  lineCarrierLive,
+}: {
+  subscriptionActive: boolean
+  lineCarrierLive: boolean
+}) {
+  return <LineConnectionState subscriptionActive={subscriptionActive} lineCarrierLive={lineCarrierLive} />
 }
 
 const ActiveLinePicker = memo(function ActiveLinePicker({
@@ -273,11 +295,13 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
   activeLine,
   onSelect,
   subscriptionActive,
+  lineCarrierLive,
 }: {
   businessNumbers: DashboardBusinessNumber[]
   activeLine: string
   onSelect: (n: string) => void
   subscriptionActive: boolean
+  lineCarrierLive: boolean
 }) {
   const display = formatPhoneDisplay(activeLine)
   const multi = businessNumbers.length > 1
@@ -294,7 +318,7 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
       >
         <span className="text-xs font-medium text-zinc-400">Active line</span>
         <span className="text-base text-foreground">{display}</span>
-        <LineStatusIndicator subscriptionActive={subscriptionActive} />
+        <LineStatusIndicator subscriptionActive={subscriptionActive} lineCarrierLive={lineCarrierLive} />
       </div>
     )
   }
@@ -305,7 +329,7 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
       <div className="pointer-events-none flex flex-col items-center gap-1 px-4 py-3 pr-10">
         <span className="text-xs font-medium text-zinc-400">Active line</span>
         <span className="text-base font-semibold text-foreground">{display}</span>
-        <LineStatusIndicator subscriptionActive={subscriptionActive} />
+        <LineStatusIndicator subscriptionActive={subscriptionActive} lineCarrierLive={lineCarrierLive} />
       </div>
       <select
         value={activeLine}
@@ -314,7 +338,11 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
         aria-label="Select active business line"
       >
         {businessNumbers.map((bn) => {
-          const link = subscriptionActive ? "Live & Connected" : "Inactive (Pending Payment)"
+          const link = lineCarrierLive
+            ? "Live & Connected"
+            : subscriptionActive
+              ? "Activating line"
+              : "Inactive (Pending Payment)"
           return (
             <option key={bn.number} value={bn.number}>
               {formatPhoneDisplay(bn.number)} — {link}

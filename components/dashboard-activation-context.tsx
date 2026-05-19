@@ -13,7 +13,12 @@ import {
 import type { CheckoutSubscriptionTier } from "@/lib/subscription-checkout"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import type { OnboardingProfile } from "@/lib/types"
-import { isVerifiedActiveSubscription } from "@/lib/onboarding-subscription-status"
+import {
+  hasPaidStripeSubscription,
+  isVerifiedActiveSubscription,
+  needsLineProvisioning,
+  needsStripeSubscriptionCheckout,
+} from "@/lib/onboarding-subscription-status"
 import { useToast } from "@/hooks/use-toast"
 
 export const SUBSCRIPTION_ACTIVATED_EVENT = "zing-subscription-activated"
@@ -73,18 +78,61 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
 
   const requestLineActivation = useCallback(async (tier: CheckoutSubscriptionTier = checkoutTier) => {
     if (activating) return
-    if (isVerifiedActiveSubscription(profile, carrierLive)) return
+    if (carrierLive) return
 
     setActivating(true)
     try {
+      // Already paid — provision the reserved line instead of opening checkout again.
+      if ((needsLineProvisioning(profile, carrierLive) || hasPaidStripeSubscription(profile)) && !carrierLive) {
+        const result = await provisionLineAfterPayment()
+        if (result.substituted) {
+          toast({
+            title: "Line updated",
+            description: `We assigned ${formatPhoneDisplay(result.phone_number)} — your original number was unavailable.`,
+          })
+        } else {
+          toast({
+            title: "Line provisioning",
+            description: "Your business number is being activated on the Lyncr core network.",
+          })
+        }
+        await refreshProfile({ silent: true })
+        return
+      }
+
+      // DB flag set but Stripe id missing — try to recover subscription from Stripe first.
+      if (profile?.has_active_subscription && needsStripeSubscriptionCheckout(profile, carrierLive)) {
+        try {
+          await confirmStripeSubscriptionAfterCheckout()
+          await refreshProfile({ silent: true })
+          const snapshot = await fetchOnboardingProfile()
+          if (snapshot.profile?.stripe_subscription_id?.trim()) {
+            await provisionLineAfterPayment()
+            await refreshProfile({ silent: true })
+            toast({
+              title: "Subscription linked",
+              description: "We found your payment and started provisioning your line.",
+            })
+            return
+          }
+        } catch {
+          // Fall through to fresh checkout below.
+        }
+      }
+
+      if (!needsStripeSubscriptionCheckout(profile, carrierLive)) {
+        return
+      }
+
       const { checkoutUrl } = await startStripeSubscriptionCheckout(tier)
       window.location.href = checkoutUrl
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not start checkout"
-      toast({ variant: "destructive", title: "Checkout failed", description: msg })
+      toast({ variant: "destructive", title: "Activation failed", description: msg })
+    } finally {
       setActivating(false)
     }
-  }, [activating, profile, carrierLive, checkoutTier, toast])
+  }, [activating, profile, carrierLive, checkoutTier, toast, refreshProfile])
 
   const reservedDisplay =
     profile?.reserved_number_display?.trim() || profile?.reserved_number?.trim() || null

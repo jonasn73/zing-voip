@@ -20,9 +20,23 @@ export const DashboardActivationBanner = memo(function DashboardActivationBanner
         )}
         role="status"
       >
-        <p className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center text-sm leading-relaxed text-foreground/90 sm:justify-start sm:text-left">
+        <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm leading-relaxed text-foreground/90 sm:justify-start sm:text-left">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
-          Payment received — provisioning your business line on the Lyncr core network. Calls will connect in a moment.
+          <span>
+            Payment received — your line is not live yet. Add at least $2.00 carrier credit on the Pay tab if
+            provisioning has not started.
+          </span>
+          <button
+            type="button"
+            disabled={activation.activating}
+            onClick={() => void activation.requestLineActivation()}
+            className={cn(
+              "font-semibold text-primary underline decoration-primary/50 underline-offset-2",
+              "hover:text-primary/90 disabled:opacity-60"
+            )}
+          >
+            {activation.activating ? "Retrying…" : "Retry provisioning →"}
+          </button>
         </p>
       </div>
     )

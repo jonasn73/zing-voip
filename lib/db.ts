@@ -3024,6 +3024,24 @@ export async function getOnboardingProfile(userId: string): Promise<OnboardingPr
         const rows = await sql`
           SELECT user_id, reserved_number, reserved_number_display, reserved_number_method,
                  port_carrier, fallback_type, trade_category, opening_line,
+                 has_active_subscription,
+                 billing_cycle_start, billing_cycle_end,
+                 stripe_customer_id, stripe_subscription_id,
+                 updated_at
+          FROM onboarding_profiles
+          WHERE user_id = ${userId}
+          LIMIT 1
+        `
+        const row = rows[0] as Record<string, unknown> | undefined
+        if (!row) return null
+        return mapOnboardingProfileRow(row)
+      } catch (billingFallbackError) {
+        if (!isMissingOnboardingProfileColumnError(billingFallbackError)) throw billingFallbackError
+      }
+      try {
+        const rows = await sql`
+          SELECT user_id, reserved_number, reserved_number_display, reserved_number_method,
+                 port_carrier, fallback_type, trade_category, opening_line,
                  has_active_subscription, updated_at
           FROM onboarding_profiles
           WHERE user_id = ${userId}

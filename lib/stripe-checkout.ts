@@ -24,8 +24,10 @@ export async function createLyncrSubscriptionCheckout(
   if (!profile?.reserved_number?.trim()) {
     throw new Error("Reserve a business line before activating.")
   }
-  if (profile.has_active_subscription) {
-    throw new Error("Your subscription is already active.")
+  if (profile.stripe_subscription_id?.trim()) {
+    throw new Error(
+      "Your subscription is already active. Add carrier credit on the Pay tab if your line is still provisioning."
+    )
   }
 
   const user = await getUser(userId)

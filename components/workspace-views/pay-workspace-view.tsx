@@ -77,12 +77,12 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
         const result = await confirmCreditPackCheckout(sessionId)
         toast({
           title: "Carrier credit added",
-          description: `New balance: ${formatUsdFromCents(result.balance_after_cents)}. ${result.telnyx_message}`,
+          description: `New balance: ${formatUsdFromCents(result.balance_after_cents)}. Your balance syncs with the Lyncr global routing network.`,
         })
         if (result.provisioned) {
           toast({
             title: "Line activated",
-            description: "Your business number is now live on Telnyx.",
+            description: "Your business number is now live on the Lyncr core network.",
           })
         } else if (result.provision_error) {
           toast({ variant: "destructive", title: "Line not live yet", description: result.provision_error })
@@ -139,7 +139,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
         <div className="grid min-h-[5.75rem] gap-4 sm:grid-cols-3">
           <WorkspaceStatCard label="Your carrier credit" value={balanceLabel} accent="primary" />
           <WorkspaceStatCard
-            label="Telnyx wallet (platform)"
+            label="Lyncr routing pool"
             value={billing?.telnyx_available_credit_label ?? "—"}
             accent="default"
           />
@@ -156,7 +156,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
             <h2 className="text-sm font-semibold text-foreground">Add carrier credit</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               Prepaid balance funds your phone number ({billing?.telnyx_number_purchase_label ?? "$2.00"} per line) and
-              call usage. After payment, we sync with the Telnyx carrier wallet automatically.
+              call usage. After payment, your balance syncs with the Lyncr global routing network automatically.
             </p>
           </div>
           <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -172,7 +172,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
                 )}
               >
                 <span className="text-lg font-semibold text-foreground">{formatUsdFromCents(cents)}</span>
-                <span className="text-xs text-muted-foreground">One-time · Stripe secure checkout</span>
+                <span className="text-xs text-muted-foreground">One-time · Secure checkout</span>
                 <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary">
                   {buyingPack === cents ? (
                     <>

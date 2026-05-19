@@ -132,7 +132,7 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
         await refreshProfile({ silent: true })
       } catch (e) {
         sessionStorage.removeItem("lyncr-line-provision")
-        const msg = e instanceof Error ? e.message : "Could not provision your line on Telnyx."
+        const msg = e instanceof Error ? e.message : "Could not provision your business line."
         toast({ variant: "destructive", title: "Line not live yet", description: msg })
       }
     })()

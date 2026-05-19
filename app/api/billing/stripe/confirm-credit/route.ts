@@ -28,7 +28,16 @@ export async function POST(req: NextRequest) {
     }
 
     const credit = await applyStripeCreditPackPayment(userId, session)
-    const provision = await provisionReservedLineAfterStripePayment(userId)
+    let provision: Awaited<ReturnType<typeof provisionReservedLineAfterStripePayment>>
+    try {
+      provision = await provisionReservedLineAfterStripePayment(userId)
+    } catch (provisionErr) {
+      console.error("[billing/stripe/confirm-credit] provision after credit failed:", provisionErr)
+      provision = {
+        ok: false,
+        error: provisionErr instanceof Error ? provisionErr.message : "Line provisioning failed after credit was added.",
+      }
+    }
 
     return NextResponse.json({
       data: {
@@ -37,6 +46,9 @@ export async function POST(req: NextRequest) {
         provisioned: provision.ok,
         phone_number: provision.ok ? provision.phone_number : null,
         provision_error: provision.ok ? null : provision.error,
+        provision_reason: provision.ok ? null : provision.reason ?? null,
+        unavailable_number: provision.ok ? null : provision.unavailable_number ?? null,
+        area_code: provision.ok ? null : provision.area_code ?? null,
       },
     })
   } catch (e) {

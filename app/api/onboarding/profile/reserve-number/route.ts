@@ -50,6 +50,13 @@ export async function POST(req: NextRequest) {
 
     const profile = await updateOnboardingProfile(userId, updates)
 
+    try {
+      const { syncOnboardingLineToPhoneNumbers } = await import("@/lib/db")
+      await syncOnboardingLineToPhoneNumbers(userId, profile)
+    } catch (syncErr) {
+      console.error("[onboarding/profile/reserve-number] sync phone_numbers:", syncErr)
+    }
+
     return NextResponse.json({
       data: profile,
       simulation_mode: simulation,

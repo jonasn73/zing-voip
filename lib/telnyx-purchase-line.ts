@@ -6,13 +6,12 @@ import { findPurchasableTelnyxNumber } from "@/lib/telnyx-number-search"
 const TELNYX_BASE = "https://api.telnyx.com/v2"
 
 export type PurchaseTelnyxLineResult =
-  | { ok: true; phone_number: string; order_id: string; substituted: boolean }
-  | { ok: false; error: string }
+  | { ok: true; phone_number: string; order_id: string }
+  | { ok: false; error: string; reason?: "number_unavailable" | "area_empty" | "carrier_error" }
 
-/** Buy `phoneNumberE164` on Telnyx (search inventory first) and wire voice to `/api/voice/telnyx/incoming`. */
+/** Buy `phoneNumberE164` on Telnyx (exact inventory match only) and wire voice to `/api/voice/telnyx/incoming`. */
 export async function purchaseAndConfigureTelnyxLine(
-  phoneNumberE164: string,
-  opts?: { allowAreaFallback?: boolean }
+  phoneNumberE164: string
 ): Promise<PurchaseTelnyxLineResult> {
   const requested = phoneNumberE164.trim()
   if (!requested) {
@@ -26,28 +25,26 @@ export async function purchaseAndConfigureTelnyxLine(
   }
 
   let target = requested
-  let substituted = false
 
   try {
     const purchasable = await findPurchasableTelnyxNumber(requested)
     if (!purchasable) {
       return {
         ok: false,
+        reason: "area_empty",
         error:
-          "No phone numbers are available in this area code right now. Try choosing a different line in Settings.",
+          "No phone numbers are available in this area code right now. Search below and pick a different line.",
       }
     }
     if (purchasable !== requested) {
-      if (opts?.allowAreaFallback !== true) {
-        return {
-          ok: false,
-          error:
-            "Your reserved number is no longer available from the carrier. Open Settings to pick a new line in the same area code.",
-        }
+      return {
+        ok: false,
+        reason: "number_unavailable",
+        error:
+          "Your chosen number is no longer available from the carrier. Pick a different line below — you will not be charged until a number is successfully purchased.",
       }
-      target = purchasable
-      substituted = true
     }
+    target = purchasable
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not search Telnyx inventory"
     return { ok: false, error: msg }
@@ -65,7 +62,7 @@ export async function purchaseAndConfigureTelnyxLine(
       (data as { errors?: { detail?: string; title?: string }[] })?.errors?.[0]?.title ||
       "Telnyx could not purchase this number — it may no longer be available. Search again and pick a different line."
     console.error("[Telnyx] purchase failed:", errMsg, data)
-    return { ok: false, error: String(errMsg) }
+    return { ok: false, reason: "carrier_error", error: String(errMsg) }
   }
 
   const orderId = String((data as { data?: { id?: string } })?.data?.id || "")
@@ -88,5 +85,5 @@ export async function purchaseAndConfigureTelnyxLine(
   }
 
   console.log(`[Telnyx] Purchased and configured ${boughtNumber} (order ${orderId})`)
-  return { ok: true, phone_number: boughtNumber, order_id: orderId, substituted }
+  return { ok: true, phone_number: boughtNumber, order_id: orderId }
 }

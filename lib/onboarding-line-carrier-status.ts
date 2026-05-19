@@ -19,3 +19,9 @@ export async function isReservedLineCarrierLive(
   if (!row) return false
   return isPhoneNumberCarrierLive(row)
 }
+
+/** True when any business line on the account is carrier-live (used for dashboard status). */
+export async function isAnyLineCarrierLive(userId: string): Promise<boolean> {
+  const numbers = await getPhoneNumbers(userId)
+  return numbers.some((row) => isPhoneNumberCarrierLive(row))
+}

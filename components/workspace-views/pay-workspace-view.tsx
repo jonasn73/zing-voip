@@ -29,11 +29,12 @@ type BillingSummary = {
   telnyx_number_purchase_label: string
   metered_voice_cents_per_minute: number
   suggested_credit_packs_cents: number[]
+  subscription_active?: boolean
+  subscription_tier?: string
+  subscription_tier_label?: string
+  needs_carrier_credit?: boolean
   plans?: { key: string; monthly_price_label: string; included_minutes_per_month: number }[]
 }
-
-const DEMO_MINUTES_USED = 1420
-const DEMO_AI_TOKENS = 142_310
 
 const INVOICES = [
   { id: "inv_04", date: "Apr 1, 2026", amount: "$49.00" },
@@ -86,8 +87,14 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
             title: "Line activated",
             description: "Your business number is now live on the Lyncr core network.",
           })
+          window.dispatchEvent(new CustomEvent("zing-business-numbers-changed"))
         } else if (result.provision_error) {
-          toast({ variant: "destructive", title: "Line not live yet", description: result.provision_error })
+          const needsPicker = /no longer available|pick a different/i.test(result.provision_error)
+          toast({
+            variant: needsPicker ? "default" : "destructive",
+            title: needsPicker ? "Pick a replacement number" : "Line not live yet",
+            description: result.provision_error,
+          })
         }
         await refreshBilling()
       } catch (e) {
@@ -103,16 +110,31 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
 
   const balanceLabel = billing?.credit_balance_label ?? "$0.00"
   const planKey = billing?.current_plan ?? "starter"
+  const subscriptionActive = billing?.subscription_active === true
+  const needsCarrierCredit = billing?.needs_carrier_credit === true
   const includedMinutes = useMemo(() => {
     const fromPlan = billing?.plans?.find((p) => p.key === planKey)?.included_minutes_per_month
     return fromPlan && fromPlan > 0 ? fromPlan : 300
   }, [billing?.plans, planKey])
 
-  const planLabel = billing?.plans?.find((p) => p.key === planKey)?.monthly_price_label ?? "$49/mo"
-  const usageHint = billing ? `${billing.current_plan} plan · ${planLabel}` : "Loading plan…"
+  const planLabel = billing?.plans?.find((p) => p.key === planKey)?.monthly_price_label ?? "$19/mo"
+  const usageHint = billing
+    ? subscriptionActive
+      ? `${billing.subscription_tier_label ?? "Starter"} · ${planLabel} · active`
+      : `${billing.current_plan} plan · ${planLabel}`
+    : "Loading plan…"
 
   async function handleSubscribe(tier: CheckoutSubscriptionTier) {
     if (checkoutTier != null) return
+    if (subscriptionActive) {
+      toast({
+        title: "Subscription already active",
+        description: needsCarrierCredit
+          ? "Add carrier credit below to activate your business line on Telnyx."
+          : "Your plan is already active. Manage billing in Stripe if you need to change tiers.",
+      })
+      return
+    }
     setCheckoutTier(tier)
     try {
       const { checkoutUrl } = await startStripeSubscriptionCheckout(tier)
@@ -153,6 +175,14 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
         </p>
       ) : null}
 
+      {needsCarrierCredit ? (
+        <p className="rounded-xl border border-amber-500/35 bg-amber-950/35 px-4 py-3 text-sm text-foreground/90">
+          Your subscription is active, but your line is not live yet. Add at least{" "}
+          {billing?.telnyx_number_purchase_label ?? "$2.00"} carrier credit below — then we will purchase and wire
+          your number on Telnyx automatically.
+        </p>
+      ) : null}
+
       <div className="flex flex-col gap-8">
         <div className="grid min-h-[5.75rem] gap-4 sm:grid-cols-3">
           <WorkspaceStatCard label="Your carrier credit" value={balanceLabel} accent="primary" />
@@ -163,7 +193,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
           />
           <WorkspaceUsageStatCard
             label="Current month usage"
-            used={DEMO_MINUTES_USED}
+            used={0}
             included={includedMinutes}
             hint={usageHint}
           />
@@ -177,33 +207,43 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
             </p>
           </div>
           <div className="grid gap-3 p-5 sm:grid-cols-3">
-            {CHECKOUT_TIER_OPTIONS.map((plan) => (
+            {CHECKOUT_TIER_OPTIONS.map((plan) => {
+              const isCurrentPlan =
+                subscriptionActive &&
+                (billing?.subscription_tier === plan.tier ||
+                  (plan.tier === "starter" && billing?.subscription_tier === "free_trial"))
+              return (
               <button
                 key={plan.tier}
                 type="button"
-                disabled={checkoutTier != null}
+                disabled={checkoutTier != null || isCurrentPlan}
                 onClick={() => void handleSubscribe(plan.tier)}
                 className={cn(
                   "flex flex-col items-start gap-2 rounded-xl border border-border/70 bg-card/80 p-4 text-left",
                   "transition-colors hover:border-primary/45 hover:bg-primary/5 disabled:opacity-60",
-                  plan.highlighted && "border-primary/40 ring-1 ring-primary/20"
+                  plan.highlighted && "border-primary/40 ring-1 ring-primary/20",
+                  isCurrentPlan && "border-primary/50 bg-primary/10"
                 )}
               >
                 <span className="text-sm font-semibold text-foreground">{plan.name}</span>
                 <span className="text-lg font-bold text-foreground">{plan.priceLabel}</span>
                 <span className="text-xs text-muted-foreground">{plan.lineLimitLabel}</span>
                 <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary">
-                  {checkoutTier === plan.tier ? (
+                  {isCurrentPlan ? (
+                    "Current plan"
+                  ) : checkoutTier === plan.tier ? (
                     <>
                       <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                       Opening…
                     </>
+                  ) : subscriptionActive ? (
+                    "Change plan (contact support)"
                   ) : (
                     "Subscribe"
                   )}
                 </span>
               </button>
-            ))}
+            )})}
           </div>
         </WorkspacePanel>
 
@@ -211,8 +251,11 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
           <div className="border-b border-zinc-800 px-5 py-4">
             <h2 className="text-sm font-semibold text-foreground">Add carrier credit</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Prepaid balance funds your phone number ({billing?.telnyx_number_purchase_label ?? "$2.00"} per line) and
-              call usage. After payment, your balance syncs with the Lyncr global routing network automatically.
+              {needsCarrierCredit
+                ? "Required next step: prepaid balance activates your reserved number on Telnyx."
+                : "Prepaid balance funds your phone number"}{" "}
+              ({billing?.telnyx_number_purchase_label ?? "$2.00"} per line) and call usage. After payment, your balance
+              syncs with the Lyncr global routing network automatically.
             </p>
           </div>
           <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">

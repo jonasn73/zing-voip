@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { getOnboardingProfile, updateOnboardingProfile } from "@/lib/db"
-import { isReservedLineCarrierLive } from "@/lib/onboarding-line-carrier-status"
+import { getOnboardingProfile, getPhoneNumbers, normalizePhoneNumberE164, updateOnboardingProfile } from "@/lib/db"
+import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
+import { isAnyLineCarrierLive, isPhoneNumberCarrierLive, isReservedLineCarrierLive } from "@/lib/onboarding-line-carrier-status"
 import type { UpdateOnboardingProfileRequest } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -52,10 +53,22 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const profile = await getOnboardingProfile(userId)
-    const carrier_live = profile?.reserved_number
-      ? await isReservedLineCarrierLive(userId, profile.reserved_number)
-      : false
+    let profile = await getOnboardingProfile(userId)
+    const numbers = await getPhoneNumbers(userId)
+    const liveRow = numbers.find((row) => isPhoneNumberCarrierLive(row))
+    if (
+      liveRow &&
+      profile &&
+      normalizePhoneNumberE164(liveRow.number) !== normalizePhoneNumberE164(profile.reserved_number ?? "")
+    ) {
+      profile = await updateOnboardingProfile(userId, {
+        reserved_number: liveRow.number,
+        reserved_number_display: formatPhoneDisplay(liveRow.number),
+      })
+    }
+    const carrier_live =
+      (await isAnyLineCarrierLive(userId)) ||
+      (profile?.reserved_number ? await isReservedLineCarrierLive(userId, profile.reserved_number) : false)
     return NextResponse.json(
       { data: profile, carrier_live },
       {

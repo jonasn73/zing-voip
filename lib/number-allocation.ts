@@ -168,7 +168,7 @@ export async function purchasePhoneNumberForUser(
     return { ok: false, error: gate.message, reason: gate.reason }
   }
 
-  const purchase = await purchaseAndConfigureTelnyxLine(phoneNumberE164, { allowAreaFallback: false })
+  const purchase = await purchaseAndConfigureTelnyxLine(phoneNumberE164)
   if (!purchase.ok) {
     return { ok: false, error: purchase.error }
   }

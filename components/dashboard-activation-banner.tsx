@@ -23,8 +23,8 @@ export const DashboardActivationBanner = memo(function DashboardActivationBanner
         <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm leading-relaxed text-foreground/90 sm:justify-start sm:text-left">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
           <span>
-            Payment received — your line is not live yet. Add at least $2.00 carrier credit on the Pay tab if
-            provisioning has not started.
+            Payment received — your line is not live yet. If your reserved number is unavailable, you will be asked to
+            pick a replacement. Add at least $2.00 carrier credit on the Pay tab if provisioning has not started.
           </span>
           <button
             type="button"

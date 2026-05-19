@@ -7,6 +7,7 @@ import {
   fetchOnboardingProvisionMode,
   confirmStripeSubscriptionAfterCheckout,
   provisionLineAfterPayment,
+  reserveAndProvisionLine,
   startStripeSubscriptionCheckout,
   type OnboardingProvisionMode,
 } from "@/lib/onboarding-profile-client"
@@ -20,8 +21,27 @@ import {
   needsStripeSubscriptionCheckout,
 } from "@/lib/onboarding-subscription-status"
 import { useToast } from "@/hooks/use-toast"
+import { ReplaceUnavailableLineModal } from "@/components/replace-unavailable-line-modal"
+import { dispatchBusinessNumbersChanged } from "@/components/dashboard-numbers-modal-context"
+import { extractUsAreaCode } from "@/lib/provision-line-types"
 
 export const SUBSCRIPTION_ACTIVATED_EVENT = "zing-subscription-activated"
+
+type ReplaceLinePrompt = {
+  unavailableDisplay: string
+  areaCode: string
+} | null
+
+type ProvisionError = Error & {
+  reason?: string
+  unavailable_number?: string
+  area_code?: string
+}
+
+function asProvisionError(e: unknown): ProvisionError {
+  if (e instanceof Error) return e as ProvisionError
+  return new Error(String(e)) as ProvisionError
+}
 
 type DashboardActivationContextValue = {
   profile: OnboardingProfile | null
@@ -36,8 +56,7 @@ type DashboardActivationContextValue = {
   simulationMode: boolean
   refreshProfile: (opts?: { silent?: boolean }) => Promise<void>
   applyActivatedProfile: (profile: OnboardingProfile) => void
-  /** Opens live Stripe Checkout when subscription is not active. */
-  requestLineActivation: (tier?: import("@/lib/subscription-checkout").CheckoutSubscriptionTier) => Promise<void>
+  requestLineActivation: (tier?: CheckoutSubscriptionTier) => Promise<void>
 }
 
 const DashboardActivationContext = createContext<DashboardActivationContextValue | null>(null)
@@ -50,6 +69,7 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
   const [loading, setLoading] = useState(true)
   const [activating, setActivating] = useState(false)
   const [checkoutTier, setCheckoutTier] = useState<CheckoutSubscriptionTier>("starter")
+  const [replacePrompt, setReplacePrompt] = useState<ReplaceLinePrompt>(null)
   const [provisionMode, setProvisionMode] = useState<OnboardingProvisionMode>({
     simulation_mode: true,
     notice: null,
@@ -76,39 +96,99 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
     setProfile(activated)
   }, [])
 
+  const openReplacePicker = useCallback((err: ProvisionError, fallbackDisplay: string | null) => {
+    const unavailable =
+      err.unavailable_number?.trim() ||
+      profile?.reserved_number?.trim() ||
+      ""
+    const areaCode =
+      err.area_code?.trim() ||
+      extractUsAreaCode(unavailable) ||
+      "502"
+    setReplacePrompt({
+      unavailableDisplay:
+        fallbackDisplay ||
+        formatPhoneDisplay(unavailable) ||
+        "Your reserved number",
+      areaCode,
+    })
+  }, [profile?.reserved_number])
+
+  const handleProvisionSuccess = useCallback(
+    async (phoneNumber: string) => {
+      toast({
+        title: "Line activated",
+        description: `${formatPhoneDisplay(phoneNumber)} is now live on the Lyncr network.`,
+      })
+      dispatchBusinessNumbersChanged()
+      await refreshProfile({ silent: true })
+    },
+    [toast, refreshProfile]
+  )
+
+  const runProvision = useCallback(
+    async (opts?: { phone_number?: string }) => {
+      const result = await provisionLineAfterPayment(opts)
+      await handleProvisionSuccess(result.phone_number)
+      return result
+    },
+    [handleProvisionSuccess]
+  )
+
+  const handleProvisionFailure = useCallback(
+    (e: unknown, fallbackDisplay: string | null) => {
+      const err = asProvisionError(e)
+      if (err.reason === "number_unavailable") {
+        sessionStorage.removeItem("lyncr-line-provision")
+        openReplacePicker(err, fallbackDisplay)
+        toast({
+          title: "Number unavailable",
+          description: "Your reserved line is no longer available. Pick a replacement — you won't be charged until one is purchased.",
+        })
+        return
+      }
+      const msg = err.message || "Could not provision your business line."
+      const needsCredit = /carrier credit/i.test(msg)
+      toast({
+        variant: needsCredit ? "default" : "destructive",
+        title: needsCredit ? "Add carrier credit on Pay" : "Line not live yet",
+        description: needsCredit
+          ? "Your subscription is active. Add at least $2 carrier credit on the Pay tab — we will activate your line automatically after payment."
+          : msg,
+      })
+    },
+    [openReplacePicker, toast]
+  )
+
+  const reservedDisplay =
+    profile?.reserved_number_display?.trim() || profile?.reserved_number?.trim() || null
+
   const requestLineActivation = useCallback(async (tier: CheckoutSubscriptionTier = checkoutTier) => {
     if (activating) return
     if (carrierLive) return
 
     setActivating(true)
     try {
-      // Already paid — provision the reserved line instead of opening checkout again.
       if ((needsLineProvisioning(profile, carrierLive) || hasPaidStripeSubscription(profile)) && !carrierLive) {
-        const result = await provisionLineAfterPayment()
-        if (result.substituted) {
-          toast({
-            title: "Line updated",
-            description: `We assigned ${formatPhoneDisplay(result.phone_number)} — your original number was unavailable.`,
-          })
-        } else {
-          toast({
-            title: "Line provisioning",
-            description: "Your business number is being activated on the Lyncr core network.",
-          })
+        try {
+          await runProvision()
+        } catch (e) {
+          handleProvisionFailure(e, reservedDisplay)
         }
-        await refreshProfile({ silent: true })
         return
       }
 
-      // DB flag set but Stripe id missing — try to recover subscription from Stripe first.
       if (profile?.has_active_subscription && needsStripeSubscriptionCheckout(profile, carrierLive)) {
         try {
           await confirmStripeSubscriptionAfterCheckout()
           await refreshProfile({ silent: true })
           const snapshot = await fetchOnboardingProfile()
           if (snapshot.profile?.stripe_subscription_id?.trim()) {
-            await provisionLineAfterPayment()
-            await refreshProfile({ silent: true })
+            try {
+              await runProvision()
+            } catch (e) {
+              handleProvisionFailure(e, reservedDisplay)
+            }
             toast({
               title: "Subscription linked",
               description: "We found your payment and started provisioning your line.",
@@ -128,14 +208,28 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
       window.location.href = checkoutUrl
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not start checkout"
-      toast({ variant: "destructive", title: "Activation failed", description: msg })
+      const needsCredit = /carrier credit/i.test(msg)
+      toast({
+        variant: needsCredit ? "default" : "destructive",
+        title: needsCredit ? "Add carrier credit on Pay" : "Activation failed",
+        description: needsCredit
+          ? "Your subscription is already paid. Open the Pay tab and add carrier credit to activate your line."
+          : msg,
+      })
     } finally {
       setActivating(false)
     }
-  }, [activating, profile, carrierLive, checkoutTier, toast, refreshProfile])
-
-  const reservedDisplay =
-    profile?.reserved_number_display?.trim() || profile?.reserved_number?.trim() || null
+  }, [
+    activating,
+    profile,
+    carrierLive,
+    checkoutTier,
+    toast,
+    refreshProfile,
+    runProvision,
+    handleProvisionFailure,
+    reservedDisplay,
+  ])
 
   const subscriptionActive = isVerifiedActiveSubscription(profile, carrierLive)
   const showTrialBanner = Boolean(reservedDisplay) && !subscriptionActive
@@ -172,21 +266,21 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
     sessionStorage.setItem("lyncr-line-provision", "1")
     void (async () => {
       try {
-        const result = await provisionLineAfterPayment()
-        if (result.substituted) {
-          toast({
-            title: "Line updated",
-            description: `Your original number was unavailable. We assigned ${formatPhoneDisplay(result.phone_number)} in the same area code.`,
-          })
-        }
-        await refreshProfile({ silent: true })
+        await runProvision()
       } catch (e) {
         sessionStorage.removeItem("lyncr-line-provision")
-        const msg = e instanceof Error ? e.message : "Could not provision your business line."
-        toast({ variant: "destructive", title: "Line not live yet", description: msg })
+        handleProvisionFailure(e, reservedDisplay)
       }
     })()
-  }, [loading, profile?.reserved_number, carrierLive, subscriptionActive, refreshProfile, toast])
+  }, [
+    loading,
+    profile?.reserved_number,
+    carrierLive,
+    subscriptionActive,
+    runProvision,
+    handleProvisionFailure,
+    reservedDisplay,
+  ])
 
   useEffect(() => {
     const checkout = searchParams.get("stripe_checkout")
@@ -261,7 +355,25 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
   )
 
   return (
-    <DashboardActivationContext.Provider value={value}>{children}</DashboardActivationContext.Provider>
+    <DashboardActivationContext.Provider value={value}>
+      {children}
+      <ReplaceUnavailableLineModal
+        open={replacePrompt != null}
+        onOpenChange={(open) => {
+          if (!open) setReplacePrompt(null)
+        }}
+        unavailableDisplay={replacePrompt?.unavailableDisplay ?? "Your reserved number"}
+        areaCode={replacePrompt?.areaCode ?? "502"}
+        onConfirmLine={async (line) => {
+          const { phone_number } = await reserveAndProvisionLine({
+            reserved_number: line.number,
+            reserved_number_display: line.display,
+          })
+          setReplacePrompt(null)
+          await handleProvisionSuccess(phone_number)
+        }}
+      />
+    </DashboardActivationContext.Provider>
   )
 }
 

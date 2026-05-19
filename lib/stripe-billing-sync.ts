@@ -1,5 +1,10 @@
 import type Stripe from "stripe"
-import { adminAdjustUserCreditBalance, getUser } from "@/lib/db"
+import {
+  adminAdjustUserCreditBalance,
+  billingLedgerHasEntry,
+  getUser,
+  updateUserBillingPlan,
+} from "@/lib/db"
 import { type BillingPlanKey, TELNYX_NUMBER_PURCHASE_CENTS } from "@/lib/billing-pricing"
 import { billingPlanKeyFromSubscriptionTier, type SubscriptionTier } from "@/lib/subscription-tier"
 import { syncTelnyxCarrierWalletAfterCreditPurchase } from "@/lib/telnyx-billing"
@@ -10,20 +15,11 @@ import {
 } from "@/lib/stripe-webhook-sync"
 
 async function creditPackAlreadyApplied(userId: string, sessionId: string): Promise<boolean> {
-  const { getSql } = await import("@/lib/db")
-  const sql = getSql()
-  const rows = await sql`
-    SELECT 1 FROM billing_ledger
-    WHERE user_id = ${userId} AND reference = ${sessionId} AND reason = 'stripe_credit_pack'
-    LIMIT 1
-  `
-  return rows.length > 0
+  return billingLedgerHasEntry(userId, sessionId, "stripe_credit_pack")
 }
 
 export async function setUserBillingPlan(userId: string, plan: BillingPlanKey): Promise<void> {
-  const { getSql } = await import("@/lib/db")
-  const sql = getSql()
-  await sql`UPDATE users SET billing_plan = ${plan} WHERE id = ${userId}`
+  await updateUserBillingPlan(userId, plan)
 }
 
 /** Sync users.billing_plan from subscription_tier after Stripe webhook. */

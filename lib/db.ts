@@ -117,6 +117,18 @@ function pgBool(v: unknown): boolean {
   return v === true || v === "t" || v === "true" || v === 1
 }
 
+/** TIMESTAMPTZ from Neon may be a JS Date — always store/read ISO-8601, never Date.toString(). */
+function pgTimestamptzToIso(value: unknown): string | null {
+  if (value == null) return null
+  if (value instanceof Date) return value.toISOString()
+  const s = String(value).trim()
+  if (!s) return null
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s
+  const ms = Date.parse(s)
+  if (Number.isFinite(ms)) return new Date(ms).toISOString()
+  return s
+}
+
 /** True when `users.inbound_receptionist_whisper_enabled` is missing (run scripts/017-inbound-whisper-user-toggle.sql). */
 function isMissingInboundReceptionistWhisperColumnError(e: unknown): boolean {
   const code = pgErrorCode(e)
@@ -2849,6 +2861,34 @@ export async function getAdminUserDetail(targetUserId: string): Promise<AdminUse
 }
 
 /** Credit adjustment + ledger row (platform admin). */
+/** True when a billing_ledger row already exists for this checkout reference (idempotent credit packs). */
+export async function billingLedgerHasEntry(
+  userId: string,
+  reference: string,
+  reason: string
+): Promise<boolean> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT 1 FROM billing_ledger
+      WHERE user_id = ${userId} AND reference = ${reference} AND reason = ${reason}
+      LIMIT 1
+    `
+    return rows.length > 0
+  } catch (e) {
+    if (isUndefinedRelationError(e, "billing_ledger")) {
+      return false
+    }
+    throw e
+  }
+}
+
+/** Update users.billing_plan after Stripe subscription sync. */
+export async function updateUserBillingPlan(userId: string, plan: string): Promise<void> {
+  const sql = getSql()
+  await sql`UPDATE users SET billing_plan = ${plan} WHERE id = ${userId}`
+}
+
 export async function adminAdjustUserCreditBalance(params: {
   target_user_id: string
   delta_cents: number
@@ -2976,11 +3016,11 @@ function mapOnboardingProfileRow(row: Record<string, unknown>): OnboardingProfil
     has_active_subscription: pgBool(row.has_active_subscription),
     subscription_tier: row.subscription_tier != null ? String(row.subscription_tier) : "free_trial",
     carrier_credit: row.carrier_credit != null ? Number(row.carrier_credit) : 0,
-    billing_cycle_start: row.billing_cycle_start != null ? String(row.billing_cycle_start) : null,
-    billing_cycle_end: row.billing_cycle_end != null ? String(row.billing_cycle_end) : null,
+    billing_cycle_start: pgTimestamptzToIso(row.billing_cycle_start),
+    billing_cycle_end: pgTimestamptzToIso(row.billing_cycle_end),
     stripe_customer_id: row.stripe_customer_id != null ? String(row.stripe_customer_id) : null,
     stripe_subscription_id: row.stripe_subscription_id != null ? String(row.stripe_subscription_id) : null,
-    updated_at: row.updated_at != null ? String(row.updated_at) : new Date().toISOString(),
+    updated_at: pgTimestamptzToIso(row.updated_at) ?? new Date().toISOString(),
   }
 }
 
@@ -3099,14 +3139,16 @@ export async function updateOnboardingProfile(
     updates.carrier_credit !== undefined
       ? updates.carrier_credit
       : existing?.carrier_credit ?? 0
-  const billing_cycle_start =
+  const billing_cycle_start = pgTimestamptzToIso(
     updates.billing_cycle_start !== undefined
       ? updates.billing_cycle_start
       : existing?.billing_cycle_start ?? null
-  const billing_cycle_end =
+  )
+  const billing_cycle_end = pgTimestamptzToIso(
     updates.billing_cycle_end !== undefined
       ? updates.billing_cycle_end
       : existing?.billing_cycle_end ?? null
+  )
   const stripe_customer_id =
     updates.stripe_customer_id !== undefined
       ? updates.stripe_customer_id
@@ -3333,6 +3375,11 @@ export async function retryProvisionOnboardingBuyLine(userId: string): Promise<v
   if (row?.provider_number_sid?.trim()) return
 
   try {
+    if (profile.stripe_subscription_id?.trim()) {
+      const { provisionReservedLineAfterStripePayment } = await import("@/lib/stripe-webhook-sync")
+      await provisionReservedLineAfterStripePayment(userId)
+      return
+    }
     await provisionOnboardingBuyLine(userId, profile)
   } catch (e) {
     console.error("[retryProvisionOnboardingBuyLine]", userId, e)

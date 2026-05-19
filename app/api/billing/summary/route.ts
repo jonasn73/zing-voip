@@ -8,9 +8,11 @@ import {
   METERED_VOICE_CENTS_PER_MINUTE,
   PLAN_INCLUDED_MINUTES_PER_MONTH,
   PLAN_MONTHLY_PRICE_CENTS,
+  billingPlanKeyFromSubscriptionTier,
   formatUsdFromCents,
   type BillingPlanKey,
 } from "@/lib/billing-pricing"
+import { hasEnoughCarrierCredit } from "@/lib/subscription-tier"
 import {
   CARRIER_PROVISIONING_FEE_USD,
   TIER_DISPLAY_NAME,
@@ -23,8 +25,16 @@ export async function GET(req: Request) {
   try {
     const ctx = await requireSessionUser(req)
     if (ctx instanceof NextResponse) return ctx
-    const plan = (ctx.user.billing_plan || "trial") as BillingPlanKey
-    const safePlan: BillingPlanKey = BILLING_PLAN_ORDER.includes(plan) ? plan : "trial"
+    const profile = await getOnboardingProfile(ctx.user.id)
+    const hasPaidSubscription = Boolean(profile?.stripe_subscription_id?.trim())
+    const subscriptionTier = normalizeSubscriptionTier(profile?.subscription_tier)
+    const planFromProfile = billingPlanKeyFromSubscriptionTier(subscriptionTier, hasPaidSubscription)
+    const legacyPlan = (ctx.user.billing_plan || "trial") as BillingPlanKey
+    const safePlan: BillingPlanKey = hasPaidSubscription
+      ? planFromProfile
+      : BILLING_PLAN_ORDER.includes(legacyPlan)
+        ? legacyPlan
+        : "trial"
     const plans = BILLING_PLAN_ORDER.map((key) => ({
       key,
       monthly_price_cents: PLAN_MONTHLY_PRICE_CENTS[key],
@@ -32,9 +42,9 @@ export async function GET(req: Request) {
       included_minutes_per_month: PLAN_INCLUDED_MINUTES_PER_MONTH[key],
     }))
     const balanceCents = Number(ctx.user.credit_balance_cents) || 0
-    const profile = await getOnboardingProfile(ctx.user.id)
-    const subscriptionTier = normalizeSubscriptionTier(profile?.subscription_tier)
     const carrierCreditUsd = Number(profile?.carrier_credit ?? balanceCents / 100)
+    const needsCarrierCredit =
+      hasPaidSubscription && !hasEnoughCarrierCredit(carrierCreditUsd > 0 ? carrierCreditUsd : balanceCents / 100)
 
     let telnyx_carrier_balance_label: string | null = null
     let telnyx_available_credit_label: string | null = null
@@ -56,6 +66,9 @@ export async function GET(req: Request) {
         carrier_credit_label: formatUsdFromCents(Math.round(carrierCreditUsd * 100)),
         subscription_tier: subscriptionTier,
         subscription_tier_label: TIER_DISPLAY_NAME[subscriptionTier],
+        subscription_active: hasPaidSubscription,
+        stripe_subscription_id: profile?.stripe_subscription_id?.trim() || null,
+        needs_carrier_credit: needsCarrierCredit,
         active_number_limit: tierActiveNumberLimit(subscriptionTier),
         telnyx_carrier_balance_label,
         telnyx_available_credit_label,

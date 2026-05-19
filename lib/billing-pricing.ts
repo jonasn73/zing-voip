@@ -40,3 +40,16 @@ export function formatUsdFromCents(cents: number): string {
   const n = Math.round(cents) / 100
   return n.toLocaleString(undefined, { style: "currency", currency: "USD" })
 }
+
+/** Map stored subscription tier to the billing summary plan key shown on Pay. */
+export function billingPlanKeyFromSubscriptionTier(
+  tier: string | null | undefined,
+  hasPaidSubscription: boolean
+): BillingPlanKey {
+  if (!hasPaidSubscription) return "trial"
+  const key = tier?.trim().toLowerCase()
+  if (key === "professional" || key === "pro") return "growth"
+  if (key === "business" || key === "enterprise") return "enterprise"
+  if (key === "starter") return "starter"
+  return "starter"
+}

@@ -146,20 +146,25 @@ export async function confirmStripeSubscriptionAfterCheckout(
 }
 
 /** Buy/provision the reserved DID on Telnyx after subscription is active. */
-export async function provisionLineAfterPayment(): Promise<{
+export async function provisionLineAfterPayment(opts?: {
+  phone_number?: string
+}): Promise<{
   phone_number: string
-  substituted: boolean
+  user_confirmed_number: boolean
+  reason?: string
 }> {
   const res = await fetch("/api/billing/stripe/provision-line", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify(opts?.phone_number ? { phone_number: opts.phone_number } : {}),
   })
   const json = (await res.json().catch(() => ({}))) as {
-    data?: { phone_number?: string; substituted?: boolean }
+    data?: { phone_number?: string; user_confirmed_number?: boolean }
     error?: string
     reason?: string
+    unavailable_number?: string
+    area_code?: string
     upgrade_message?: string
   }
   if (!res.ok) {
@@ -167,13 +172,36 @@ export async function provisionLineAfterPayment(): Promise<{
       const { showUpgradeSubscriptionModal } = await import("@/components/upgrade-subscription-modal")
       showUpgradeSubscriptionModal({ message: json.upgrade_message || json.error })
     }
-    throw new Error(json.error || "Could not provision your line")
+    const err = new Error(json.error || "Could not provision your line") as Error & {
+      reason?: string
+      unavailable_number?: string
+      area_code?: string
+    }
+    err.reason = json.reason
+    err.unavailable_number = json.unavailable_number
+    err.area_code = json.area_code
+    throw err
   }
   if (!json.data?.phone_number) throw new Error("Provision response missing phone number")
   return {
     phone_number: json.data.phone_number,
-    substituted: json.data.substituted === true,
+    user_confirmed_number: json.data.user_confirmed_number === true,
+    reason: json.reason,
   }
+}
+
+/** Reserve a replacement line, then provision it on Telnyx (user-confirmed picker flow). */
+export async function reserveAndProvisionLine(payload: {
+  reserved_number: string
+  reserved_number_display: string
+}): Promise<{ phone_number: string }> {
+  await reserveOnboardingNumberClient({
+    reserved_number: payload.reserved_number,
+    reserved_number_display: payload.reserved_number_display,
+    reserved_number_method: "buy",
+  })
+  const result = await provisionLineAfterPayment({ phone_number: payload.reserved_number })
+  return { phone_number: result.phone_number }
 }
 
 /** Stripe Checkout for a prepaid carrier credit pack ($10 / $25 / $50 / $100). */

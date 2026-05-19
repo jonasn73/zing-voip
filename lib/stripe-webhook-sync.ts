@@ -1,4 +1,5 @@
 import type Stripe from "stripe"
+import { normalizeCheckoutSubscriptionTier } from "@/lib/subscription-checkout"
 import { normalizeSubscriptionTier, subscriptionTierFromStripePriceId, type SubscriptionTier } from "@/lib/subscription-tier"
 import {
   adjustUserCarrierCredit,
@@ -18,10 +19,12 @@ import {
 } from "@/lib/subscription-tier"
 import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
 import { evaluateNumberProvisionGate } from "@/lib/number-allocation"
+import {
+  extractUsAreaCode,
+  type ProvisionLineResult,
+} from "@/lib/provision-line-types"
 
-export type ProvisionLineResult =
-  | { ok: true; phone_number: string; substituted: boolean }
-  | { ok: false; error: string }
+export type { ProvisionLineResult } from "@/lib/provision-line-types"
 
 /** Read subscription tier from Stripe subscription line items. */
 export function resolveSubscriptionTierFromStripeSubscription(
@@ -55,28 +58,86 @@ function resolveUserIdFromStripeObject(obj: {
   return ref || null
 }
 
-/** Buy reserved DID on Telnyx after Stripe payment — always live, skips simulation gate. */
-export async function provisionReservedLineAfterStripePayment(userId: string): Promise<ProvisionLineResult> {
+function mapPurchaseFailure(
+  requestedE164: string,
+  purchase: { ok: false; error: string; reason?: string }
+): ProvisionLineResult {
+  if (purchase.reason === "number_unavailable") {
+    return {
+      ok: false,
+      reason: "number_unavailable",
+      unavailable_number: requestedE164,
+      area_code: extractUsAreaCode(requestedE164),
+      error: purchase.error,
+    }
+  }
+  if (purchase.reason === "area_empty") {
+    return {
+      ok: false,
+      reason: "number_unavailable",
+      unavailable_number: requestedE164,
+      area_code: extractUsAreaCode(requestedE164),
+      error: purchase.error,
+    }
+  }
+  return { ok: false, reason: "carrier_error", error: purchase.error }
+}
+
+/**
+ * Buy the user's chosen DID on Telnyx after subscription + carrier credit are ready.
+ * Never auto-substitutes — if the exact number is unavailable, returns `number_unavailable` so the UI can ask the user to pick another.
+ * Carrier credit ($2) is deducted only after Telnyx confirms the purchase.
+ */
+export async function provisionReservedLineAfterStripePayment(
+  userId: string,
+  opts?: { phoneNumberE164?: string }
+): Promise<ProvisionLineResult> {
   const profile = await getOnboardingProfile(userId)
-  if (!profile?.reserved_number?.trim()) {
-    return { ok: false, error: "No reserved business line on file." }
+  if (!profile?.reserved_number?.trim() && !opts?.phoneNumberE164?.trim()) {
+    return { ok: false, reason: "not_configured", error: "No reserved business line on file." }
   }
 
-  if (profile.reserved_number_method === "port") {
+  const requestedRaw = opts?.phoneNumberE164?.trim() || profile!.reserved_number!.trim()
+  const normalized = normalizePhoneNumberE164(requestedRaw)
+  if (!normalized.replace(/\D/g, "").length) {
+    return { ok: false, reason: "not_configured", error: "Invalid business line on file." }
+  }
+
+  if (profile?.reserved_number_method === "port" && !opts?.phoneNumberE164?.trim()) {
     await syncOnboardingLineToPhoneNumbers(userId, profile)
-    return { ok: true, phone_number: profile.reserved_number, substituted: false }
+    return { ok: true, phone_number: profile.reserved_number!, user_confirmed_number: false }
   }
 
-  const normalized = normalizePhoneNumberE164(profile.reserved_number)
   const existing = await getPhoneNumbers(userId)
-  const row = existing.find((r) => normalizePhoneNumberE164(r.number) === normalized)
-  if (row?.provider_number_sid?.trim()) {
-    return { ok: true, phone_number: row.number, substituted: false }
+  const row =
+    existing.find((r) => normalizePhoneNumberE164(r.number) === normalized) ??
+    existing.find((r) => !r.provider_number_sid?.trim())
+  if (row?.provider_number_sid?.trim() && normalizePhoneNumberE164(row.number) === normalized) {
+    return { ok: true, phone_number: row.number, user_confirmed_number: Boolean(opts?.phoneNumberE164) }
   }
 
-  const provisionGate = await evaluateNumberProvisionGate(userId, profile.reserved_number)
+  const userConfirmed = Boolean(opts?.phoneNumberE164?.trim())
+  if (userConfirmed || normalizePhoneNumberE164(profile?.reserved_number ?? "") !== normalized) {
+    await updateOnboardingProfile(userId, {
+      reserved_number: normalized,
+      reserved_number_display: formatPhoneDisplay(normalized),
+      reserved_number_method: "buy",
+    })
+    await syncOnboardingLineToPhoneNumbers(userId, {
+      ...profile!,
+      reserved_number: normalized,
+      reserved_number_display: formatPhoneDisplay(normalized),
+      reserved_number_method: "buy",
+    }).catch(() => null)
+  }
+
+  const provisionGate = await evaluateNumberProvisionGate(userId, normalized)
   if (!provisionGate.allowed) {
-    return { ok: false, error: provisionGate.message }
+    return {
+      ok: false,
+      reason: provisionGate.reason === "insufficient_credit" ? "insufficient_credit" : "tier_limit",
+      error: provisionGate.message,
+    }
   }
 
   const user = await getUser(userId)
@@ -86,20 +147,14 @@ export async function provisionReservedLineAfterStripePayment(userId: string): P
   if (!hasEnoughCarrierCredit(carrierCreditUsd)) {
     return {
       ok: false,
+      reason: "insufficient_credit",
       error: `Add at least $${CARRIER_PROVISIONING_FEE_USD.toFixed(2)} carrier credit on the Pay tab before we can purchase your line.`,
     }
   }
 
-  const purchase = await purchaseAndConfigureTelnyxLine(normalized, { allowAreaFallback: true })
+  const purchase = await purchaseAndConfigureTelnyxLine(normalized)
   if (!purchase.ok) {
-    return { ok: false, error: purchase.error }
-  }
-
-  if (purchase.substituted) {
-    await updateOnboardingProfile(userId, {
-      reserved_number: purchase.phone_number,
-      reserved_number_display: formatPhoneDisplay(purchase.phone_number),
-    })
+    return mapPurchaseFailure(normalized, purchase)
   }
 
   await adjustUserCarrierCredit({
@@ -107,13 +162,16 @@ export async function provisionReservedLineAfterStripePayment(userId: string): P
     deltaUsd: -CARRIER_PROVISIONING_FEE_USD,
     reason: "carrier_number_purchase",
     reference: purchase.order_id,
-    meta: { phone_number: purchase.phone_number },
+    meta: { phone_number: purchase.phone_number, requested_number: normalized },
+  })
+
+  await updateOnboardingProfile(userId, {
+    reserved_number: purchase.phone_number,
+    reserved_number_display: formatPhoneDisplay(purchase.phone_number),
   })
 
   const label = user?.business_name?.trim() || "Business Line"
-  const friendly =
-    (purchase.substituted ? formatPhoneDisplay(purchase.phone_number) : profile.reserved_number_display?.trim()) ||
-    purchase.phone_number
+  const friendly = formatPhoneDisplay(purchase.phone_number)
 
   if (row) {
     await updatePhoneNumber(row.id, userId, {
@@ -134,7 +192,11 @@ export async function provisionReservedLineAfterStripePayment(userId: string): P
     })
   }
 
-  return { ok: true, phone_number: purchase.phone_number, substituted: purchase.substituted }
+  return {
+    ok: true,
+    phone_number: purchase.phone_number,
+    user_confirmed_number: userConfirmed,
+  }
 }
 
 /** Apply Stripe subscription billing state to Neon and provision Telnyx. */
@@ -172,7 +234,7 @@ export async function syncStripeSubscriptionToNeon(
 
   const provision = await provisionReservedLineAfterStripePayment(userId)
   if (!provision.ok) {
-    console.error("[stripe] Telnyx provision after payment failed:", provision.error)
+    console.error("[stripe] Telnyx provision after payment failed:", provision.error, provision.reason)
   }
 }
 

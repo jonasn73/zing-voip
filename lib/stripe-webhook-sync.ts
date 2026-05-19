@@ -10,7 +10,12 @@ import {
   updatePhoneNumber,
 } from "@/lib/db"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
+import {
+  TELNYX_NUMBER_PURCHASE_CENTS,
+  formatUsdFromCents,
+} from "@/lib/billing-pricing"
 import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
+import { adminAdjustUserCreditBalance } from "@/lib/db"
 
 export type ProvisionLineResult =
   | { ok: true; phone_number: string; substituted: boolean }
@@ -50,6 +55,15 @@ export async function provisionReservedLineAfterStripePayment(userId: string): P
     return { ok: true, phone_number: row.number, substituted: false }
   }
 
+  const user = await getUser(userId)
+  const creditBalance = Number(user?.credit_balance_cents ?? 0)
+  if (creditBalance < TELNYX_NUMBER_PURCHASE_CENTS) {
+    return {
+      ok: false,
+      error: `Add at least ${formatUsdFromCents(TELNYX_NUMBER_PURCHASE_CENTS)} carrier credit on the Pay tab before we can purchase your line on Telnyx.`,
+    }
+  }
+
   const purchase = await purchaseAndConfigureTelnyxLine(normalized, { allowAreaFallback: true })
   if (!purchase.ok) {
     return { ok: false, error: purchase.error }
@@ -62,7 +76,15 @@ export async function provisionReservedLineAfterStripePayment(userId: string): P
     })
   }
 
-  const user = await getUser(userId)
+  await adminAdjustUserCreditBalance({
+    target_user_id: userId,
+    delta_cents: -TELNYX_NUMBER_PURCHASE_CENTS,
+    reason: "telnyx_number_purchase",
+    actor_user_id: userId,
+    reference: purchase.order_id,
+    meta: { phone_number: purchase.phone_number },
+  })
+
   const label = user?.business_name?.trim() || "Business Line"
   const friendly =
     (purchase.substituted ? formatPhoneDisplay(purchase.phone_number) : profile.reserved_number_display?.trim()) ||

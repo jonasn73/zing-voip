@@ -27,6 +27,12 @@ export const PLAN_INCLUDED_MINUTES_PER_MONTH: Record<BillingPlanKey, number> = {
 /** Metered voice overage after included minutes (USD cents per minute). */
 export const METERED_VOICE_CENTS_PER_MINUTE = 9
 
+/** Estimated Telnyx cost to buy + activate one local DID (USD cents). */
+export const TELNYX_NUMBER_PURCHASE_CENTS = 200
+
+/** Default paid plan for new line activation checkout. */
+export const DEFAULT_PAID_PLAN: BillingPlanKey = "starter"
+
 /** Suggested prepaid top-up packs (USD cents). */
 export const CREDIT_PACK_CENTS_USD = [1000, 2500, 5000, 10000] as const
 

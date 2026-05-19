@@ -1,0 +1,95 @@
+import type Stripe from "stripe"
+import { adminAdjustUserCreditBalance, getUser } from "@/lib/db"
+import { type BillingPlanKey, TELNYX_NUMBER_PURCHASE_CENTS } from "@/lib/billing-pricing"
+import { syncTelnyxCarrierWalletAfterCreditPurchase } from "@/lib/telnyx-billing"
+import { getStripeClient } from "@/lib/stripe-config"
+import { syncStripeSubscriptionToNeon, provisionReservedLineAfterStripePayment } from "@/lib/stripe-webhook-sync"
+
+async function creditPackAlreadyApplied(userId: string, sessionId: string): Promise<boolean> {
+  const { getSql } = await import("@/lib/db")
+  const sql = getSql()
+  const rows = await sql`
+    SELECT 1 FROM billing_ledger
+    WHERE user_id = ${userId} AND reference = ${sessionId} AND reason = 'stripe_credit_pack'
+    LIMIT 1
+  `
+  return rows.length > 0
+}
+
+export async function setUserBillingPlan(userId: string, plan: BillingPlanKey): Promise<void> {
+  const { getSql } = await import("@/lib/db")
+  const sql = getSql()
+  await sql`UPDATE users SET billing_plan = ${plan} WHERE id = ${userId}`
+}
+
+/** Credit the user's prepaid balance after a Stripe credit-pack checkout. */
+export async function applyStripeCreditPackPayment(
+  userId: string,
+  session: Stripe.Checkout.Session
+): Promise<{ balance_after_cents: number; telnyx_message: string }> {
+  const cents = Number(session.metadata?.credit_cents ?? session.amount_total ?? 0)
+  if (!Number.isFinite(cents) || cents <= 0) {
+    throw new Error("Credit pack checkout missing credit_cents metadata.")
+  }
+
+  if (await creditPackAlreadyApplied(userId, session.id)) {
+    const user = await getUser(userId)
+    return {
+      balance_after_cents: Number(user?.credit_balance_cents ?? 0),
+      telnyx_message: "Credit already applied for this checkout.",
+    }
+  }
+
+  const { balance_after_cents } = await adminAdjustUserCreditBalance({
+    target_user_id: userId,
+    delta_cents: cents,
+    reason: "stripe_credit_pack",
+    actor_user_id: userId,
+    reference: session.id,
+    meta: {
+      payment_intent: session.payment_intent,
+      amount_usd: cents / 100,
+    },
+  })
+
+  const telnyx = await syncTelnyxCarrierWalletAfterCreditPurchase(cents / 100)
+  return { balance_after_cents, telnyx_message: telnyx.message }
+}
+
+/** Route completed checkout sessions — subscription or one-time credit pack. */
+export async function handleStripeCheckoutSessionCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  const userId = session.metadata?.user_id?.trim()
+  if (!userId) return
+
+  const checkoutType = session.metadata?.checkout_type?.trim() || "subscription"
+
+  if (checkoutType === "credit_pack") {
+    if (session.payment_status !== "paid" && session.status !== "complete") return
+    await applyStripeCreditPackPayment(userId, session)
+    const provision = await provisionReservedLineAfterStripePayment(userId)
+    if (!provision.ok) {
+      console.error("[stripe] provision after credit pack failed:", provision.error)
+    }
+    return
+  }
+
+  if (session.mode !== "subscription") return
+  if (session.payment_status !== "paid" && session.status !== "complete") return
+
+  const subRef = session.subscription
+  const subscriptionId = typeof subRef === "string" ? subRef : subRef?.id
+  if (!subscriptionId) return
+
+  const stripe = getStripeClient()
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+  const plan = (session.metadata?.plan?.trim() || "starter") as BillingPlanKey
+
+  await syncStripeSubscriptionToNeon(userId, subscription, {
+    customerId: typeof session.customer === "string" ? session.customer : session.customer?.id,
+  })
+  await setUserBillingPlan(userId, plan)
+}
+
+export function userHasCarrierCreditForNumberPurchase(creditBalanceCents: number): boolean {
+  return creditBalanceCents >= TELNYX_NUMBER_PURCHASE_CENTS
+}

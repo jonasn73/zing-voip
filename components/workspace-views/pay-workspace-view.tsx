@@ -1,8 +1,12 @@
 "use client"
 
-import { memo, useEffect, useMemo, useState } from "react"
-import { Download } from "lucide-react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { Loader2, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { formatUsdFromCents } from "@/lib/billing-pricing"
+import { confirmCreditPackCheckout, startCreditPackCheckout } from "@/lib/onboarding-profile-client"
+import { useToast } from "@/hooks/use-toast"
 import {
   WorkspacePage,
   WorkspacePageHeader,
@@ -11,7 +15,6 @@ import {
   WorkspaceTableWrap,
   WorkspaceTh,
   WorkspaceTd,
-  WorkspaceTokenStatCard,
   WorkspaceUsageStatCard,
   WORKSPACE_TABLE_ROW_CLASS,
 } from "@/components/dashboard-workspace-ui"
@@ -20,63 +23,107 @@ type BillingSummary = {
   current_plan: string
   credit_balance_cents: number
   credit_balance_label: string
+  telnyx_carrier_balance_label: string | null
+  telnyx_available_credit_label: string | null
+  telnyx_number_purchase_label: string
   metered_voice_cents_per_minute: number
-  plans?: { key: string; included_minutes_per_month: number }[]
+  suggested_credit_packs_cents: number[]
+  plans?: { key: string; monthly_price_label: string; included_minutes_per_month: number }[]
 }
 
 const DEMO_MINUTES_USED = 1420
-const DEMO_MINUTES_INCLUDED = 5000
 const DEMO_AI_TOKENS = 142_310
 
 const INVOICES = [
   { id: "inv_04", date: "Apr 1, 2026", amount: "$49.00" },
   { id: "inv_03", date: "Mar 1, 2026", amount: "$49.00" },
-  { id: "inv_02", date: "Feb 1, 2026", amount: "$29.00" },
+  { id: "inv_02", date: "Feb 1, 2026", amount: "$49.00" },
   { id: "inv_01", date: "Jan 15, 2026", amount: "$15.00" },
 ]
 
 export const PayWorkspaceView = memo(function PayWorkspaceView() {
+  const { toast } = useToast()
+  const searchParams = useSearchParams()
   const [billing, setBilling] = useState<BillingSummary | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [buyingPack, setBuyingPack] = useState<number | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
+  const refreshBilling = useCallback(async () => {
     setLoadError(null)
-
-    fetch("/api/billing/summary", { credentials: "include" })
-      .then(async (res) => {
-        if (res.status === 401) throw new Error("Sign in again to view billing.")
-        if (!res.ok) {
-          const j = (await res.json().catch(() => ({}))) as { error?: string }
-          throw new Error(j.error || "Billing unavailable")
-        }
-        const json = (await res.json()) as { data?: BillingSummary }
-        return json.data ?? null
-      })
-      .then((data) => {
-        if (cancelled) return
-        setBilling(data)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setBilling(null)
-        setLoadError(e instanceof Error ? e.message : "Could not load billing")
-      })
-
-    return () => {
-      cancelled = true
+    const res = await fetch("/api/billing/summary", { credentials: "include" })
+    if (res.status === 401) throw new Error("Sign in again to view billing.")
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string }
+      throw new Error(j.error || "Billing unavailable")
     }
+    const json = (await res.json()) as { data?: BillingSummary }
+    setBilling(json.data ?? null)
   }, [])
 
+  useEffect(() => {
+    void refreshBilling().catch((e) => {
+      setBilling(null)
+      setLoadError(e instanceof Error ? e.message : "Could not load billing")
+    })
+  }, [refreshBilling])
+
+  useEffect(() => {
+    const checkout = searchParams.get("credit_checkout")
+    const sessionId = searchParams.get("session_id")
+    if (checkout !== "success" || !sessionId) return
+
+    void (async () => {
+      try {
+        const result = await confirmCreditPackCheckout(sessionId)
+        toast({
+          title: "Carrier credit added",
+          description: `New balance: ${formatUsdFromCents(result.balance_after_cents)}. ${result.telnyx_message}`,
+        })
+        if (result.provisioned) {
+          toast({
+            title: "Line activated",
+            description: "Your business number is now live on Telnyx.",
+          })
+        } else if (result.provision_error) {
+          toast({ variant: "destructive", title: "Line not live yet", description: result.provision_error })
+        }
+        await refreshBilling()
+      } catch (e) {
+        toast({
+          variant: "destructive",
+          title: "Credit sync failed",
+          description: e instanceof Error ? e.message : "Could not apply credit purchase",
+        })
+      }
+      window.history.replaceState({}, "", "/dashboard/pay")
+    })()
+  }, [searchParams, refreshBilling, toast])
+
   const balanceLabel = billing?.credit_balance_label ?? "$0.00"
-  const planKey = billing?.current_plan ?? "enterprise"
+  const planKey = billing?.current_plan ?? "starter"
   const includedMinutes = useMemo(() => {
     const fromPlan = billing?.plans?.find((p) => p.key === planKey)?.included_minutes_per_month
-    return fromPlan && fromPlan > 0 ? fromPlan : DEMO_MINUTES_INCLUDED
+    return fromPlan && fromPlan > 0 ? fromPlan : 300
   }, [billing?.plans, planKey])
 
-  const usageHint = billing ? `${billing.current_plan} plan · metered overage applies` : "Sample usage · billing cycle"
-  const tokenHint = "Consumed this billing cycle"
+  const planLabel = billing?.plans?.find((p) => p.key === planKey)?.monthly_price_label ?? "$49/mo"
+  const usageHint = billing ? `${billing.current_plan} plan · ${planLabel}` : "Loading plan…"
+
+  async function handleBuyCredit(amountCents: number) {
+    if (buyingPack != null) return
+    setBuyingPack(amountCents)
+    try {
+      const { checkoutUrl } = await startCreditPackCheckout(amountCents)
+      window.location.href = checkoutUrl
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Checkout failed",
+        description: e instanceof Error ? e.message : "Could not start checkout",
+      })
+      setBuyingPack(null)
+    }
+  }
 
   return (
     <WorkspacePage className="min-h-[32rem]">
@@ -90,19 +137,59 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
 
       <div className="flex flex-col gap-8">
         <div className="grid min-h-[5.75rem] gap-4 sm:grid-cols-3">
-          <WorkspaceStatCard label="Account balance" value={balanceLabel} accent="primary" />
+          <WorkspaceStatCard label="Your carrier credit" value={balanceLabel} accent="primary" />
+          <WorkspaceStatCard
+            label="Telnyx wallet (platform)"
+            value={billing?.telnyx_available_credit_label ?? "—"}
+            accent="default"
+          />
           <WorkspaceUsageStatCard
             label="Current month usage"
             used={DEMO_MINUTES_USED}
             included={includedMinutes}
             hint={usageHint}
           />
-          <WorkspaceTokenStatCard
-            label="AI processing tokens"
-            tokens={DEMO_AI_TOKENS}
-            hint={tokenHint}
-          />
         </div>
+
+        <WorkspacePanel>
+          <div className="border-b border-zinc-800 px-5 py-4">
+            <h2 className="text-sm font-semibold text-foreground">Add carrier credit</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Prepaid balance funds your phone number ({billing?.telnyx_number_purchase_label ?? "$2.00"} per line) and
+              call usage. After payment, we sync with the Telnyx carrier wallet automatically.
+            </p>
+          </div>
+          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            {(billing?.suggested_credit_packs_cents ?? [1000, 2500, 5000, 10000]).map((cents) => (
+              <button
+                key={cents}
+                type="button"
+                disabled={buyingPack != null}
+                onClick={() => void handleBuyCredit(cents)}
+                className={cn(
+                  "flex flex-col items-start gap-2 rounded-xl border border-border/70 bg-card/80 p-4 text-left",
+                  "transition-colors hover:border-primary/45 hover:bg-primary/5 disabled:opacity-60"
+                )}
+              >
+                <span className="text-lg font-semibold text-foreground">{formatUsdFromCents(cents)}</span>
+                <span className="text-xs text-muted-foreground">One-time · Stripe secure checkout</span>
+                <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                  {buyingPack === cents ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      Opening…
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                      Add credit
+                    </>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        </WorkspacePanel>
 
         <WorkspacePanel className="min-h-[300px]">
           <div className="border-b border-zinc-800 px-5 py-4">
@@ -126,15 +213,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
                 <tr key={row.id} className={cn("hover:bg-zinc-900/40", WORKSPACE_TABLE_ROW_CLASS)}>
                   <WorkspaceTd className="text-zinc-400">{row.date}</WorkspaceTd>
                   <WorkspaceTd className="font-medium tabular-nums">{row.amount}</WorkspaceTd>
-                  <WorkspaceTd className="text-right">
-                    <button
-                      type="button"
-                      aria-label={`Download ${row.id}`}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-700 text-zinc-500 transition-colors hover:border-primary/40 hover:text-primary"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
-                  </WorkspaceTd>
+                  <WorkspaceTd className="text-right text-xs text-muted-foreground">Sample</WorkspaceTd>
                 </tr>
               ))}
             </tbody>

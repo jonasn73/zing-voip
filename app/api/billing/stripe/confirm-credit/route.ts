@@ -1,0 +1,47 @@
+import { NextRequest, NextResponse } from "next/server"
+import { getUserIdFromRequest } from "@/lib/auth"
+import { getStripeClient } from "@/lib/stripe-config"
+import { applyStripeCreditPackPayment } from "@/lib/stripe-billing-sync"
+import { provisionReservedLineAfterStripePayment } from "@/lib/stripe-webhook-sync"
+
+/** Confirms a credit-pack checkout and optionally provisions the line if subscribed. */
+export async function POST(req: NextRequest) {
+  const userId = getUserIdFromRequest(req.headers.get("cookie"))
+  if (!userId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+  }
+
+  try {
+    const body = (await req.json().catch(() => ({}))) as { session_id?: string }
+    const sessionId = body.session_id?.trim()
+    if (!sessionId) {
+      return NextResponse.json({ error: "session_id is required" }, { status: 400 })
+    }
+
+    const stripe = getStripeClient()
+    const session = await stripe.checkout.sessions.retrieve(sessionId)
+    if (session.metadata?.user_id?.trim() !== userId) {
+      return NextResponse.json({ error: "Checkout session does not belong to this account." }, { status: 403 })
+    }
+    if (session.metadata?.checkout_type !== "credit_pack") {
+      return NextResponse.json({ error: "Not a credit pack checkout session." }, { status: 400 })
+    }
+
+    const credit = await applyStripeCreditPackPayment(userId, session)
+    const provision = await provisionReservedLineAfterStripePayment(userId)
+
+    return NextResponse.json({
+      data: {
+        balance_after_cents: credit.balance_after_cents,
+        telnyx_message: credit.telnyx_message,
+        provisioned: provision.ok,
+        phone_number: provision.ok ? provision.phone_number : null,
+        provision_error: provision.ok ? null : provision.error,
+      },
+    })
+  } catch (e) {
+    console.error("[billing/stripe/confirm-credit POST]", e)
+    const msg = e instanceof Error ? e.message : "Could not confirm credit purchase"
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}

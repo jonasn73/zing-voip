@@ -3,7 +3,7 @@ import { getUserIdFromRequest } from "@/lib/auth"
 import { createLyncrCoreSubscriptionCheckout } from "@/lib/stripe-checkout"
 import { isStripeConfigured } from "@/lib/stripe-config"
 
-/** Creates Stripe Checkout for the $29/mo core plan; metadata includes user_id + reserved_number. */
+/** Creates Stripe Checkout for the Starter plan ($49/mo); metadata includes user_id + reserved_number. */
 export async function POST(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) {

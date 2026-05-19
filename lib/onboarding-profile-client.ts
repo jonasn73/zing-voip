@@ -156,6 +156,51 @@ export async function provisionLineAfterPayment(): Promise<{
   }
 }
 
+/** Stripe Checkout for a prepaid carrier credit pack ($10 / $25 / $50 / $100). */
+export async function startCreditPackCheckout(amountCents: number): Promise<{ checkoutUrl: string }> {
+  const res = await fetch("/api/billing/stripe/credit-checkout", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount_cents: amountCents }),
+  })
+  const json = (await res.json().catch(() => ({}))) as { data?: { url?: string }; error?: string }
+  if (!res.ok) throw new Error(json.error || "Could not start credit checkout")
+  if (!json.data?.url) throw new Error("Stripe checkout URL missing")
+  return { checkoutUrl: json.data.url }
+}
+
+/** After credit-pack redirect — apply balance and retry Telnyx line purchase. */
+export async function confirmCreditPackCheckout(sessionId: string): Promise<{
+  balance_after_cents: number
+  telnyx_message: string
+  provisioned: boolean
+  provision_error: string | null
+}> {
+  const res = await fetch("/api/billing/stripe/confirm-credit", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  })
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: {
+      balance_after_cents?: number
+      telnyx_message?: string
+      provisioned?: boolean
+      provision_error?: string | null
+    }
+    error?: string
+  }
+  if (!res.ok) throw new Error(json.error || "Could not confirm credit purchase")
+  return {
+    balance_after_cents: json.data?.balance_after_cents ?? 0,
+    telnyx_message: json.data?.telnyx_message ?? "",
+    provisioned: json.data?.provisioned === true,
+    provision_error: json.data?.provision_error ?? null,
+  }
+}
+
 /** @deprecated Use startStripeSubscriptionCheckout — activation completes via Stripe webhook. */
 export async function activateSubscriptionClient(opts?: {
   saveBillingMethod?: boolean

@@ -22,7 +22,7 @@ export const DashboardActivationBanner = memo(function DashboardActivationBanner
       >
         <p className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center text-sm leading-relaxed text-foreground/90 sm:justify-start sm:text-left">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
-          Payment received — purchasing your business line on Telnyx. Calls will connect in a moment.
+          Payment received — add carrier credit on the Pay tab (at least $2), then we will purchase your line on Telnyx.
         </p>
       </div>
     )

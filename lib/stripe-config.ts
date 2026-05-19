@@ -1,7 +1,11 @@
 import Stripe from "stripe"
+import { PLAN_MONTHLY_PRICE_CENTS, type BillingPlanKey } from "@/lib/billing-pricing"
 
-/** Fallback amount (cents) when creating inline prices — production should use STRIPE_CORE_PRICE_ID. */
-export const LYNCR_CORE_PLAN_MONTHLY_CENTS = Number(process.env.STRIPE_CORE_PLAN_AMOUNT_CENTS || 100)
+/** Fallback amount (cents) when creating inline prices — production uses Stripe Price IDs. */
+export const LYNCR_STARTER_PLAN_MONTHLY_CENTS = PLAN_MONTHLY_PRICE_CENTS.starter
+
+/** @deprecated Use LYNCR_STARTER_PLAN_MONTHLY_CENTS */
+export const LYNCR_CORE_PLAN_MONTHLY_CENTS = LYNCR_STARTER_PLAN_MONTHLY_CENTS
 
 /** Reads Stripe secret — supports common Vercel typo `KeyValueSTRIPE_SECRET_KEY`. */
 function readStripeSecretKeyFromEnv(): string | undefined {
@@ -47,21 +51,29 @@ export function getStripeClient(): Stripe {
   return stripeSingleton
 }
 
-/** Live/test subscription price — set STRIPE_CORE_PRICE_ID to your $1.00 test price in Vercel. */
-export function getStripeCorePriceId(): string {
+/** Production Starter plan price id — set STRIPE_STARTER_PRICE_ID in Vercel ($49/mo). */
+export function getStripeStarterPriceId(): string {
   const id =
-    process.env.STRIPE_CORE_PRICE_ID?.trim() || process.env.STRIPE_TEST_PRICE_ID?.trim() || ""
+    process.env.STRIPE_STARTER_PRICE_ID?.trim() ||
+    process.env.STRIPE_CORE_PRICE_ID?.trim() ||
+    process.env.STRIPE_TEST_PRICE_ID?.trim() ||
+    ""
   if (!id) {
     throw new Error(
-      "Missing STRIPE_CORE_PRICE_ID — add your live $1.00 test price id (price_…) in Vercel env."
+      "Missing STRIPE_STARTER_PRICE_ID — add your live Starter plan price id (price_…) in Vercel env."
     )
   }
   return id
 }
 
-/** Turns STRIPE_CORE_PRICE_ID into a Checkout-ready price id (handles prod_… misconfiguration). */
-export async function resolveStripeCorePriceId(stripe: Stripe): Promise<string> {
-  const id = getStripeCorePriceId()
+/** @deprecated Use getStripeStarterPriceId */
+export function getStripeCorePriceId(): string {
+  return getStripeStarterPriceId()
+}
+
+/** Turns Starter price env into a Checkout-ready price id (handles prod_… misconfiguration). */
+export async function resolveStripeStarterPriceId(stripe: Stripe): Promise<string> {
+  const id = getStripeStarterPriceId()
   if (id.startsWith("price_")) {
     return id
   }
@@ -85,10 +97,17 @@ export async function resolveStripeCorePriceId(stripe: Stripe): Promise<string> 
       return fallback
     }
     throw new Error(
-      `STRIPE_CORE_PRICE_ID is a product (${id}) with no price. In Stripe Dashboard → Products → add a recurring price, then set STRIPE_CORE_PRICE_ID to the price id (price_…).`
+      `STRIPE_STARTER_PRICE_ID is a product (${id}) with no price. In Stripe Dashboard → Products → add a recurring price, then set STRIPE_STARTER_PRICE_ID to the price id (price_…).`
     )
   }
   throw new Error(
-    `STRIPE_CORE_PRICE_ID must start with price_ (not "${id.slice(0, 8)}…"). In Stripe Dashboard open your product and copy the Price id.`
+    `STRIPE_STARTER_PRICE_ID must start with price_ (not "${id.slice(0, 8)}…"). In Stripe Dashboard open your product and copy the Price id.`
   )
+}
+
+/** @deprecated Use resolveStripeStarterPriceId */
+export const resolveStripeCorePriceId = resolveStripeStarterPriceId
+
+export function planMonthlyPriceCents(plan: BillingPlanKey): number {
+  return PLAN_MONTHLY_PRICE_CENTS[plan] ?? PLAN_MONTHLY_PRICE_CENTS.starter
 }

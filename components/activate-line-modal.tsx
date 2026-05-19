@@ -47,8 +47,8 @@ export function ActivateLineModal({
         <DialogHeader>
           <DialogTitle>Activate Your Live Business Line</DialogTitle>
           <DialogDescription>
-            Complete secure checkout to subscribe to the Lyncr core plan ($29/month) and provision your line on
-            Telnyx.
+            Complete secure checkout to subscribe to the Lyncr Starter plan ($49/month) and provision your line on
+            Telnyx. You will also need carrier credit on the Pay tab (at least $2) to purchase your number.
             {reservedDisplay ? (
               <>
                 {" "}

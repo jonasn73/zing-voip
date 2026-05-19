@@ -2,7 +2,6 @@
 
 import { getAppUrl } from "@/lib/telnyx"
 import { getOrCreateTexmlApp, telnyxHeaders } from "@/lib/telnyx-config"
-import { getTelnyxTexmlAccountSid } from "@/lib/telnyx-texml-account"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
 
@@ -33,44 +32,52 @@ export async function initiateTexmlOutboundCall(
     throw new Error("Outbound call requires from, to, and instruction URL.")
   }
 
-  const [accountSid, applicationSid] = await Promise.all([
-    getTelnyxTexmlAccountSid(),
-    getOrCreateTexmlApp(),
-  ])
-
+  const connectionId = await getOrCreateTexmlApp()
   const appUrl = getAppUrl()
-  const res = await fetch(`${TELNYX_BASE}/texml/Accounts/${encodeURIComponent(accountSid)}/Calls`, {
-    method: "POST",
-    headers: telnyxHeaders(),
-    body: JSON.stringify({
-      ApplicationSid: applicationSid,
-      From: from,
-      To: to,
-      Url: url,
-      UrlMethod: "POST",
-      StatusCallback: `${appUrl}/api/voice/telnyx/status`,
-      StatusCallbackMethod: "POST",
-      Timeout: 45,
-    }),
+  const body = new URLSearchParams({
+    To: to,
+    From: from,
+    Url: url,
+    UrlMethod: "POST",
+    StatusCallback: `${appUrl}/api/voice/telnyx/status`,
+    StatusCallbackMethod: "POST",
+    Timeout: "45",
   })
 
-  const body = (await res.json().catch(() => ({}))) as {
-    data?: { from?: string; to?: string; status?: string }
+  const res = await fetch(
+    `${TELNYX_BASE}/texml/calls/${encodeURIComponent(connectionId)}`,
+    {
+      method: "POST",
+      headers: {
+        ...telnyxHeaders(),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    }
+  )
+
+  const raw = await res.json().catch(() => ({}))
+  const payload = raw as {
+    data?: { from?: string; to?: string; status?: string; call_sid?: string }
+    from?: string
+    to?: string
+    status?: string
     errors?: Array<{ detail?: string; title?: string }>
   }
 
   if (!res.ok) {
     const msg =
-      body?.errors?.[0]?.detail ||
-      body?.errors?.[0]?.title ||
+      payload?.errors?.[0]?.detail ||
+      payload?.errors?.[0]?.title ||
       `Telnyx outbound call failed (${res.status})`
     throw new Error(msg)
   }
 
+  const data = payload.data ?? payload
   return {
     ok: true,
-    call_status: String(body?.data?.status ?? "queued"),
-    from: String(body?.data?.from ?? from),
-    to: String(body?.data?.to ?? to),
+    call_status: String(data.status ?? "queued"),
+    from: String(data.from ?? from),
+    to: String(data.to ?? to),
   }
 }

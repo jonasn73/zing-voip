@@ -1,4 +1,5 @@
-// Resolve Telnyx TeXML account SID for outbound REST calls (/texml/Accounts/{account_sid}/Calls).
+// Legacy helper — TeXML outbound now uses POST /v2/texml/calls/{connection_id} (no account SID).
+// Kept for optional override via TELNYX_TEXML_ACCOUNT_SID if an older integration needs it.
 
 import { telnyxHeaders } from "@/lib/telnyx-config"
 
@@ -6,8 +7,8 @@ const TELNYX_BASE = "https://api.telnyx.com/v2"
 
 let cachedAccountSid: string | null = null
 
-/** Prefer env, then cache, then read from the first TeXML application in the account. */
-export async function getTelnyxTexmlAccountSid(): Promise<string> {
+/** Optional legacy account SID — not required for /v2/texml/calls/{connection_id}. */
+export async function getTelnyxTexmlAccountSid(): Promise<string | null> {
   const fromEnv = process.env.TELNYX_TEXML_ACCOUNT_SID?.trim()
   if (fromEnv) return fromEnv
   if (cachedAccountSid) return cachedAccountSid
@@ -18,9 +19,7 @@ export async function getTelnyxTexmlAccountSid(): Promise<string> {
   const listBody = (await listRes.json().catch(() => ({}))) as {
     data?: Array<Record<string, unknown>>
   }
-  if (!listRes.ok) {
-    throw new Error("Could not list Telnyx TeXML applications.")
-  }
+  if (!listRes.ok) return null
 
   for (const app of listBody.data ?? []) {
     const sid =
@@ -33,7 +32,5 @@ export async function getTelnyxTexmlAccountSid(): Promise<string> {
     }
   }
 
-  throw new Error(
-    "Missing Telnyx TeXML account SID. Set TELNYX_TEXML_ACCOUNT_SID in Vercel or confirm TeXML apps exist in Telnyx Mission Control."
-  )
+  return null
 }

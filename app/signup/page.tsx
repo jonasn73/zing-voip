@@ -1,9 +1,10 @@
 "use client"
 
+import { Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { AuthPage } from "@/components/auth-pages"
 
-export default function SignupPage() {
+function SignupPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const planQuery = searchParams.get("plan")
@@ -19,5 +20,13 @@ export default function SignupPage() {
       }}
       onAuth={(ctx) => router.replace(ctx?.operator_access ? "/admin" : onboardingTarget)}
     />
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupPageInner />
+    </Suspense>
   )
 }

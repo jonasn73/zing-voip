@@ -109,10 +109,10 @@ export function ReplaceUnavailableLineModal({
 
         <form
           className="flex flex-wrap items-end gap-2"
-          onSubmit={submitFormEvent((e) => {
-            e.preventDefault()
+          onSubmit={(e) => {
+            submitFormEvent(e)
             void runSearch()
-          })}
+          }}
         >
           <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
             Area code

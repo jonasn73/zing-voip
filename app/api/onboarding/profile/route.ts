@@ -61,10 +61,14 @@ export async function GET(req: NextRequest) {
       profile &&
       normalizePhoneNumberE164(liveRow.number) !== normalizePhoneNumberE164(profile.reserved_number ?? "")
     ) {
-      profile = await updateOnboardingProfile(userId, {
-        reserved_number: liveRow.number,
-        reserved_number_display: formatPhoneDisplay(liveRow.number),
-      })
+      try {
+        profile = await updateOnboardingProfile(userId, {
+          reserved_number: liveRow.number,
+          reserved_number_display: formatPhoneDisplay(liveRow.number),
+        })
+      } catch (syncErr) {
+        console.error("[onboarding/profile GET] live-line sync failed:", syncErr)
+      }
     }
     const carrier_live =
       (await isAnyLineCarrierLive(userId)) ||

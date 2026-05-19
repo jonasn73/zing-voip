@@ -115,11 +115,13 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
   }, [profile?.reserved_number])
 
   const handleProvisionSuccess = useCallback(
-    async (phoneNumber: string) => {
-      toast({
-        title: "Line activated",
-        description: `${formatPhoneDisplay(phoneNumber)} is now live on the Lyncr network.`,
-      })
+    async (phoneNumber: string, opts?: { alreadyLive?: boolean; showToast?: boolean }) => {
+      if (opts?.showToast !== false && !opts?.alreadyLive) {
+        toast({
+          title: "Line activated",
+          description: `${formatPhoneDisplay(phoneNumber)} is now live on the Lyncr network.`,
+        })
+      }
       dispatchBusinessNumbersChanged()
       await refreshProfile({ silent: true })
     },
@@ -127,9 +129,12 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
   )
 
   const runProvision = useCallback(
-    async (opts?: { phone_number?: string }) => {
+    async (opts?: { phone_number?: string; silent?: boolean }) => {
       const result = await provisionLineAfterPayment(opts)
-      await handleProvisionSuccess(result.phone_number)
+      await handleProvisionSuccess(result.phone_number, {
+        alreadyLive: result.already_live,
+        showToast: !opts?.silent,
+      })
       return result
     },
     [handleProvisionSuccess]
@@ -266,7 +271,12 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
     sessionStorage.setItem("lyncr-line-provision", "1")
     void (async () => {
       try {
-        await runProvision()
+        const snapshot = await fetchOnboardingProfile()
+        if (snapshot.carrierLive) {
+          setCarrierLive(true)
+          return
+        }
+        await runProvision({ silent: true })
       } catch (e) {
         sessionStorage.removeItem("lyncr-line-provision")
         handleProvisionFailure(e, reservedDisplay)

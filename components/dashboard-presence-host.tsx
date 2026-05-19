@@ -89,7 +89,9 @@ export const DashboardPresenceHost = memo(function DashboardPresenceHost({
         <TeamWorkspaceView />
       </PresencePane>
       <PresencePane active={activePage === "pay"} label="Pay">
-        <PayWorkspaceView />
+        <Suspense fallback={<div className="min-h-[40vh] w-full" aria-hidden />}>
+          <PayWorkspaceView />
+        </Suspense>
       </PresencePane>
       <PresencePane active={activePage === "settings"} label="Settings">
         <SettingsWorkspaceView />

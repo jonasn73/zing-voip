@@ -151,6 +151,7 @@ export async function provisionLineAfterPayment(opts?: {
 }): Promise<{
   phone_number: string
   user_confirmed_number: boolean
+  already_live: boolean
   reason?: string
 }> {
   const res = await fetch("/api/billing/stripe/provision-line", {
@@ -160,7 +161,7 @@ export async function provisionLineAfterPayment(opts?: {
     body: JSON.stringify(opts?.phone_number ? { phone_number: opts.phone_number } : {}),
   })
   const json = (await res.json().catch(() => ({}))) as {
-    data?: { phone_number?: string; user_confirmed_number?: boolean }
+    data?: { phone_number?: string; user_confirmed_number?: boolean; already_live?: boolean }
     error?: string
     reason?: string
     unavailable_number?: string
@@ -186,6 +187,7 @@ export async function provisionLineAfterPayment(opts?: {
   return {
     phone_number: json.data.phone_number,
     user_confirmed_number: json.data.user_confirmed_number === true,
+    already_live: json.data.already_live === true,
     reason: json.reason,
   }
 }

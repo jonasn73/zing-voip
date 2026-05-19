@@ -27,6 +27,7 @@ import {
 import { CALL_FLOW_STEPS_MIN_H } from "@/components/dashboard-workspace-ui"
 import { useDashboardNumbersModal } from "@/components/dashboard-numbers-modal-context"
 import { useDashboardActivationOptional } from "@/components/dashboard-activation-context"
+import { RunCallQualityTestButton } from "@/components/run-call-quality-test-button"
 
 export const ROUTING_DRAWER_SHEET_CLASS =
   "gap-0 flex h-full flex-col p-0 sm:max-w-md md:max-w-lg lg:max-w-xl [&>button]:top-5 [&>button]:right-5 " +
@@ -310,50 +311,60 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
 
   if (!multi) {
     return (
-      <div
-        className={cn(
-          "flex w-full max-w-md flex-col items-center justify-center gap-1 px-4 py-3",
-          activeLineFieldClass
-        )}
-      >
-        <span className="text-xs font-medium text-zinc-400">Active line</span>
-        <span className="text-base text-foreground">{display}</span>
-        <LineStatusIndicator subscriptionActive={subscriptionActive} lineCarrierLive={lineCarrierLive} />
+      <div className="flex w-full max-w-md flex-col gap-3">
+        <div
+          className={cn(
+            "flex w-full flex-col items-center justify-center gap-1 px-4 py-3",
+            activeLineFieldClass
+          )}
+        >
+          <span className="text-xs font-medium text-zinc-400">Active line</span>
+          <span className="text-base text-foreground">{display}</span>
+          <LineStatusIndicator subscriptionActive={subscriptionActive} lineCarrierLive={lineCarrierLive} />
+        </div>
+        {lineCarrierLive && activeLine.trim() ? (
+          <RunCallQualityTestButton businessNumber={activeLine} />
+        ) : null}
       </div>
     )
   }
 
   return (
-    <label className={cn("relative block w-full max-w-md", activeLineFieldClass)}>
-      <span className="sr-only">Active business line</span>
-      <div className="pointer-events-none flex flex-col items-center gap-1 px-4 py-3 pr-10">
-        <span className="text-xs font-medium text-zinc-400">Active line</span>
-        <span className="text-base font-semibold text-foreground">{display}</span>
-        <LineStatusIndicator subscriptionActive={subscriptionActive} lineCarrierLive={lineCarrierLive} />
-      </div>
-      <select
-        value={activeLine}
-        onChange={(e) => onSelect(e.target.value)}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-        aria-label="Select active business line"
-      >
-        {businessNumbers.map((bn) => {
-          const link = lineCarrierLive
-            ? "Live & Connected"
-            : subscriptionActive
-              ? "Activating line"
-              : "Inactive (Pending Payment)"
-          return (
-            <option key={bn.number} value={bn.number}>
-              {formatPhoneDisplay(bn.number)} — {link}
-            </option>
-          )
-        })}
-      </select>
-      <ChevronDown
-        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
-        aria-hidden
-      />
-    </label>
+    <div className="flex w-full max-w-md flex-col gap-3">
+      <label className={cn("relative block w-full", activeLineFieldClass)}>
+        <span className="sr-only">Active business line</span>
+        <div className="pointer-events-none flex flex-col items-center gap-1 px-4 py-3 pr-10">
+          <span className="text-xs font-medium text-zinc-400">Active line</span>
+          <span className="text-base font-semibold text-foreground">{display}</span>
+          <LineStatusIndicator subscriptionActive={subscriptionActive} lineCarrierLive={lineCarrierLive} />
+        </div>
+        <select
+          value={activeLine}
+          onChange={(e) => onSelect(e.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Select active business line"
+        >
+          {businessNumbers.map((bn) => {
+            const link = lineCarrierLive
+              ? "Live & Connected"
+              : subscriptionActive
+                ? "Activating line"
+                : "Inactive (Pending Payment)"
+            return (
+              <option key={bn.number} value={bn.number}>
+                {formatPhoneDisplay(bn.number)} — {link}
+              </option>
+            )
+          })}
+        </select>
+        <ChevronDown
+          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
+          aria-hidden
+        />
+      </label>
+      {lineCarrierLive && activeLine.trim() ? (
+        <RunCallQualityTestButton businessNumber={activeLine} />
+      ) : null}
+    </div>
   )
 })

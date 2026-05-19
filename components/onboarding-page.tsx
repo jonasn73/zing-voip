@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   getOnboardingOpeningLine,
   isOnboardingTradeCategory,
@@ -33,7 +33,13 @@ import {
   fetchOnboardingProvisionMode,
   patchOnboardingProfile,
   reserveOnboardingNumberClient,
+  startStripeSubscriptionCheckout,
 } from "@/lib/onboarding-profile-client"
+import {
+  normalizeCheckoutSubscriptionTier,
+  type CheckoutSubscriptionTier,
+} from "@/lib/subscription-checkout"
+import { showUpgradeSubscriptionModal } from "@/components/upgrade-subscription-modal"
 import { OnboardingBillingStep } from "@/components/onboarding-billing-step"
 import { submitFormEvent } from "@/lib/form-keyboard"
 import { cn } from "@/lib/utils"
@@ -73,9 +79,11 @@ interface OnboardingPageProps {
 
 export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
   const totalSteps = 4
   const [onboardingSheetKey, setOnboardingSheetKey] = useState<string | null>(null)
+  const [selectedSubscriptionTier, setSelectedSubscriptionTier] = useState<CheckoutSubscriptionTier>("professional")
 
   // Step 1 -- Get a number
   const [numberMethod, setNumberMethod] = useState<"buy" | "port" | null>(null)
@@ -113,6 +121,13 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
     setAiTradeCategory(category)
     setAiGreeting(getOnboardingOpeningLine(category))
   }
+
+  useEffect(() => {
+    const plan = searchParams.get("plan")
+    if (plan) {
+      setSelectedSubscriptionTier(normalizeCheckoutSubscriptionTier(plan))
+    }
+  }, [searchParams])
 
   useEffect(() => {
     void fetchOnboardingProvisionMode().then((mode) => {
@@ -246,7 +261,11 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
         reserved_number_method: reservation.method,
         port_carrier: reservation.portCarrier ?? null,
       })
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not reserve number"
+      if (msg.toLowerCase().includes("upgrade") || msg.toLowerCase().includes("professional")) {
+        showUpgradeSubscriptionModal({ message: msg })
+      }
       /* still advance — sessionStorage holds reservation until billing */
     } finally {
       setStep1Saving(false)
@@ -256,7 +275,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
     setStep(2)
   }
 
-  async function handleLaunchAfterBilling() {
+  async function handleLaunchAfterBilling(tier: CheckoutSubscriptionTier) {
     setLaunchError(null)
     if (!bufferedLine?.e164?.trim()) {
       setLaunchError("Choose a business number in step 1 before launching.")
@@ -269,7 +288,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
       return
     }
     try {
-      const profile = await completeOnboardingCheckoutClient({
+      await patchOnboardingProfile({
         reserved_number: bufferedLine.e164,
         reserved_number_display: bufferedLine.display,
         reserved_number_method: bufferedLine.method,
@@ -278,12 +297,28 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
         trade_category: aiTradeCategory,
         opening_line: fallbackStrategy === "ai" ? aiGreeting : voicemailGreeting,
       })
-      if (!profile.reserved_number?.trim()) {
-        setLaunchError("Setup did not finish. Please try again.")
+
+      if (simulationMode) {
+        const profile = await completeOnboardingCheckoutClient({
+          reserved_number: bufferedLine.e164,
+          reserved_number_display: bufferedLine.display,
+          reserved_number_method: bufferedLine.method,
+          port_carrier: bufferedLine.portCarrier ?? null,
+          fallback_type: fallbackStrategy,
+          trade_category: aiTradeCategory,
+          opening_line: fallbackStrategy === "ai" ? aiGreeting : voicemailGreeting,
+        })
+        if (!profile.reserved_number?.trim()) {
+          setLaunchError("Setup did not finish. Please try again.")
+          return
+        }
+        clearOnboardingReservation()
+        onComplete()
         return
       }
-      clearOnboardingReservation()
-      onComplete()
+
+      const { checkoutUrl } = await startStripeSubscriptionCheckout(tier)
+      window.location.href = checkoutUrl
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not activate your account"
       if (msg.includes("025-onboarding-profiles") || msg.includes('relation "profiles"')) {
@@ -813,6 +848,9 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
             <OnboardingBillingStep
               reservedLine={bufferedLine}
               launchError={launchError}
+              selectedTier={selectedSubscriptionTier}
+              onTierChange={setSelectedSubscriptionTier}
+              simulationMode={simulationMode}
               onLaunch={handleLaunchAfterBilling}
             />
           )}

@@ -14,6 +14,7 @@ import {
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import { dispatchBusinessNumbersChanged } from "@/components/dashboard-numbers-modal-context"
 import { useToast } from "@/hooks/use-toast"
+import { showUpgradeSubscriptionModal } from "@/components/upgrade-subscription-modal"
 
 type AvailableLine = {
   number: string
@@ -90,10 +91,12 @@ function mergeToCount(apiLines: AvailableLine[], areaCode: string, target: numbe
 function InventoryRow({
   line,
   purchasing,
+  purchaseDisabled,
   onPurchase,
 }: {
   line: AvailableLine
   purchasing: string | null
+  purchaseDisabled: boolean
   onPurchase: (line: AvailableLine) => void
 }) {
   return (
@@ -111,7 +114,7 @@ function InventoryRow({
         </div>
         <button
           type="button"
-          disabled={purchasing != null}
+          disabled={purchasing != null || purchaseDisabled}
           onClick={() => onPurchase(line)}
           className="shrink-0 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-[var(--electric-glow)] transition-[opacity,transform] hover:bg-primary/90 disabled:opacity-50"
         >
@@ -144,6 +147,7 @@ export function BuyNumberMarketplaceModal({
   const [hasSearched, setHasSearched] = useState(false)
   const [purchasing, setPurchasing] = useState<string | null>(null)
   const [lineLabel, setLineLabel] = useState("Main Line")
+  const [entitlementsBlocked, setEntitlementsBlocked] = useState<string | null>(null)
   const searchSeqRef = useRef(0)
 
   useEffect(() => {
@@ -156,6 +160,16 @@ export function BuyNumberMarketplaceModal({
     setLoadingMore(false)
     setPurchasing(null)
     setLineLabel("Main Line")
+    setEntitlementsBlocked(null)
+    void fetchNumberEntitlements()
+      .then((data) => {
+        if (!data.allowed) {
+          setEntitlementsBlocked(data.message ?? "You cannot add another business number.")
+        }
+      })
+      .catch(() => {
+        setEntitlementsBlocked(null)
+      })
   }, [open])
 
   const runSearch = useCallback(async () => {
@@ -209,8 +223,11 @@ export function BuyNumberMarketplaceModal({
           line_business_name: lineLabel.trim() || "Main Line",
         }),
       })
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      const data = (await res.json().catch(() => ({}))) as { error?: string; reason?: string }
       if (!res.ok) {
+        if (res.status === 403 && data.reason === "tier_limit") {
+          showUpgradeSubscriptionModal({ message: data.error })
+        }
         throw new Error(data.error || "Purchase failed")
       }
       toast({
@@ -250,6 +267,11 @@ export function BuyNumberMarketplaceModal({
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col">
+          {entitlementsBlocked ? (
+            <div className="mx-6 mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-4 text-sm text-destructive">
+              {entitlementsBlocked}
+            </div>
+          ) : null}
           <div className="shrink-0 space-y-5 px-6 py-5">
             <div className="space-y-2">
               <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -291,7 +313,7 @@ export function BuyNumberMarketplaceModal({
               </label>
               <button
                 type="submit"
-                disabled={normalizeAreaCode(areaCode).length < 3 || searching}
+                disabled={normalizeAreaCode(areaCode).length < 3 || searching || entitlementsBlocked != null}
                 className="inline-flex h-[42px] shrink-0 items-center justify-center rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[var(--electric-glow)] transition-[opacity,transform] hover:bg-primary/90 disabled:opacity-40"
               >
                 {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search Available Lines"}
@@ -328,6 +350,7 @@ export function BuyNumberMarketplaceModal({
                         key={line.number}
                         line={line}
                         purchasing={purchasing}
+                        purchaseDisabled={entitlementsBlocked != null}
                         onPurchase={purchaseLine}
                       />
                     ))}

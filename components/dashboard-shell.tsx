@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { AppShell, type AccountHeaderState, type PageId } from "@/components/app-shell"
 import { DashboardChromeProvider } from "@/components/dashboard-shell-chrome-context"
 import { DashboardNumbersModalProvider } from "@/components/dashboard-numbers-modal-context"
+import { UpgradeSubscriptionModal } from "@/components/upgrade-subscription-modal"
 import { DashboardWorkspaceProvider } from "@/components/dashboard-workspace-context"
 import { DashboardMainContent } from "@/components/dashboard-main-content"
 import { AnsweredCallCustomerPopup } from "@/components/answered-call-customer-popup"
@@ -102,6 +103,7 @@ export function DashboardShell({
         <DashboardChromeProvider activePage={activePage}>
           <DashboardWorkspaceProvider>
             <DashboardNumbersModalProvider>
+              <UpgradeSubscriptionModal />
               <AppShell
                 pathname={pathname}
                 accountHeader={accountHeader}

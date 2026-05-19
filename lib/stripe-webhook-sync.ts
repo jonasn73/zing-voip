@@ -1,5 +1,7 @@
 import type Stripe from "stripe"
+import { normalizeSubscriptionTier, subscriptionTierFromStripePriceId, type SubscriptionTier } from "@/lib/subscription-tier"
 import {
+  adjustUserCarrierCredit,
   getOnboardingProfile,
   getPhoneNumbers,
   getUser,
@@ -11,15 +13,32 @@ import {
 } from "@/lib/db"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import {
-  TELNYX_NUMBER_PURCHASE_CENTS,
-  formatUsdFromCents,
-} from "@/lib/billing-pricing"
+  CARRIER_PROVISIONING_FEE_USD,
+  hasEnoughCarrierCredit,
+} from "@/lib/subscription-tier"
 import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
-import { adminAdjustUserCreditBalance } from "@/lib/db"
+import { evaluateNumberProvisionGate } from "@/lib/number-allocation"
 
 export type ProvisionLineResult =
   | { ok: true; phone_number: string; substituted: boolean }
   | { ok: false; error: string }
+
+/** Read subscription tier from Stripe subscription line items. */
+export function resolveSubscriptionTierFromStripeSubscription(
+  subscription: Stripe.Subscription
+): SubscriptionTier | null {
+  for (const item of subscription.items?.data ?? []) {
+    const priceRef = item.price
+    const priceId = typeof priceRef === "string" ? priceRef : priceRef?.id
+    const tier = subscriptionTierFromStripePriceId(priceId)
+    if (tier) return tier
+  }
+  const metaTier = subscription.metadata?.subscription_tier ?? subscription.metadata?.plan
+  if (metaTier) {
+    return normalizeSubscriptionTier(normalizeCheckoutSubscriptionTier(metaTier))
+  }
+  return null
+}
 
 function stripePeriodToIso(unixSec: number | null | undefined): string | null {
   if (unixSec == null || !Number.isFinite(unixSec)) return null
@@ -55,12 +74,19 @@ export async function provisionReservedLineAfterStripePayment(userId: string): P
     return { ok: true, phone_number: row.number, substituted: false }
   }
 
+  const provisionGate = await evaluateNumberProvisionGate(userId, profile.reserved_number)
+  if (!provisionGate.allowed) {
+    return { ok: false, error: provisionGate.message }
+  }
+
   const user = await getUser(userId)
-  const creditBalance = Number(user?.credit_balance_cents ?? 0)
-  if (creditBalance < TELNYX_NUMBER_PURCHASE_CENTS) {
+  const profileCredit = provisionGate.carrier_credit
+  const legacyCents = Number(user?.credit_balance_cents ?? 0)
+  const carrierCreditUsd = profileCredit > 0 ? profileCredit : legacyCents / 100
+  if (!hasEnoughCarrierCredit(carrierCreditUsd)) {
     return {
       ok: false,
-      error: `Add at least ${formatUsdFromCents(TELNYX_NUMBER_PURCHASE_CENTS)} carrier credit on the Pay tab before we can purchase your line on Telnyx.`,
+      error: `Add at least $${CARRIER_PROVISIONING_FEE_USD.toFixed(2)} carrier credit on the Pay tab before we can purchase your line.`,
     }
   }
 
@@ -76,11 +102,10 @@ export async function provisionReservedLineAfterStripePayment(userId: string): P
     })
   }
 
-  await adminAdjustUserCreditBalance({
-    target_user_id: userId,
-    delta_cents: -TELNYX_NUMBER_PURCHASE_CENTS,
-    reason: "telnyx_number_purchase",
-    actor_user_id: userId,
+  await adjustUserCarrierCredit({
+    userId,
+    deltaUsd: -CARRIER_PROVISIONING_FEE_USD,
+    reason: "carrier_number_purchase",
     reference: purchase.order_id,
     meta: { phone_number: purchase.phone_number },
   })
@@ -125,13 +150,25 @@ export async function syncStripeSubscriptionToNeon(
       ? subscription.customer
       : subscription.customer?.id ?? opts?.customerId ?? null
 
+  const tier =
+    resolveSubscriptionTierFromStripeSubscription(subscription) ??
+    (subscription.status === "active" || subscription.status === "trialing" ? "starter" : "free_trial")
+
+  if (tier === "free_trial") {
+    return
+  }
+
   await updateOnboardingProfile(userId, {
     has_active_subscription: true,
+    subscription_tier: tier,
     billing_cycle_start: periodStart,
     billing_cycle_end: periodEnd,
     stripe_customer_id: customerId,
     stripe_subscription_id: subscription.id,
   })
+
+  const { applySubscriptionTierToUser } = await import("@/lib/stripe-billing-sync")
+  await applySubscriptionTierToUser(userId, tier)
 
   const provision = await provisionReservedLineAfterStripePayment(userId)
   if (!provision.ok) {

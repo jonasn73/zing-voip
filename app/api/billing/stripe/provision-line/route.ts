@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getOnboardingProfile } from "@/lib/db"
+import { evaluateNumberProvisionGate } from "@/lib/number-allocation"
 import { provisionReservedLineAfterStripePayment } from "@/lib/stripe-webhook-sync"
 import { isVerifiedActiveSubscription } from "@/lib/onboarding-subscription-status"
 import { isReservedLineCarrierLive } from "@/lib/onboarding-line-carrier-status"
 
-/** Retry Telnyx purchase for a paid account whose line is not yet carrier-live. */
+/** Retry carrier purchase for a paid account whose line is not yet live. */
 export async function POST(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) {
@@ -28,6 +29,20 @@ export async function POST(req: NextRequest) {
 
     if (!profile.stripe_subscription_id?.trim() && !profile.has_active_subscription) {
       return NextResponse.json({ error: "Activate your subscription before provisioning a line." }, { status: 402 })
+    }
+
+    const gate = await evaluateNumberProvisionGate(userId, profile.reserved_number)
+    if (!gate.allowed) {
+      const status = gate.reason === "tier_limit" ? 403 : 402
+      return NextResponse.json(
+        {
+          error: gate.message,
+          reason: gate.reason,
+          upgrade_message: gate.upgrade_message,
+          subscription_tier: gate.tier,
+        },
+        { status }
+      )
     }
 
     const result = await provisionReservedLineAfterStripePayment(userId)

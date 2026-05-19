@@ -1,13 +1,7 @@
-// ============================================
-// POST /api/onboarding/profile/reserve-number
-// ============================================
-// Fires when the user completes Step 1 (number selection + Continue).
-// Trial/simulation: writes reserved_number to Neon onboarding_profiles only.
-// Live Telnyx purchase runs at billing launch (see lib/onboarding-telnyx-provision-placeholder.ts).
-
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { updateOnboardingProfile } from "@/lib/db"
+import { evaluateNumberReservationGate } from "@/lib/number-allocation"
 import { isOnboardingTelnyxSimulationMode } from "@/lib/onboarding-telnyx-provision-mode"
 import type { UpdateOnboardingProfileRequest } from "@/lib/types"
 
@@ -38,33 +32,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "reserved_number is required" }, { status: 400 })
     }
 
-    const simulation = isOnboardingTelnyxSimulationMode()
-
-    if (!simulation && updates.reserved_number_method === "buy") {
-      // -----------------------------------------------------------------------
-      // TODO: Production Telnyx Integration (optional early reserve at Step 1)
-      // -----------------------------------------------------------------------
-      // Today we only persist reserved_number in Neon here. Live purchase runs
-      // at POST /api/onboarding/profile/complete when ONBOARDING_LIVE_TELNYX_PROVISION=true.
-      //
-      // To buy immediately on Continue instead of at launch, call:
-      //   runOnboardingTelnyxProvisionPlaceholder(updates.reserved_number)
-      // or inline:
-      //
-      // const response = await fetch("https://api.telnyx.com/v2/number_orders", {
-      //   method: "POST",
-      //   headers: {
-      //     Authorization: `Bearer ${process.env.TELNYX_API_KEY}`,
-      //     "Content-Type": "application/json",
-      //   },
-      //   body: JSON.stringify({
-      //     phone_numbers: [{ phone_number: updates.reserved_number }],
-      //   }),
-      // })
-      // -----------------------------------------------------------------------
+    const gate = await evaluateNumberReservationGate(userId, updates.reserved_number)
+    if (!gate.allowed) {
+      return NextResponse.json(
+        {
+          error: gate.message,
+          reason: gate.reason,
+          upgrade_message: gate.upgrade_message,
+          subscription_tier: gate.tier,
+        },
+        { status: 403 }
+      )
     }
 
-    // Simulation / trial: Neon reservation only — no carrier API call.
+    const simulation = isOnboardingTelnyxSimulationMode()
+    void simulation
+
     const profile = await updateOnboardingProfile(userId, updates)
 
     return NextResponse.json({

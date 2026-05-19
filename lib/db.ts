@@ -69,7 +69,9 @@ function isMissingOnboardingProfileColumnError(e: unknown): boolean {
     msg.includes("billing_cycle") ||
     msg.includes("stripe_customer") ||
     msg.includes("stripe_subscription") ||
-    msg.includes("has_billing_method")
+    msg.includes("has_billing_method") ||
+    msg.includes("subscription_tier") ||
+    msg.includes("carrier_credit")
   )
 }
 
@@ -2885,6 +2887,15 @@ export async function adminAdjustUserCreditBalance(params: {
         ${params.actor_user_id}
       )
     `
+    try {
+      await sql`
+        UPDATE onboarding_profiles
+        SET carrier_credit = ROUND((${balanceAfter}::numeric / 100.0), 2), updated_at = now()
+        WHERE user_id = ${params.target_user_id}
+      `
+    } catch {
+      // carrier_credit column may be missing before scripts/028
+    }
     return { balance_after_cents: balanceAfter }
   } catch (e) {
     if (isMissingBillingColumnsError(e) || isUndefinedRelationError(e, "billing_ledger")) {
@@ -2894,6 +2905,45 @@ export async function adminAdjustUserCreditBalance(params: {
     }
     throw e
   }
+}
+
+/** Count active business lines for subscription tier limits. */
+export async function countActivePhoneNumbers(userId: string): Promise<number> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT count(*)::int AS c
+    FROM phone_numbers
+    WHERE user_id = ${userId} AND status = 'active'
+  `
+  const row = rows[0] as { c?: number } | undefined
+  return Number(row?.c ?? 0)
+}
+
+/** Adjust prepaid carrier credit (USD) and keep users.credit_balance_cents in sync. */
+export async function adjustUserCarrierCredit(params: {
+  userId: string
+  deltaUsd: number
+  reason: string
+  reference?: string | null
+  meta?: Record<string, unknown>
+  actorUserId?: string
+}): Promise<{ carrier_credit_after: number; balance_after_cents: number }> {
+  const deltaCents = Math.round(params.deltaUsd * 100)
+  if (!Number.isFinite(deltaCents) || deltaCents === 0) {
+    throw new Error("deltaUsd must be a non-zero finite number")
+  }
+  const { balance_after_cents } = await adminAdjustUserCreditBalance({
+    target_user_id: params.userId,
+    delta_cents: deltaCents,
+    reason: params.reason,
+    actor_user_id: params.actorUserId ?? params.userId,
+    reference: params.reference ?? null,
+    meta: params.meta,
+  })
+  const profile = await getOnboardingProfile(params.userId)
+  const carrierAfter =
+    profile?.carrier_credit != null ? Number(profile.carrier_credit) : balance_after_cents / 100
+  return { carrier_credit_after: carrierAfter, balance_after_cents }
 }
 
 /** Grant or revoke `/admin` access for another user (`019` column). */
@@ -2924,6 +2974,8 @@ function mapOnboardingProfileRow(row: Record<string, unknown>): OnboardingProfil
     trade_category: row.trade_category != null ? String(row.trade_category) : null,
     opening_line: row.opening_line != null ? String(row.opening_line) : null,
     has_active_subscription: pgBool(row.has_active_subscription),
+    subscription_tier: row.subscription_tier != null ? String(row.subscription_tier) : "free_trial",
+    carrier_credit: row.carrier_credit != null ? Number(row.carrier_credit) : 0,
     billing_cycle_start: row.billing_cycle_start != null ? String(row.billing_cycle_start) : null,
     billing_cycle_end: row.billing_cycle_end != null ? String(row.billing_cycle_end) : null,
     stripe_customer_id: row.stripe_customer_id != null ? String(row.stripe_customer_id) : null,
@@ -2955,6 +3007,7 @@ export async function getOnboardingProfile(userId: string): Promise<OnboardingPr
       SELECT user_id, reserved_number, reserved_number_display, reserved_number_method,
              port_carrier, fallback_type, trade_category, opening_line,
              has_active_subscription,
+             subscription_tier, carrier_credit,
              billing_cycle_start, billing_cycle_end,
              stripe_customer_id, stripe_subscription_id,
              updated_at
@@ -3020,6 +3073,14 @@ export async function updateOnboardingProfile(
     updates.has_active_subscription !== undefined
       ? updates.has_active_subscription
       : existing?.has_active_subscription ?? false
+  const subscription_tier =
+    updates.subscription_tier !== undefined
+      ? updates.subscription_tier
+      : existing?.subscription_tier ?? "free_trial"
+  const carrier_credit =
+    updates.carrier_credit !== undefined
+      ? updates.carrier_credit
+      : existing?.carrier_credit ?? 0
   const billing_cycle_start =
     updates.billing_cycle_start !== undefined
       ? updates.billing_cycle_start
@@ -3043,6 +3104,7 @@ export async function updateOnboardingProfile(
         user_id, reserved_number, reserved_number_display, reserved_number_method,
         port_carrier, fallback_type, trade_category, opening_line,
         has_active_subscription,
+        subscription_tier, carrier_credit,
         billing_cycle_start, billing_cycle_end,
         stripe_customer_id, stripe_subscription_id,
         updated_at
@@ -3051,6 +3113,7 @@ export async function updateOnboardingProfile(
         ${userId}, ${reserved_number}, ${reserved_number_display}, ${reserved_number_method},
         ${port_carrier}, ${fallback_type}, ${trade_category}, ${opening_line},
         ${has_active_subscription},
+        ${subscription_tier}, ${carrier_credit},
         ${billing_cycle_start}, ${billing_cycle_end},
         ${stripe_customer_id}, ${stripe_subscription_id},
         now()
@@ -3064,6 +3127,8 @@ export async function updateOnboardingProfile(
         trade_category = EXCLUDED.trade_category,
         opening_line = EXCLUDED.opening_line,
         has_active_subscription = EXCLUDED.has_active_subscription,
+        subscription_tier = EXCLUDED.subscription_tier,
+        carrier_credit = EXCLUDED.carrier_credit,
         billing_cycle_start = EXCLUDED.billing_cycle_start,
         billing_cycle_end = EXCLUDED.billing_cycle_end,
         stripe_customer_id = EXCLUDED.stripe_customer_id,
@@ -3072,6 +3137,7 @@ export async function updateOnboardingProfile(
       RETURNING user_id, reserved_number, reserved_number_display, reserved_number_method,
                 port_carrier, fallback_type, trade_category, opening_line,
                 has_active_subscription,
+                subscription_tier, carrier_credit,
                 billing_cycle_start, billing_cycle_end,
                 stripe_customer_id, stripe_subscription_id,
                 updated_at

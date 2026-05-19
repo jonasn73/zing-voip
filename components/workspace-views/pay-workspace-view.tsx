@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation"
 import { Loader2, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatUsdFromCents } from "@/lib/billing-pricing"
-import { confirmCreditPackCheckout, startCreditPackCheckout } from "@/lib/onboarding-profile-client"
+import { confirmCreditPackCheckout, startCreditPackCheckout, startStripeSubscriptionCheckout } from "@/lib/onboarding-profile-client"
+import { CHECKOUT_TIER_OPTIONS, type CheckoutSubscriptionTier } from "@/lib/subscription-checkout"
 import { useToast } from "@/hooks/use-toast"
 import {
   WorkspacePage,
@@ -47,6 +48,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
   const [billing, setBilling] = useState<BillingSummary | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [buyingPack, setBuyingPack] = useState<number | null>(null)
+  const [checkoutTier, setCheckoutTier] = useState<CheckoutSubscriptionTier | null>(null)
 
   const refreshBilling = useCallback(async () => {
     setLoadError(null)
@@ -109,6 +111,22 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
   const planLabel = billing?.plans?.find((p) => p.key === planKey)?.monthly_price_label ?? "$49/mo"
   const usageHint = billing ? `${billing.current_plan} plan · ${planLabel}` : "Loading plan…"
 
+  async function handleSubscribe(tier: CheckoutSubscriptionTier) {
+    if (checkoutTier != null) return
+    setCheckoutTier(tier)
+    try {
+      const { checkoutUrl } = await startStripeSubscriptionCheckout(tier)
+      window.location.href = checkoutUrl
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Checkout failed",
+        description: e instanceof Error ? e.message : "Could not start checkout",
+      })
+      setCheckoutTier(null)
+    }
+  }
+
   async function handleBuyCredit(amountCents: number) {
     if (buyingPack != null) return
     setBuyingPack(amountCents)
@@ -150,6 +168,44 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
             hint={usageHint}
           />
         </div>
+
+        <WorkspacePanel>
+          <div className="border-b border-zinc-800 px-5 py-4">
+            <h2 className="text-sm font-semibold text-foreground">Subscription plans</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Each plan maps to a Stripe price — Starter ($19), Professional ($49), or Business ($99) per month.
+            </p>
+          </div>
+          <div className="grid gap-3 p-5 sm:grid-cols-3">
+            {CHECKOUT_TIER_OPTIONS.map((plan) => (
+              <button
+                key={plan.tier}
+                type="button"
+                disabled={checkoutTier != null}
+                onClick={() => void handleSubscribe(plan.tier)}
+                className={cn(
+                  "flex flex-col items-start gap-2 rounded-xl border border-border/70 bg-card/80 p-4 text-left",
+                  "transition-colors hover:border-primary/45 hover:bg-primary/5 disabled:opacity-60",
+                  plan.highlighted && "border-primary/40 ring-1 ring-primary/20"
+                )}
+              >
+                <span className="text-sm font-semibold text-foreground">{plan.name}</span>
+                <span className="text-lg font-bold text-foreground">{plan.priceLabel}</span>
+                <span className="text-xs text-muted-foreground">{plan.lineLimitLabel}</span>
+                <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                  {checkoutTier === plan.tier ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      Opening…
+                    </>
+                  ) : (
+                    "Subscribe"
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        </WorkspacePanel>
 
         <WorkspacePanel>
           <div className="border-b border-zinc-800 px-5 py-4">

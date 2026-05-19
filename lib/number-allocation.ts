@@ -1,0 +1,196 @@
+import {
+  CARRIER_PROVISIONING_FEE_USD,
+  canAddNumberForTier,
+  hasEnoughCarrierCredit,
+  normalizeSubscriptionTier,
+  tierActiveNumberLimit,
+  tierUpgradeMessage,
+  type SubscriptionTier,
+} from "@/lib/subscription-tier"
+import {
+  adjustUserCarrierCredit,
+  countActivePhoneNumbers,
+  ensureOnboardingProfile,
+  getOnboardingProfile,
+  getPhoneNumbers,
+  normalizePhoneNumberE164,
+} from "@/lib/db"
+import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
+import { insertPhoneNumber } from "@/lib/db"
+
+export type NumberPurchaseBlockReason = "tier_limit" | "insufficient_credit"
+
+export type NumberPurchaseGateResult =
+  | {
+      allowed: true
+      tier: SubscriptionTier
+      active_count: number
+      line_limit: number
+      carrier_credit: number
+    }
+  | {
+      allowed: false
+      reason: NumberPurchaseBlockReason
+      message: string
+      tier: SubscriptionTier
+      active_count: number
+      line_limit: number
+      carrier_credit: number
+      upgrade_message: string | null
+    }
+
+function buildTierGateBase(
+  profile: Awaited<ReturnType<typeof getOnboardingProfile>>,
+  activeCount: number
+) {
+  const tier = normalizeSubscriptionTier(profile?.subscription_tier)
+  return {
+    tier,
+    active_count: activeCount,
+    line_limit: tierActiveNumberLimit(tier),
+    carrier_credit: Number(profile?.carrier_credit ?? 0),
+  }
+}
+
+/** Whether reserving this E.164 would add a net-new active line (tier limits). */
+export async function evaluateNumberReservationGate(
+  userId: string,
+  reservedE164: string
+): Promise<NumberPurchaseGateResult> {
+  await ensureOnboardingProfile(userId)
+  const profile = await getOnboardingProfile(userId)
+  const normalized = normalizePhoneNumberE164(reservedE164.trim())
+  const existing = await getPhoneNumbers(userId)
+  const matchingRow = existing.find((row) => normalizePhoneNumberE164(row.number) === normalized)
+  const activeCount = await countActivePhoneNumbers(userId)
+  const base = buildTierGateBase(profile, activeCount)
+
+  if (matchingRow) {
+    return { allowed: true, ...base }
+  }
+
+  if (!canAddNumberForTier(base.tier, activeCount)) {
+    return {
+      allowed: false,
+      reason: "tier_limit",
+      message: tierUpgradeMessage(base.tier) ?? "Your plan does not allow more business numbers.",
+      upgrade_message: tierUpgradeMessage(base.tier),
+      ...base,
+    }
+  }
+
+  return { allowed: true, ...base }
+}
+
+/** Gate before carrier provisioning — skips tier cap when completing the same reserved line. */
+export async function evaluateNumberProvisionGate(
+  userId: string,
+  reservedE164: string
+): Promise<NumberPurchaseGateResult> {
+  await ensureOnboardingProfile(userId)
+  const profile = await getOnboardingProfile(userId)
+  const normalized = normalizePhoneNumberE164(reservedE164.trim())
+  const existing = await getPhoneNumbers(userId)
+  const matchingRow = existing.find((row) => normalizePhoneNumberE164(row.number) === normalized)
+  const activeCount = await countActivePhoneNumbers(userId)
+  const base = buildTierGateBase(profile, activeCount)
+
+  if (!canAddNumberForTier(base.tier, activeCount) && !matchingRow) {
+    return {
+      allowed: false,
+      reason: "tier_limit",
+      message: tierUpgradeMessage(base.tier) ?? "Your plan does not allow more business numbers.",
+      upgrade_message: tierUpgradeMessage(base.tier),
+      ...base,
+    }
+  }
+
+  if (!hasEnoughCarrierCredit(base.carrier_credit)) {
+    return {
+      allowed: false,
+      reason: "insufficient_credit",
+      message: `Add at least $${CARRIER_PROVISIONING_FEE_USD.toFixed(2)} carrier credit on the Pay tab before purchasing a line.`,
+      upgrade_message: null,
+      ...base,
+    }
+  }
+
+  return { allowed: true, ...base }
+}
+
+/** Server-side gate before buying a new business line from the marketplace. */
+export async function evaluateNumberPurchaseGate(userId: string): Promise<NumberPurchaseGateResult> {
+  await ensureOnboardingProfile(userId)
+  const profile = await getOnboardingProfile(userId)
+  const tier = normalizeSubscriptionTier(profile?.subscription_tier)
+  const activeCount = await countActivePhoneNumbers(userId)
+  const lineLimit = tierActiveNumberLimit(tier)
+  const carrierCredit = Number(profile?.carrier_credit ?? 0)
+
+  const base = { tier, active_count: activeCount, line_limit: lineLimit, carrier_credit: carrierCredit }
+
+  if (!canAddNumberForTier(tier, activeCount)) {
+    return {
+      allowed: false,
+      reason: "tier_limit",
+      message: tierUpgradeMessage(tier) ?? "Your plan does not allow more business numbers.",
+      upgrade_message: tierUpgradeMessage(tier),
+      ...base,
+    }
+  }
+
+  if (!hasEnoughCarrierCredit(carrierCredit)) {
+    return {
+      allowed: false,
+      reason: "insufficient_credit",
+      message: `Add at least $${CARRIER_PROVISIONING_FEE_USD.toFixed(2)} carrier credit on the Pay tab before purchasing a line.`,
+      upgrade_message: null,
+      ...base,
+    }
+  }
+
+  return { allowed: true, ...base }
+}
+
+export type PurchasePhoneNumberResult =
+  | { ok: true; phone_number: string; order_id: string }
+  | { ok: false; error: string; reason?: NumberPurchaseBlockReason }
+
+/** Purchase a line on the carrier, deduct $2 carrier credit, save to phone_numbers. */
+export async function purchasePhoneNumberForUser(
+  userId: string,
+  phoneNumberE164: string,
+  label: string,
+  friendlyName?: string
+): Promise<PurchasePhoneNumberResult> {
+  const gate = await evaluateNumberPurchaseGate(userId)
+  if (!gate.allowed) {
+    return { ok: false, error: gate.message, reason: gate.reason }
+  }
+
+  const purchase = await purchaseAndConfigureTelnyxLine(phoneNumberE164, { allowAreaFallback: false })
+  if (!purchase.ok) {
+    return { ok: false, error: purchase.error }
+  }
+
+  await adjustUserCarrierCredit({
+    userId,
+    deltaUsd: -CARRIER_PROVISIONING_FEE_USD,
+    reason: "carrier_number_purchase",
+    reference: purchase.order_id,
+    meta: { phone_number: purchase.phone_number },
+  })
+
+  const saved = await insertPhoneNumber({
+    user_id: userId,
+    number: purchase.phone_number,
+    friendly_name: friendlyName?.trim() || purchase.phone_number,
+    label: label.trim() || "Business Line",
+    type: "local",
+    status: "active",
+    provider_number_sid: purchase.order_id,
+  })
+
+  void saved
+  return { ok: true, phone_number: purchase.phone_number, order_id: purchase.order_id }
+}

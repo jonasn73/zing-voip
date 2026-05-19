@@ -64,6 +64,7 @@ const steps = [
 
 const pricing = [
   {
+    tier: "starter" as const,
     name: "Starter",
     price: "$19",
     period: "/mo",
@@ -78,6 +79,7 @@ const pricing = [
     highlighted: false,
   },
   {
+    tier: "professional" as const,
     name: "Professional",
     price: "$49",
     period: "/mo",
@@ -94,6 +96,7 @@ const pricing = [
     highlighted: true,
   },
   {
+    tier: "business" as const,
     name: "Business",
     price: "$99",
     period: "/mo",
@@ -106,7 +109,7 @@ const pricing = [
       "API access",
       "Dedicated account manager",
     ],
-    cta: "Contact Sales",
+    cta: "Get Started",
     highlighted: false,
   },
 ]
@@ -460,7 +463,7 @@ export function LandingPage({ signupUrl, loginUrl, appUrl }: LandingPageProps) {
                   ))}
                 </ul>
                 <a
-                  href={join}
+                  href={`${join}${join.includes("?") ? "&" : "?"}plan=${plan.tier}`}
                   className={cn(
                     "block w-full rounded-lg py-2.5 text-center text-sm font-semibold transition-colors",
                     plan.highlighted

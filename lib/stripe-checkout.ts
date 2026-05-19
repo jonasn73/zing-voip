@@ -1,19 +1,25 @@
 import { getAppUrl } from "@/lib/telnyx"
 import { getOnboardingProfile, getUser } from "@/lib/db"
-import { DEFAULT_PAID_PLAN, formatUsdFromCents } from "@/lib/billing-pricing"
-import type { BillingPlanKey } from "@/lib/billing-pricing"
-import { getStripeClient, resolveStripeStarterPriceId } from "@/lib/stripe-config"
+import { formatUsdFromCents } from "@/lib/billing-pricing"
+import {
+  checkoutTierOption,
+  checkoutTierToSubscriptionTier,
+  normalizeCheckoutSubscriptionTier,
+  type CheckoutSubscriptionTier,
+} from "@/lib/subscription-checkout"
+import { getStripeClient, resolveStripePriceIdForTier } from "@/lib/stripe-config"
 
 export type StripeCheckoutSessionResult = {
   url: string
   sessionId: string
 }
 
-/** Creates Stripe Checkout for the Starter subscription (default $49/mo). */
+/** Creates Stripe Checkout for Starter ($19), Professional ($49), or Business ($99). */
 export async function createLyncrSubscriptionCheckout(
   userId: string,
-  plan: BillingPlanKey = DEFAULT_PAID_PLAN
+  tierInput: CheckoutSubscriptionTier | string = "starter"
 ): Promise<StripeCheckoutSessionResult> {
+  const tier = normalizeCheckoutSubscriptionTier(tierInput)
   const profile = await getOnboardingProfile(userId)
   if (!profile?.reserved_number?.trim()) {
     throw new Error("Reserve a business line before activating.")
@@ -25,9 +31,10 @@ export async function createLyncrSubscriptionCheckout(
   const user = await getUser(userId)
   const appUrl = getAppUrl().replace(/\/$/, "")
   const stripe = getStripeClient()
-  const priceId = await resolveStripeStarterPriceId(stripe)
+  const priceId = await resolveStripePriceIdForTier(stripe, tier)
   const display =
     profile.reserved_number_display?.trim() || profile.reserved_number?.trim() || "Business line"
+  const tierMeta = checkoutTierOption(tier)
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -37,7 +44,8 @@ export async function createLyncrSubscriptionCheckout(
       metadata: {
         user_id: userId,
         reserved_number: profile.reserved_number,
-        plan,
+        subscription_tier: checkoutTierToSubscriptionTier(tier),
+        plan: tier,
       },
     },
     metadata: {
@@ -45,7 +53,9 @@ export async function createLyncrSubscriptionCheckout(
       user_id: userId,
       reserved_number: profile.reserved_number,
       line_display: display,
-      plan,
+      subscription_tier: checkoutTierToSubscriptionTier(tier),
+      plan: tier,
+      plan_label: tierMeta.priceLabel,
     },
     success_url: `${appUrl}/dashboard?stripe_checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/dashboard?stripe_checkout=cancelled`,

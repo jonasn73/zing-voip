@@ -1,9 +1,13 @@
 import type Stripe from "stripe"
 import { adminAdjustUserCreditBalance, getUser } from "@/lib/db"
 import { type BillingPlanKey, TELNYX_NUMBER_PURCHASE_CENTS } from "@/lib/billing-pricing"
+import { billingPlanKeyFromSubscriptionTier, type SubscriptionTier } from "@/lib/subscription-tier"
 import { syncTelnyxCarrierWalletAfterCreditPurchase } from "@/lib/telnyx-billing"
 import { getStripeClient } from "@/lib/stripe-config"
-import { syncStripeSubscriptionToNeon, provisionReservedLineAfterStripePayment } from "@/lib/stripe-webhook-sync"
+import {
+  syncStripeSubscriptionToNeon,
+  provisionReservedLineAfterStripePayment,
+} from "@/lib/stripe-webhook-sync"
 
 async function creditPackAlreadyApplied(userId: string, sessionId: string): Promise<boolean> {
   const { getSql } = await import("@/lib/db")
@@ -20,6 +24,12 @@ export async function setUserBillingPlan(userId: string, plan: BillingPlanKey): 
   const { getSql } = await import("@/lib/db")
   const sql = getSql()
   await sql`UPDATE users SET billing_plan = ${plan} WHERE id = ${userId}`
+}
+
+/** Sync users.billing_plan from subscription_tier after Stripe webhook. */
+export async function applySubscriptionTierToUser(userId: string, tier: SubscriptionTier): Promise<void> {
+  const plan = billingPlanKeyFromSubscriptionTier(tier) as BillingPlanKey
+  await setUserBillingPlan(userId, plan)
 }
 
 /** Credit the user's prepaid balance after a Stripe credit-pack checkout. */
@@ -82,12 +92,10 @@ export async function handleStripeCheckoutSessionCompleted(session: Stripe.Check
 
   const stripe = getStripeClient()
   const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-  const plan = (session.metadata?.plan?.trim() || "starter") as BillingPlanKey
 
   await syncStripeSubscriptionToNeon(userId, subscription, {
     customerId: typeof session.customer === "string" ? session.customer : session.customer?.id,
   })
-  await setUserBillingPlan(userId, plan)
 }
 
 export function userHasCarrierCreditForNumberPurchase(creditBalanceCents: number): boolean {

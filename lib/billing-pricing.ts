@@ -11,9 +11,9 @@ export const BILLING_PLAN_ORDER: BillingPlanKey[] = ["trial", "starter", "growth
 /** Monthly subscription in USD cents (what we charge). */
 export const PLAN_MONTHLY_PRICE_CENTS: Record<BillingPlanKey, number> = {
   trial: 0,
-  starter: 4900,
-  growth: 12900,
-  enterprise: 29900,
+  starter: 1900,
+  growth: 4900,
+  enterprise: 9900,
 }
 
 /** Included pooled minutes per month before metered voice applies (rough guardrail). */

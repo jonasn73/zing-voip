@@ -37,6 +37,10 @@ export interface OnboardingProfile {
   trade_category: string | null
   opening_line: string | null
   has_active_subscription: boolean
+  /** Entitlements tier: free_trial | starter | professional | business (scripts/028). */
+  subscription_tier: string
+  /** Prepaid USD balance for number provisioning (scripts/028). */
+  carrier_credit: number
   billing_cycle_start: string | null
   billing_cycle_end: string | null
   stripe_customer_id: string | null
@@ -53,6 +57,8 @@ export type UpdateOnboardingProfileRequest = {
   trade_category?: string | null
   opening_line?: string | null
   has_active_subscription?: boolean
+  subscription_tier?: string
+  carrier_credit?: number
   billing_cycle_start?: string | null
   billing_cycle_end?: string | null
   stripe_customer_id?: string | null

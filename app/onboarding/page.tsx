@@ -1,15 +1,23 @@
 "use client"
 
+import { Suspense } from "react"
 import { OnboardingPage } from "@/components/onboarding-page"
+
+function OnboardingRouteInner() {
+  return (
+    <OnboardingPage
+      onComplete={() => {
+        window.location.assign("/dashboard")
+      }}
+    />
+  )
+}
 
 /** Post-signup wizard — requires a session (see middleware). */
 export default function OnboardingRoutePage() {
   return (
-    <OnboardingPage
-      onComplete={() => {
-        // Full navigation so the dashboard server layout re-reads Neon `profiles` (avoids stale client route + redirect errors).
-        window.location.assign("/dashboard")
-      }}
-    />
+    <Suspense fallback={null}>
+      <OnboardingRouteInner />
+    </Suspense>
   )
 }

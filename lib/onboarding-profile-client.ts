@@ -1,4 +1,8 @@
 import type { OnboardingProfile, UpdateOnboardingProfileRequest } from "@/lib/types"
+import {
+  normalizeCheckoutSubscriptionTier,
+  type CheckoutSubscriptionTier,
+} from "@/lib/subscription-checkout"
 
 export type OnboardingProfileSnapshot = {
   profile: OnboardingProfile | null
@@ -97,18 +101,26 @@ export async function reserveOnboardingNumberClient(payload: {
     data?: OnboardingProfile
     simulation_mode?: boolean
     error?: string
+    reason?: string
+    upgrade_message?: string
   }
-  if (!res.ok) throw new Error(json.error || "Could not reserve number")
+  if (!res.ok) {
+    const msg = json.upgrade_message || json.error || "Could not reserve number"
+    throw new Error(msg)
+  }
   if (!json.data) throw new Error("No profile returned")
   return { profile: json.data, simulation_mode: json.simulation_mode !== false }
 }
 
-export async function startStripeSubscriptionCheckout(): Promise<{ checkoutUrl: string; sessionId: string }> {
+export async function startStripeSubscriptionCheckout(
+  tier: CheckoutSubscriptionTier | string = "starter"
+): Promise<{ checkoutUrl: string; sessionId: string }> {
+  const normalizedTier = normalizeCheckoutSubscriptionTier(tier)
   const res = await fetch("/api/billing/stripe/checkout", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ tier: normalizedTier }),
   })
   const json = (await res.json().catch(() => ({}))) as {
     data?: { url?: string; session_id?: string }
@@ -147,8 +159,16 @@ export async function provisionLineAfterPayment(): Promise<{
   const json = (await res.json().catch(() => ({}))) as {
     data?: { phone_number?: string; substituted?: boolean }
     error?: string
+    reason?: string
+    upgrade_message?: string
   }
-  if (!res.ok) throw new Error(json.error || "Could not provision your line")
+  if (!res.ok) {
+    if (res.status === 403 && json.reason === "tier_limit") {
+      const { showUpgradeSubscriptionModal } = await import("@/components/upgrade-subscription-modal")
+      showUpgradeSubscriptionModal({ message: json.upgrade_message || json.error })
+    }
+    throw new Error(json.error || "Could not provision your line")
+  }
   if (!json.data?.phone_number) throw new Error("Provision response missing phone number")
   return {
     phone_number: json.data.phone_number,

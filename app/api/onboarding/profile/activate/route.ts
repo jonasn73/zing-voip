@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { createLyncrCoreSubscriptionCheckout } from "@/lib/stripe-checkout"
+import { createLyncrSubscriptionCheckout } from "@/lib/stripe-checkout"
 import { isStripeConfigured } from "@/lib/stripe-config"
+import { normalizeCheckoutSubscriptionTier } from "@/lib/subscription-checkout"
 
 /** Starts Stripe Checkout subscription — webhook completes Neon + Telnyx provision. */
 export async function POST(req: NextRequest) {
@@ -19,12 +20,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}))
-    const saveBillingMethod =
-      body && typeof body === "object" && (body as Record<string, unknown>).save_billing_method === true
-    void saveBillingMethod
-    const { url, sessionId } = await createLyncrCoreSubscriptionCheckout(userId)
+    const tier = normalizeCheckoutSubscriptionTier(
+      body && typeof body === "object" ? String((body as Record<string, unknown>).tier ?? "starter") : "starter"
+    )
+    void body &&
+      typeof body === "object" &&
+      (body as Record<string, unknown>).save_billing_method === true
+    const { url, sessionId } = await createLyncrSubscriptionCheckout(userId, tier)
     return NextResponse.json({
-      data: { checkout_url: url, session_id: sessionId },
+      data: { checkout_url: url, session_id: sessionId, tier },
       message: "Redirecting to secure Stripe checkout…",
     })
   } catch (e) {

@@ -1,14 +1,12 @@
 // ============================================
 // POST /api/numbers/telnyx/buy
 // ============================================
-// Purchase a Telnyx phone number, configure it with our TeXML webhook,
-// and save it to the database.
+// Purchase a carrier phone number when tier + carrier credit allow it.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { insertPhoneNumber } from "@/lib/db"
+import { purchasePhoneNumberForUser } from "@/lib/number-allocation"
 import { getTelnyxApiKey } from "@/lib/telnyx-config"
-import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
 
 const MAX_LINE_BUSINESS_NAME_LEN = 120
 
@@ -36,31 +34,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const purchase = await purchaseAndConfigureTelnyxLine(phone_number)
-    if (!purchase.ok) {
-      return NextResponse.json({ error: purchase.error }, { status: 422 })
+    const result = await purchasePhoneNumberForUser(userId, phone_number, label)
+    if (!result.ok) {
+      const status = result.reason === "tier_limit" ? 403 : result.reason === "insufficient_credit" ? 402 : 422
+      return NextResponse.json({ error: result.error, reason: result.reason }, { status })
     }
 
-    const saved = await insertPhoneNumber({
-      user_id: userId,
-      number: purchase.phone_number,
-      friendly_name: purchase.phone_number,
-      label,
-      type: "local",
-      status: "active",
-      provider_number_sid: purchase.order_id,
-    })
-
-    console.log(`[Sigo] Number ${purchase.phone_number} purchased, configured, and saved (order: ${purchase.order_id}, db: ${saved.id})`)
+    console.log(`[Sigo] Number ${result.phone_number} purchased (order: ${result.order_id})`)
 
     return NextResponse.json({
       success: true,
       number: {
-        id: saved.id,
-        telnyx_order_id: purchase.order_id,
-        number: purchase.phone_number,
-        friendly_name: purchase.phone_number,
-        label: saved.label,
+        telnyx_order_id: result.order_id,
+        number: result.phone_number,
+        friendly_name: result.phone_number,
+        label,
       },
     })
   } catch (error) {

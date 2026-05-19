@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireSessionUser } from "@/lib/admin-api-guard"
+import { getOnboardingProfile } from "@/lib/db"
 import {
   BILLING_PLAN_ORDER,
   CREDIT_PACK_CENTS_USD,
@@ -7,10 +8,15 @@ import {
   METERED_VOICE_CENTS_PER_MINUTE,
   PLAN_INCLUDED_MINUTES_PER_MONTH,
   PLAN_MONTHLY_PRICE_CENTS,
-  TELNYX_NUMBER_PURCHASE_CENTS,
   formatUsdFromCents,
   type BillingPlanKey,
 } from "@/lib/billing-pricing"
+import {
+  CARRIER_PROVISIONING_FEE_USD,
+  TIER_DISPLAY_NAME,
+  normalizeSubscriptionTier,
+  tierActiveNumberLimit,
+} from "@/lib/subscription-tier"
 import { getTelnyxAccountBalance } from "@/lib/telnyx-billing"
 
 export async function GET(req: Request) {
@@ -26,6 +32,9 @@ export async function GET(req: Request) {
       included_minutes_per_month: PLAN_INCLUDED_MINUTES_PER_MONTH[key],
     }))
     const balanceCents = Number(ctx.user.credit_balance_cents) || 0
+    const profile = await getOnboardingProfile(ctx.user.id)
+    const subscriptionTier = normalizeSubscriptionTier(profile?.subscription_tier)
+    const carrierCreditUsd = Number(profile?.carrier_credit ?? balanceCents / 100)
 
     let telnyx_carrier_balance_label: string | null = null
     let telnyx_available_credit_label: string | null = null
@@ -43,9 +52,14 @@ export async function GET(req: Request) {
         default_paid_plan: DEFAULT_PAID_PLAN,
         credit_balance_cents: balanceCents,
         credit_balance_label: formatUsdFromCents(balanceCents),
+        carrier_credit_usd: carrierCreditUsd,
+        carrier_credit_label: formatUsdFromCents(Math.round(carrierCreditUsd * 100)),
+        subscription_tier: subscriptionTier,
+        subscription_tier_label: TIER_DISPLAY_NAME[subscriptionTier],
+        active_number_limit: tierActiveNumberLimit(subscriptionTier),
         telnyx_carrier_balance_label,
         telnyx_available_credit_label,
-        telnyx_number_purchase_label: formatUsdFromCents(TELNYX_NUMBER_PURCHASE_CENTS),
+        telnyx_number_purchase_label: formatUsdFromCents(Math.round(CARRIER_PROVISIONING_FEE_USD * 100)),
         metered_voice_cents_per_minute: METERED_VOICE_CENTS_PER_MINUTE,
         suggested_credit_packs_cents: [...CREDIT_PACK_CENTS_USD],
         plans,

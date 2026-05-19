@@ -10,6 +10,7 @@ import {
   startStripeSubscriptionCheckout,
   type OnboardingProvisionMode,
 } from "@/lib/onboarding-profile-client"
+import type { CheckoutSubscriptionTier } from "@/lib/subscription-checkout"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import type { OnboardingProfile } from "@/lib/types"
 import { isVerifiedActiveSubscription } from "@/lib/onboarding-subscription-status"
@@ -31,7 +32,7 @@ type DashboardActivationContextValue = {
   refreshProfile: (opts?: { silent?: boolean }) => Promise<void>
   applyActivatedProfile: (profile: OnboardingProfile) => void
   /** Opens live Stripe Checkout when subscription is not active. */
-  requestLineActivation: () => Promise<void>
+  requestLineActivation: (tier?: import("@/lib/subscription-checkout").CheckoutSubscriptionTier) => Promise<void>
 }
 
 const DashboardActivationContext = createContext<DashboardActivationContextValue | null>(null)
@@ -43,6 +44,7 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
   const [carrierLive, setCarrierLive] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activating, setActivating] = useState(false)
+  const [checkoutTier, setCheckoutTier] = useState<CheckoutSubscriptionTier>("starter")
   const [provisionMode, setProvisionMode] = useState<OnboardingProvisionMode>({
     simulation_mode: true,
     notice: null,
@@ -69,20 +71,20 @@ export function DashboardActivationProvider({ children }: { children: ReactNode 
     setProfile(activated)
   }, [])
 
-  const requestLineActivation = useCallback(async () => {
+  const requestLineActivation = useCallback(async (tier: CheckoutSubscriptionTier = checkoutTier) => {
     if (activating) return
     if (isVerifiedActiveSubscription(profile, carrierLive)) return
 
     setActivating(true)
     try {
-      const { checkoutUrl } = await startStripeSubscriptionCheckout()
+      const { checkoutUrl } = await startStripeSubscriptionCheckout(tier)
       window.location.href = checkoutUrl
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not start checkout"
       toast({ variant: "destructive", title: "Checkout failed", description: msg })
       setActivating(false)
     }
-  }, [activating, profile, carrierLive, toast])
+  }, [activating, profile, carrierLive, checkoutTier, toast])
 
   const reservedDisplay =
     profile?.reserved_number_display?.trim() || profile?.reserved_number?.trim() || null

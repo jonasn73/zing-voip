@@ -33,12 +33,14 @@ Zing cannot update your Neon database from Git or Vercel automatically. After pu
 | 27 | `027-stripe-billing-cycle.sql` | **`billing_cycle_start` / `billing_cycle_end`**, Stripe customer + subscription ids |
 | 28 | `028-subscription-tier-carrier-credit.sql` | **`subscription_tier`**, **`carrier_credit`** on `onboarding_profiles` — line limits + prepaid provisioning wallet |
 | 29 | `029-low-balance-notified.sql` | **`low_balance_notified`** on `onboarding_profiles` — Pay tab warning when carrier credit drops below $3 after call usage |
+| 31 | `031-revoke-legacy-platform-admins.sql` | Revoke **`is_platform_admin`** from all accounts except **admin@lyncr.app**; delete legacy **admin@getzingapp.com** |
+| 32 | `032-bootstrap-lyncr-admin.sql` | Bootstrap operator account **admin@lyncr.app** (password **`admin`** — change after first login) |
 
-## Optional: first platform admin (`admin@getzingapp.com` / `admin`)
+## Platform admin (`admin@lyncr.app`)
 
-**Not part of the numbered migration chain.** Only if you want a pre-made operator account (weak password — change after login). Paste and run the full contents of **`020-bootstrap-admin-getzingapp.sql`** in Neon. In Vercel, you can also set **`ZING_ADMIN_EMAILS=admin@getzingapp.com`** so that email can open `/admin` even without the DB flag (this script sets **both** password and `is_platform_admin`).
+After migrations **31** then **32**, sign in at **`/login`** with **admin@lyncr.app** / **admin** and open **`/admin`**. Only that email may access the operator dashboard and `/api/admin/*` routes.
 
-If you already ran **`020`** and **`admin` / `admin` login fails**, run **`021-fix-admin-bootstrap-password.sql`** once (corrects a bad bcrypt string in an earlier `020` revision), or re-run the current **`020`** from the repo (it now embeds the verified hash). **Alternatively**, set a temporary **`ZING_BOOTSTRAP_ADMIN_SECRET`** in Vercel (24+ chars), redeploy, then `POST https://<your-domain>/api/auth/repair-bootstrap-admin` with `{ "secret": "…" }` — see **`PRODUCTION.md`** — then **delete** the secret.
+The old **admin@getzingapp.com** bootstrap (**`020-bootstrap-admin-getzingapp.sql`**) is deprecated — run **031** to remove it.
 
 ## If “Save call flow” fails
 

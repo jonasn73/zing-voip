@@ -118,6 +118,28 @@ export interface AdminUserDetail {
   recent_calls: AdminRecentCallRow[]
 }
 
+/** Lyncr operator directory row (onboarding_profiles + users). */
+export interface LyncrAdminDirectoryRow {
+  user_id: string
+  email: string
+  has_active_subscription: boolean
+  subscription_tier: string
+  phone_number: string | null
+  carrier_credit: number
+}
+
+export type LyncrAdminHealthStatus = "ok" | "error" | "unconfigured"
+
+export interface LyncrAdminMetrics {
+  total_users: number
+  active_subscriptions: number
+  total_carrier_credit: number
+  health: {
+    neon: LyncrAdminHealthStatus
+    telnyx: LyncrAdminHealthStatus
+  }
+}
+
 // --- Receptionists / Agents ---
 export interface Receptionist {
   id: string

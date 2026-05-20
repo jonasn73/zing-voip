@@ -55,3 +55,18 @@ export function validateTelnyxRequest(
   // For now, rely on HTTPS and optional secret path tokens if needed.
   return true
 }
+
+/** Lightweight health probe for the operator dashboard (GET /v2/balance). */
+export async function pingTelnyxApi(): Promise<"ok" | "error" | "unconfigured"> {
+  const apiKey = process.env.TELNYX_API_KEY?.trim()
+  if (!apiKey) return "unconfigured"
+  try {
+    const res = await fetch("https://api.telnyx.com/v2/balance", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    })
+    return res.ok ? "ok" : "error"
+  } catch {
+    return "error"
+  }
+}

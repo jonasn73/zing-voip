@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getUser } from "@/lib/db"
 import type { User } from "@/lib/types"
-import { isPlatformAdminUser } from "@/lib/platform-admin"
+import { isLyncrAdminUser } from "@/lib/lyncr-admin"
 
 export type SessionUserContext = { userId: string; user: User }
 
@@ -40,12 +40,18 @@ export async function requireSessionUser(req: NextRequest): Promise<SessionUserC
   return { userId, user }
 }
 
-/** Session user must be a platform admin (DB flag or `ZING_ADMIN_EMAILS`). */
-export async function requirePlatformAdmin(req: NextRequest): Promise<SessionUserContext | NextResponse> {
+/** Session user must be admin@lyncr.app. */
+export async function requireLyncrAdmin(req: NextRequest): Promise<SessionUserContext | NextResponse> {
   const ctx = await requireSessionUser(req)
   if (ctx instanceof NextResponse) return ctx
-  if (!isPlatformAdminUser(ctx.user)) {
+  if (!isLyncrAdminUser(ctx.user)) {
+    console.warn("[lyncr-admin] forbidden API access:", ctx.user.email)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   return ctx
+}
+
+/** @deprecated Alias — use requireLyncrAdmin. */
+export async function requirePlatformAdmin(req: NextRequest): Promise<SessionUserContext | NextResponse> {
+  return requireLyncrAdmin(req)
 }

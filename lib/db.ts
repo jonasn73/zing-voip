@@ -23,6 +23,8 @@ import type {
   Customer,
   OnboardingProfile,
   UpdateOnboardingProfileRequest,
+  LyncrAdminDirectoryRow,
+  LyncrAdminMetrics,
 } from "./types"
 import { defaultProfileFromUserIndustry } from "./business-industries"
 import { isOnboardingTelnyxSimulationMode } from "./onboarding-telnyx-provision-mode"
@@ -2693,6 +2695,129 @@ export type AdminDashboardStats = {
   user_count: number
   total_credit_balance_cents: number
   open_feedback_count: number
+}
+
+export async function pingNeonDatabase(): Promise<boolean> {
+  const sql = getSql()
+  try {
+    await sql`SELECT 1 AS ok`
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Operator KPI strip — onboarding_profiles counts + carrier credit sum. */
+export async function getLyncrAdminMetrics(): Promise<Omit<LyncrAdminMetrics, "health">> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT
+        (SELECT count(*)::int FROM onboarding_profiles) AS total_users,
+        (SELECT count(*)::int FROM onboarding_profiles WHERE has_active_subscription = true) AS active_subscriptions,
+        (SELECT coalesce(sum(carrier_credit), 0)::numeric FROM onboarding_profiles) AS total_carrier_credit
+    `
+    const row = rows[0] as Record<string, unknown> | undefined
+    return {
+      total_users: Number(row?.total_users ?? 0),
+      active_subscriptions: Number(row?.active_subscriptions ?? 0),
+      total_carrier_credit: Number(row?.total_carrier_credit ?? 0),
+    }
+  } catch (e) {
+    if (isMissingOnboardingProfilesTableError(e) || isWrongLegacyProfilesTableError(e)) {
+      const rows = await sql`SELECT count(*)::int AS total_users FROM users`
+      return {
+        total_users: Number((rows[0] as { total_users?: number })?.total_users ?? 0),
+        active_subscriptions: 0,
+        total_carrier_credit: 0,
+      }
+    }
+    if (isMissingOnboardingProfileColumnError(e)) {
+      const rows = await sql`
+        SELECT
+          (SELECT count(*)::int FROM onboarding_profiles) AS total_users,
+          (SELECT count(*)::int FROM onboarding_profiles WHERE has_active_subscription = true) AS active_subscriptions
+      `
+      const row = rows[0] as Record<string, unknown> | undefined
+      return {
+        total_users: Number(row?.total_users ?? 0),
+        active_subscriptions: Number(row?.active_subscriptions ?? 0),
+        total_carrier_credit: 0,
+      }
+    }
+    throw e
+  }
+}
+
+/** All accounts for the operator directory table. */
+export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[]> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT
+        u.id AS user_id,
+        u.email,
+        coalesce(op.has_active_subscription, false) AS has_active_subscription,
+        coalesce(op.subscription_tier, 'free_trial') AS subscription_tier,
+        coalesce(op.carrier_credit, 0)::numeric AS carrier_credit,
+        (
+          SELECT pn.number
+          FROM phone_numbers pn
+          WHERE pn.user_id = u.id AND pn.status = 'active'
+          ORDER BY pn.created_at ASC
+          LIMIT 1
+        ) AS phone_number
+      FROM users u
+      LEFT JOIN onboarding_profiles op ON op.user_id = u.id
+      ORDER BY u.created_at DESC
+    `
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      user_id: String(row.user_id),
+      email: String(row.email ?? ""),
+      has_active_subscription: pgBool(row.has_active_subscription),
+      subscription_tier: String(row.subscription_tier ?? "free_trial"),
+      phone_number: row.phone_number != null ? String(row.phone_number) : null,
+      carrier_credit: Number(row.carrier_credit ?? 0),
+    }))
+  } catch (e) {
+    if (isMissingOnboardingProfileColumnError(e)) {
+      const rows = await sql`
+        SELECT
+          u.id AS user_id,
+          u.email,
+          coalesce(op.has_active_subscription, false) AS has_active_subscription,
+          (
+            SELECT pn.number
+            FROM phone_numbers pn
+            WHERE pn.user_id = u.id AND pn.status = 'active'
+            ORDER BY pn.created_at ASC
+            LIMIT 1
+          ) AS phone_number
+        FROM users u
+        LEFT JOIN onboarding_profiles op ON op.user_id = u.id
+        ORDER BY u.created_at DESC
+      `
+      return (rows as Record<string, unknown>[]).map((row) => ({
+        user_id: String(row.user_id),
+        email: String(row.email ?? ""),
+        has_active_subscription: pgBool(row.has_active_subscription),
+        subscription_tier: "free_trial",
+        phone_number: row.phone_number != null ? String(row.phone_number) : null,
+        carrier_credit: 0,
+      }))
+    }
+    throw e
+  }
+}
+
+/** Flip subscription flag for billing overrides. */
+export async function adminToggleUserSubscription(
+  userId: string,
+  hasActive: boolean
+): Promise<{ user_id: string; has_active_subscription: boolean }> {
+  await ensureOnboardingProfile(userId)
+  const profile = await updateOnboardingProfile(userId, { has_active_subscription: hasActive })
+  return { user_id: userId, has_active_subscription: profile.has_active_subscription }
 }
 
 export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {

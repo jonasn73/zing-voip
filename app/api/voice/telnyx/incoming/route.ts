@@ -22,6 +22,7 @@ import {
   getPhoneNumbers,
   getUser,
   insertCallLog,
+  getUserAccountStatus,
   isReasonablePstnDialString,
   normalizePhoneNumberE164,
   bumpTelnyxAiIncomingHitCount,
@@ -39,6 +40,7 @@ import {
 import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 import { flattenJsonWebhookToStringMap } from "@/lib/telnyx-incoming-webhook-flatten"
+import { isAccountRoutingBlocked } from "@/lib/account-status"
 import {
   origFromQuerySuffixFromRaw,
   readTelnyxDialAnswerOnBridge,
@@ -266,6 +268,21 @@ async function handleIncomingCall(
 
     if (debug) console.log(`[Sigo] Found user ${routing.user_id} (${routing.user_name}) for number ${calledNumber}`)
     if (debug) console.log(`[Sigo] Routing config: receptionist=${routing.selected_receptionist_id || "none"}, fallback=${routing.fallback_type || "owner"}`)
+
+    const accountStatus = await getUserAccountStatus(routing.user_id)
+    if (isAccountRoutingBlocked(accountStatus)) {
+      console.warn(
+        JSON.stringify({
+          zing: "telnyx-incoming-account-suspended",
+          userId: routing.user_id,
+          accountStatus,
+          callSid,
+        })
+      )
+      texmlSayNatural(texml, "This line is temporarily unavailable. Goodbye.")
+      texml.hangup()
+      return { kind: "twiml", texml }
+    }
 
     if (firstLegDone) {
       console.log(

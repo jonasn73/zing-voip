@@ -47,6 +47,14 @@ export interface OnboardingProfile {
   billing_cycle_end: string | null
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
+  /** Lifetime routed calls (scripts/034). */
+  total_calls_routed: number
+  /** Lifetime talk time in minutes (scripts/034). */
+  total_minutes_used: number
+  /** active | suspended | flagged — suspended blocks Telnyx routing (scripts/034). */
+  account_status: string
+  /** Internal operator notes (scripts/034). */
+  custom_routing_note: string | null
   updated_at: string
 }
 
@@ -66,6 +74,10 @@ export type UpdateOnboardingProfileRequest = {
   billing_cycle_end?: string | null
   stripe_customer_id?: string | null
   stripe_subscription_id?: string | null
+  total_calls_routed?: number
+  total_minutes_used?: number
+  account_status?: string
+  custom_routing_note?: string | null
 }
 
 export type FeedbackCategory = "issue" | "feature" | "billing" | "other"
@@ -126,6 +138,19 @@ export interface LyncrAdminDirectoryRow {
   subscription_tier: string
   phone_number: string | null
   carrier_credit: number
+  total_calls_routed: number
+  total_minutes_used: number
+  account_status: string
+  custom_routing_note: string | null
+}
+
+export type AdminUserOverrideResult = {
+  user_id: string
+  account_status: string
+  custom_routing_note: string | null
+  phone_number: string | null
+  carrier_credit: number
+  reset_active_lines?: boolean
 }
 
 export type LyncrAdminHealthStatus = "ok" | "error" | "unconfigured"

@@ -30,6 +30,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Spinner } from "@/components/ui/spinner"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { AdminUserManageDrawer } from "@/components/admin-user-manage-drawer"
+import { accountStatusLabel } from "@/lib/account-status"
 
 function formatUsd(amount: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount)
@@ -78,16 +87,40 @@ function MetricCard({
   )
 }
 
+function formatMinutes(minutes: number): string {
+  return Number(minutes).toFixed(2)
+}
+
+function AccountStatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase()
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "border-0 capitalize",
+        normalized === "active" && "bg-emerald-500/15 text-emerald-300",
+        normalized === "suspended" && "bg-red-500/15 text-red-300",
+        normalized === "flagged" && "bg-amber-500/15 text-amber-300",
+        normalized !== "active" && normalized !== "suspended" && normalized !== "flagged" && "bg-slate-700/50 text-slate-400"
+      )}
+    >
+      {accountStatusLabel(status)}
+    </Badge>
+  )
+}
+
 function UserRowActions({
   row,
   creditAmount,
   onCreditAmountChange,
   fetchLatestAdminStats,
+  onManageUser,
 }: {
   row: LyncrAdminDirectoryRow
   creditAmount: string
   onCreditAmountChange: (value: string) => void
   fetchLatestAdminStats: (silent?: boolean) => Promise<void>
+  onManageUser: () => void
 }) {
   const [creditBusy, setCreditBusy] = useState(false)
   const [toggleBusy, setToggleBusy] = useState(false)
@@ -146,8 +179,9 @@ function UserRowActions({
   }
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <div className="flex min-w-0 items-center gap-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-2">
         <Input
           type="number"
           step="0.01"
@@ -192,6 +226,16 @@ function UserRowActions({
           {toggleBusy ? "Saving..." : "Activate subscription"}
         </Button>
       )}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-8 w-fit text-violet-300 hover:bg-violet-950/40 hover:text-violet-200"
+        onClick={onManageUser}
+      >
+        Manage user
+      </Button>
     </div>
   )
 }
@@ -214,16 +258,23 @@ export function LyncrAdminDashboard({
   setCreditInputForUser: (userId: string, value: string) => void
 }) {
   const [filter, setFilter] = useState("")
+  const [tierFilter, setTierFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [manageUser, setManageUser] = useState<LyncrAdminDirectoryRow | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const filteredUsers = useMemo(() => {
     const q = filter.trim().toLowerCase()
-    if (!q) return users
-    return users.filter(
-      (u) =>
+    return users.filter((u) => {
+      const matchesText =
+        !q ||
         u.email.toLowerCase().includes(q) ||
         (u.phone_number != null && u.phone_number.toLowerCase().includes(q))
-    )
-  }, [users, filter])
+      const matchesTier = tierFilter === "all" || u.subscription_tier === tierFilter
+      const matchesStatus = statusFilter === "all" || u.account_status === statusFilter
+      return matchesText && matchesTier && matchesStatus
+    })
+  }, [users, filter, tierFilter, statusFilter])
 
   if (loading && !metrics) {
     return (
@@ -298,15 +349,40 @@ export function LyncrAdminDashboard({
       <Card className="border-slate-800 bg-slate-900/40">
         <CardHeader className="border-b border-slate-800/80 pb-4">
           <CardTitle className="text-lg text-slate-100">User directory</CardTitle>
-          <div className="relative mt-3 max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden />
-            <Input
-              type="search"
-              placeholder="Filter by email or phone number…"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="border-slate-700 bg-slate-950/60 pl-9 text-slate-100 placeholder:text-slate-500"
-            />
+          <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+            <div className="relative max-w-md flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden />
+              <Input
+                type="search"
+                placeholder="Filter by email or phone number…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="border-slate-700 bg-slate-950/60 pl-9 text-slate-100 placeholder:text-slate-500"
+              />
+            </div>
+            <Select value={tierFilter} onValueChange={setTierFilter}>
+              <SelectTrigger className="h-9 w-full border-slate-700 bg-slate-950 text-slate-100 sm:w-[180px]">
+                <SelectValue placeholder="Subscription tier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tiers</SelectItem>
+                <SelectItem value="starter">Starter</SelectItem>
+                <SelectItem value="professional">Professional</SelectItem>
+                <SelectItem value="business">Business</SelectItem>
+                <SelectItem value="free_trial">Free trial</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-9 w-full border-slate-700 bg-slate-950 text-slate-100 sm:w-[180px]">
+                <SelectValue placeholder="Account status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="flagged">Flagged</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -318,15 +394,18 @@ export function LyncrAdminDashboard({
                   <TableHead className="text-slate-400">Email</TableHead>
                   <TableHead className="text-slate-400">Subscription</TableHead>
                   <TableHead className="text-slate-400">Tier</TableHead>
+                  <TableHead className="text-slate-400">Total calls</TableHead>
+                  <TableHead className="text-slate-400">Minutes used</TableHead>
+                  <TableHead className="text-slate-400">Account status</TableHead>
                   <TableHead className="text-slate-400">Phone</TableHead>
                   <TableHead className="text-slate-400">Carrier credit</TableHead>
-                  <TableHead className="min-w-[280px] text-slate-400">Actions</TableHead>
+                  <TableHead className="min-w-[320px] text-slate-400">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.length === 0 ? (
                   <TableRow className="border-slate-800">
-                    <TableCell colSpan={7} className="py-10 text-center text-slate-500">
+                    <TableCell colSpan={10} className="py-10 text-center text-slate-500">
                       No users match your filter.
                     </TableCell>
                   </TableRow>
@@ -351,6 +430,11 @@ export function LyncrAdminDashboard({
                         </Badge>
                       </TableCell>
                       <TableCell className="text-slate-300">{row.subscription_tier}</TableCell>
+                      <TableCell className="text-slate-200">{row.total_calls_routed}</TableCell>
+                      <TableCell className="text-slate-200">{formatMinutes(row.total_minutes_used)}</TableCell>
+                      <TableCell>
+                        <AccountStatusBadge status={row.account_status} />
+                      </TableCell>
                       <TableCell className="font-mono text-sm text-slate-300">{row.phone_number ?? "—"}</TableCell>
                       <TableCell className="font-medium text-slate-100">{formatUsd(row.carrier_credit)}</TableCell>
                       <TableCell>
@@ -359,6 +443,10 @@ export function LyncrAdminDashboard({
                           creditAmount={creditInputs[row.user_id] ?? ""}
                           onCreditAmountChange={(value) => setCreditInputForUser(row.user_id, value)}
                           fetchLatestAdminStats={fetchLatestAdminStats}
+                          onManageUser={() => {
+                            setManageUser(row)
+                            setDrawerOpen(true)
+                          }}
                         />
                       </TableCell>
                     </TableRow>
@@ -369,6 +457,13 @@ export function LyncrAdminDashboard({
           </div>
         </CardContent>
       </Card>
+
+      <AdminUserManageDrawer
+        row={manageUser}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        fetchLatestAdminStats={fetchLatestAdminStats}
+      />
     </div>
   )
 }

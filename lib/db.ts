@@ -25,7 +25,9 @@ import type {
   UpdateOnboardingProfileRequest,
   LyncrAdminDirectoryRow,
   LyncrAdminMetrics,
+  AdminUserOverrideResult,
 } from "./types"
+import { parseAccountStatus } from "./account-status"
 import { defaultProfileFromUserIndustry } from "./business-industries"
 import { isOnboardingTelnyxSimulationMode } from "./onboarding-telnyx-provision-mode"
 import { runOnboardingTelnyxProvisionPlaceholder } from "./onboarding-telnyx-provision-placeholder"
@@ -75,7 +77,11 @@ function isMissingOnboardingProfileColumnError(e: unknown): boolean {
     msg.includes("has_billing_method") ||
     msg.includes("subscription_tier") ||
     msg.includes("carrier_credit") ||
-    msg.includes("low_balance_notified")
+    msg.includes("low_balance_notified") ||
+    msg.includes("total_calls_routed") ||
+    msg.includes("total_minutes_used") ||
+    msg.includes("account_status") ||
+    msg.includes("custom_routing_note")
   )
 }
 
@@ -198,6 +204,8 @@ export type IncomingRoutingRow = {
   phone_line_label: string
   /** `phone_numbers.friendly_name` — display form of the DID. */
   phone_line_friendly_name: string
+  /** onboarding_profiles.account_status — suspended blocks routing (034). */
+  account_status: string
 }
 
 // Cache for incoming voice routing to reduce per-request DB latency on the **same** instance.
@@ -1051,6 +1059,7 @@ export async function getIncomingRoutingByNumber(
     receptionist_phone: row.receptionist_phone ? String(row.receptionist_phone) : null,
     phone_line_label: row.phone_line_label != null ? String(row.phone_line_label) : "Main Line",
     phone_line_friendly_name: row.phone_line_friendly_name != null ? String(row.phone_line_friendly_name) : "",
+    account_status: row.account_status != null ? String(row.account_status) : "active",
   }
 
   incomingRoutingCache.set(normalized, { expiresAt: Date.now() + INCOMING_ROUTING_CACHE_TTL_MS, value })
@@ -2752,6 +2761,18 @@ export async function getLyncrAdminMetrics(): Promise<Omit<LyncrAdminMetrics, "h
 /** All accounts for the operator directory table. */
 export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[]> {
   const sql = getSql()
+  const mapRow = (row: Record<string, unknown>) => ({
+    user_id: String(row.user_id),
+    email: String(row.email ?? ""),
+    has_active_subscription: pgBool(row.has_active_subscription),
+    subscription_tier: String(row.subscription_tier ?? "free_trial"),
+    phone_number: row.phone_number != null ? String(row.phone_number) : null,
+    carrier_credit: Number(row.carrier_credit ?? 0),
+    total_calls_routed: Number(row.total_calls_routed ?? 0),
+    total_minutes_used: Number(row.total_minutes_used ?? 0),
+    account_status: String(row.account_status ?? "active"),
+    custom_routing_note: row.custom_routing_note != null ? String(row.custom_routing_note) : null,
+  })
   try {
     const rows = await sql`
       SELECT
@@ -2760,6 +2781,10 @@ export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[
         coalesce(op.has_active_subscription, false) AS has_active_subscription,
         coalesce(op.subscription_tier, 'free_trial') AS subscription_tier,
         coalesce(op.carrier_credit, 0)::numeric AS carrier_credit,
+        coalesce(op.total_calls_routed, stats.call_count, 0)::int AS total_calls_routed,
+        coalesce(op.total_minutes_used, stats.minutes_used, 0)::numeric AS total_minutes_used,
+        coalesce(op.account_status, 'active') AS account_status,
+        op.custom_routing_note,
         (
           SELECT pn.number
           FROM phone_numbers pn
@@ -2769,16 +2794,16 @@ export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[
         ) AS phone_number
       FROM users u
       LEFT JOIN onboarding_profiles op ON op.user_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT
+          count(*)::int AS call_count,
+          round(coalesce(sum(cl.duration_seconds), 0)::numeric / 60.0, 2) AS minutes_used
+        FROM call_logs cl
+        WHERE cl.user_id = u.id
+      ) stats ON true
       ORDER BY u.created_at DESC
     `
-    return (rows as Record<string, unknown>[]).map((row) => ({
-      user_id: String(row.user_id),
-      email: String(row.email ?? ""),
-      has_active_subscription: pgBool(row.has_active_subscription),
-      subscription_tier: String(row.subscription_tier ?? "free_trial"),
-      phone_number: row.phone_number != null ? String(row.phone_number) : null,
-      carrier_credit: Number(row.carrier_credit ?? 0),
-    }))
+    return (rows as Record<string, unknown>[]).map(mapRow)
   } catch (e) {
     if (isMissingOnboardingProfileColumnError(e)) {
       const rows = await sql`
@@ -2786,6 +2811,12 @@ export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[
           u.id AS user_id,
           u.email,
           coalesce(op.has_active_subscription, false) AS has_active_subscription,
+          coalesce(op.subscription_tier, 'free_trial') AS subscription_tier,
+          coalesce(op.carrier_credit, 0)::numeric AS carrier_credit,
+          coalesce(stats.call_count, 0)::int AS total_calls_routed,
+          coalesce(stats.minutes_used, 0)::numeric AS total_minutes_used,
+          'active' AS account_status,
+          NULL::text AS custom_routing_note,
           (
             SELECT pn.number
             FROM phone_numbers pn
@@ -2795,16 +2826,16 @@ export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[
           ) AS phone_number
         FROM users u
         LEFT JOIN onboarding_profiles op ON op.user_id = u.id
+        LEFT JOIN LATERAL (
+          SELECT
+            count(*)::int AS call_count,
+            round(coalesce(sum(cl.duration_seconds), 0)::numeric / 60.0, 2) AS minutes_used
+          FROM call_logs cl
+          WHERE cl.user_id = u.id
+        ) stats ON true
         ORDER BY u.created_at DESC
       `
-      return (rows as Record<string, unknown>[]).map((row) => ({
-        user_id: String(row.user_id),
-        email: String(row.email ?? ""),
-        has_active_subscription: pgBool(row.has_active_subscription),
-        subscription_tier: "free_trial",
-        phone_number: row.phone_number != null ? String(row.phone_number) : null,
-        carrier_credit: 0,
-      }))
+      return (rows as Record<string, unknown>[]).map(mapRow)
     }
     throw e
   }
@@ -2868,6 +2899,120 @@ export async function adminToggleUserSubscription(
     user_id: userId,
     has_active_subscription: profile.has_active_subscription,
     subscription_tier: profile.subscription_tier,
+  }
+}
+
+/** Read account_status for voice routing guard (defaults active). */
+export async function getUserAccountStatus(userId: string): Promise<string> {
+  const profile = await getOnboardingProfile(userId)
+  return profile?.account_status ?? "active"
+}
+
+/** Operator overrides: status, notes, manual DID, hard reset lines. */
+export async function adminApplyUserOverride(params: {
+  userId: string
+  targetStatus?: string
+  adminNotes?: string | null
+  manualPhoneOverride?: string | null
+  resetActiveLines?: boolean
+}): Promise<AdminUserOverrideResult> {
+  const userId = params.userId.trim()
+  if (!userId) throw new Error("userId is required")
+  await ensureOnboardingProfile(userId)
+  const sql = getSql()
+
+  if (params.resetActiveLines) {
+    await sql`DELETE FROM phone_numbers WHERE user_id = ${userId} AND status IN ('active', 'pending', 'porting')`
+    await sql`
+      UPDATE onboarding_profiles
+      SET
+        carrier_credit = 0,
+        reserved_number = NULL,
+        reserved_number_display = NULL,
+        updated_at = now()
+      WHERE user_id = ${userId}
+    `
+    await sql`UPDATE users SET credit_balance_cents = 0 WHERE id = ${userId}`
+    clearIncomingRoutingCache()
+  }
+
+  if (params.targetStatus !== undefined) {
+    const status = parseAccountStatus(params.targetStatus)
+    if (!status) throw new Error("targetStatus must be active, suspended, or flagged")
+    try {
+      await sql`
+        UPDATE onboarding_profiles
+        SET account_status = ${status}, updated_at = now()
+        WHERE user_id = ${userId}
+      `
+    } catch (e) {
+      if (isMissingOnboardingProfileColumnError(e)) {
+        throw new Error("account_status requires scripts/034-admin-profile-metrics.sql in Neon.")
+      }
+      throw e
+    }
+    clearIncomingRoutingCache()
+  }
+
+  if (params.adminNotes !== undefined) {
+    const note = params.adminNotes === null ? null : String(params.adminNotes).trim() || null
+    try {
+      await sql`
+        UPDATE onboarding_profiles
+        SET custom_routing_note = ${note}, updated_at = now()
+        WHERE user_id = ${userId}
+      `
+    } catch (e) {
+      if (isMissingOnboardingProfileColumnError(e)) {
+        throw new Error("custom_routing_note requires scripts/034-admin-profile-metrics.sql in Neon.")
+      }
+      throw e
+    }
+  }
+
+  if (params.manualPhoneOverride !== undefined && params.manualPhoneOverride !== null) {
+    const raw = String(params.manualPhoneOverride).trim()
+    if (raw) {
+      const numberE164 = normalizePhoneNumberE164(raw)
+      if (!isReasonablePstnDialString(numberE164)) {
+        throw new Error("manualPhoneOverride must be a valid phone number")
+      }
+      const existing = await getPhoneNumbers(userId)
+      const active = existing.find((p) => p.status === "active")
+      if (active) {
+        await sql`
+          UPDATE phone_numbers
+          SET number = ${numberE164}, friendly_name = ${numberE164}
+          WHERE id = ${active.id} AND user_id = ${userId}
+        `
+      } else {
+        await insertPhoneNumber({
+          user_id: userId,
+          number: numberE164,
+          friendly_name: numberE164,
+          label: "Admin assigned",
+          status: "active",
+        })
+      }
+      await updateOnboardingProfile(userId, {
+        reserved_number: numberE164,
+        reserved_number_display: numberE164,
+        reserved_number_method: "buy",
+      })
+      clearIncomingRoutingCache()
+    }
+  }
+
+  const profile = await getOnboardingProfile(userId)
+  const numbers = await getPhoneNumbers(userId)
+  const primary = numbers.find((p) => p.status === "active") ?? null
+  return {
+    user_id: userId,
+    account_status: profile?.account_status ?? "active",
+    custom_routing_note: profile?.custom_routing_note ?? null,
+    phone_number: primary?.number ?? null,
+    carrier_credit: profile?.carrier_credit ?? 0,
+    reset_active_lines: params.resetActiveLines === true,
   }
 }
 
@@ -3232,6 +3377,10 @@ function mapOnboardingProfileRow(row: Record<string, unknown>): OnboardingProfil
     billing_cycle_end: pgTimestamptzToIso(row.billing_cycle_end),
     stripe_customer_id: row.stripe_customer_id != null ? String(row.stripe_customer_id) : null,
     stripe_subscription_id: row.stripe_subscription_id != null ? String(row.stripe_subscription_id) : null,
+    total_calls_routed: row.total_calls_routed != null ? Number(row.total_calls_routed) : 0,
+    total_minutes_used: row.total_minutes_used != null ? Number(row.total_minutes_used) : 0,
+    account_status: row.account_status != null ? String(row.account_status) : "active",
+    custom_routing_note: row.custom_routing_note != null ? String(row.custom_routing_note) : null,
     updated_at: pgTimestamptzToIso(row.updated_at) ?? new Date().toISOString(),
   }
 }
@@ -3260,6 +3409,7 @@ export async function getOnboardingProfile(userId: string): Promise<OnboardingPr
              port_carrier, fallback_type, trade_category, opening_line,
              has_active_subscription,
              subscription_tier, carrier_credit, low_balance_notified,
+             total_calls_routed, total_minutes_used, account_status, custom_routing_note,
              billing_cycle_start, billing_cycle_end,
              stripe_customer_id, stripe_subscription_id,
              updated_at

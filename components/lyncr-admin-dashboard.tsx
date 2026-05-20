@@ -80,18 +80,20 @@ function MetricCard({
 
 function UserRowActions({
   row,
-  onUpdated,
+  creditAmount,
+  onCreditAmountChange,
+  fetchLatestAdminStats,
 }: {
   row: LyncrAdminDirectoryRow
-  onUpdated: () => Promise<void>
+  creditAmount: string
+  onCreditAmountChange: (value: string) => void
+  fetchLatestAdminStats: (silent?: boolean) => Promise<void>
 }) {
-  const [creditDelta, setCreditDelta] = useState("")
   const [creditBusy, setCreditBusy] = useState(false)
   const [toggleBusy, setToggleBusy] = useState(false)
 
-  async function handleAdjustCredit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const amount = Number(creditDelta)
+  async function handleAdjustCreditClick() {
+    const amount = Number(creditAmount)
     if (!Number.isFinite(amount) || amount === 0) {
       toast.error("Enter a non-zero dollar amount (e.g. 10 or -5)")
       return
@@ -107,8 +109,8 @@ function UserRowActions({
       const json = (await res.json()) as { error?: string; data?: { carrier_credit_after?: number } }
       if (!res.ok) throw new Error(json.error ?? "Adjust credit failed")
       toast.success(`Credit updated — new balance ${formatUsd(json.data?.carrier_credit_after ?? 0)}`)
-      setCreditDelta("")
-      await onUpdated()
+      onCreditAmountChange("")
+      await fetchLatestAdminStats(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Adjust credit failed")
     } finally {
@@ -116,27 +118,26 @@ function UserRowActions({
     }
   }
 
-  async function handleSubscriptionChange(activeStatus: boolean) {
+  async function handleSubscriptionToggle(shouldActivate: boolean) {
     setToggleBusy(true)
     try {
       const res = await fetch("/api/admin/toggle-subscription", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: row.user_id, activeStatus }),
+        body: JSON.stringify({ userId: row.user_id, shouldActivate }),
       })
       const json = (await res.json()) as {
         error?: string
         data?: { has_active_subscription?: boolean; subscription_tier?: string }
       }
       if (!res.ok) throw new Error(json.error ?? "Subscription update failed")
-      const active = json.data?.has_active_subscription ?? activeStatus
       toast.success(
-        active
+        shouldActivate
           ? `Subscription activated (${json.data?.subscription_tier ?? "business"})`
           : `Subscription deactivated (${json.data?.subscription_tier ?? "free_trial"})`
       )
-      await onUpdated()
+      await fetchLatestAdminStats(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Subscription update failed")
     } finally {
@@ -146,27 +147,28 @@ function UserRowActions({
 
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <form className="flex min-w-0 items-center gap-2" onSubmit={(e) => void handleAdjustCredit(e)}>
+      <div className="flex min-w-0 items-center gap-2">
         <Input
           type="number"
           step="0.01"
           placeholder="± USD"
-          value={creditDelta}
-          onChange={(e) => setCreditDelta(e.target.value)}
+          value={creditAmount}
+          onChange={(e) => onCreditAmountChange(e.target.value)}
           className="h-8 w-24 border-slate-700 bg-slate-950/80 text-slate-100"
           disabled={creditBusy}
           aria-label={`Credit adjustment for ${row.email}`}
         />
         <Button
-          type="submit"
+          type="button"
           size="sm"
           variant="secondary"
           className="h-8 bg-violet-600/80 text-white hover:bg-violet-600"
           disabled={creditBusy}
+          onClick={() => void handleAdjustCreditClick()}
         >
-          {creditBusy ? <Spinner className="h-3.5 w-3.5" /> : "Adjust credit"}
+          {creditBusy ? "Saving..." : "Adjust credit"}
         </Button>
-      </form>
+      </div>
       {row.has_active_subscription ? (
         <Button
           type="button"
@@ -174,9 +176,9 @@ function UserRowActions({
           variant="outline"
           className="h-8 border-slate-600 text-amber-200 hover:bg-amber-950/40"
           disabled={toggleBusy}
-          onClick={() => void handleSubscriptionChange(false)}
+          onClick={() => void handleSubscriptionToggle(false)}
         >
-          {toggleBusy ? <Spinner className="h-3.5 w-3.5" /> : "Deactivate subscription"}
+          {toggleBusy ? "Saving..." : "Deactivate subscription"}
         </Button>
       ) : (
         <Button
@@ -185,9 +187,9 @@ function UserRowActions({
           variant="outline"
           className="h-8 border-slate-600 text-emerald-200 hover:bg-emerald-950/40"
           disabled={toggleBusy}
-          onClick={() => void handleSubscriptionChange(true)}
+          onClick={() => void handleSubscriptionToggle(true)}
         >
-          {toggleBusy ? <Spinner className="h-3.5 w-3.5" /> : "Activate subscription"}
+          {toggleBusy ? "Saving..." : "Activate subscription"}
         </Button>
       )}
     </div>
@@ -199,13 +201,17 @@ export function LyncrAdminDashboard({
   users,
   loading,
   refreshing,
-  refreshAdminData,
+  fetchLatestAdminStats,
+  creditInputs,
+  setCreditInputForUser,
 }: {
   metrics: LyncrAdminMetrics | null
   users: LyncrAdminDirectoryRow[]
   loading: boolean
   refreshing: boolean
-  refreshAdminData: (silent?: boolean) => Promise<void>
+  fetchLatestAdminStats: (silent?: boolean) => Promise<void>
+  creditInputs: Record<string, string>
+  setCreditInputForUser: (userId: string, value: string) => void
 }) {
   const [filter, setFilter] = useState("")
 
@@ -244,7 +250,7 @@ export function LyncrAdminDashboard({
           size="sm"
           className="border-slate-700 text-slate-200"
           disabled={refreshing}
-          onClick={() => void refreshAdminData(true)}
+          onClick={() => void fetchLatestAdminStats(true)}
         >
           <RefreshCw className={cn("mr-2 h-4 w-4", refreshing && "animate-spin")} aria-hidden />
           Refresh
@@ -348,7 +354,12 @@ export function LyncrAdminDashboard({
                       <TableCell className="font-mono text-sm text-slate-300">{row.phone_number ?? "—"}</TableCell>
                       <TableCell className="font-medium text-slate-100">{formatUsd(row.carrier_credit)}</TableCell>
                       <TableCell>
-                        <UserRowActions row={row} onUpdated={() => refreshAdminData(true)} />
+                        <UserRowActions
+                          row={row}
+                          creditAmount={creditInputs[row.user_id] ?? ""}
+                          onCreditAmountChange={(value) => setCreditInputForUser(row.user_id, value)}
+                          fetchLatestAdminStats={fetchLatestAdminStats}
+                        />
                       </TableCell>
                     </TableRow>
                   ))

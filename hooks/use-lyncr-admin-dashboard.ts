@@ -1,6 +1,6 @@
 "use client"
 
-// Shared admin console data loader — single fetch + refresh without full page reload.
+// Shared admin console data loader — fetchLatestAdminStats without full page reload.
 
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -11,7 +11,7 @@ export type LyncrAdminDashboardData = {
   users: LyncrAdminDirectoryRow[]
   loading: boolean
   refreshing: boolean
-  refreshAdminData: (silent?: boolean) => Promise<void>
+  fetchLatestAdminStats: (silent?: boolean) => Promise<void>
 }
 
 export function useLyncrAdminDashboardData(): LyncrAdminDashboardData {
@@ -20,7 +20,7 @@ export function useLyncrAdminDashboardData(): LyncrAdminDashboardData {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
-  const refreshAdminData = useCallback(async (silent = false) => {
+  const fetchLatestAdminStats = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     else setRefreshing(true)
     try {
@@ -41,8 +41,8 @@ export function useLyncrAdminDashboardData(): LyncrAdminDashboardData {
   }, [])
 
   useEffect(() => {
-    void refreshAdminData()
-  }, [refreshAdminData])
+    void fetchLatestAdminStats()
+  }, [fetchLatestAdminStats])
 
-  return { metrics, users, loading, refreshing, refreshAdminData }
+  return { metrics, users, loading, refreshing, fetchLatestAdminStats }
 }

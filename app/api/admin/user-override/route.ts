@@ -1,8 +1,9 @@
-// POST /api/admin/user-override — granular admin profile controls (admin@lyncr.app only).
+// POST /api/admin/user-override — atomic onboarding_profiles + phone updates (admin@lyncr.app only).
 
 import { NextRequest, NextResponse } from "next/server"
 import { requireLyncrAdmin } from "@/lib/admin-api-guard"
 import { adminApplyUserOverride } from "@/lib/db"
+import { parseAccountStatus } from "@/lib/account-status"
 
 export async function POST(req: NextRequest) {
   const ctx = await requireLyncrAdmin(req)
@@ -13,6 +14,13 @@ export async function POST(req: NextRequest) {
     const userId = String(body.userId ?? body.user_id ?? "").trim()
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 })
+    }
+
+    if (body.targetStatus !== undefined && !parseAccountStatus(String(body.targetStatus))) {
+      return NextResponse.json(
+        { error: "targetStatus must be active, suspended, or flagged" },
+        { status: 400 }
+      )
     }
 
     const hasAnyField =

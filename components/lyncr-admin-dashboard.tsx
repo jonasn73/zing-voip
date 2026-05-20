@@ -37,7 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { AdminUserManageDrawer } from "@/components/admin-user-manage-drawer"
 import { accountStatusLabel } from "@/lib/account-status"
 
 function formatUsd(amount: number): string {
@@ -248,6 +247,7 @@ export function LyncrAdminDashboard({
   fetchLatestAdminStats,
   creditInputs,
   setCreditInputForUser,
+  onManageUser,
 }: {
   metrics: LyncrAdminMetrics | null
   users: LyncrAdminDirectoryRow[]
@@ -256,12 +256,11 @@ export function LyncrAdminDashboard({
   fetchLatestAdminStats: (silent?: boolean) => Promise<void>
   creditInputs: Record<string, string>
   setCreditInputForUser: (userId: string, value: string) => void
+  onManageUser: (row: LyncrAdminDirectoryRow) => void
 }) {
   const [filter, setFilter] = useState("")
   const [tierFilter, setTierFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [manageUser, setManageUser] = useState<LyncrAdminDirectoryRow | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const filteredUsers = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -443,10 +442,7 @@ export function LyncrAdminDashboard({
                           creditAmount={creditInputs[row.user_id] ?? ""}
                           onCreditAmountChange={(value) => setCreditInputForUser(row.user_id, value)}
                           fetchLatestAdminStats={fetchLatestAdminStats}
-                          onManageUser={() => {
-                            setManageUser(row)
-                            setDrawerOpen(true)
-                          }}
+                          onManageUser={() => onManageUser(row)}
                         />
                       </TableCell>
                     </TableRow>
@@ -457,13 +453,6 @@ export function LyncrAdminDashboard({
           </div>
         </CardContent>
       </Card>
-
-      <AdminUserManageDrawer
-        row={manageUser}
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-        fetchLatestAdminStats={fetchLatestAdminStats}
-      />
     </div>
   )
 }

@@ -40,7 +40,7 @@ import {
 import { buildTelnyxAiAssistantTexml } from "@/lib/telnyx-ai-texml"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 import { flattenJsonWebhookToStringMap } from "@/lib/telnyx-incoming-webhook-flatten"
-import { isAccountRoutingBlocked } from "@/lib/account-status"
+import { isAccountRoutingBlocked, SUSPENDED_LINE_TEXML_MESSAGE } from "@/lib/account-status"
 import {
   origFromQuerySuffixFromRaw,
   readTelnyxDialAnswerOnBridge,
@@ -244,11 +244,8 @@ async function handleIncomingCall(
     // E.164 for DB + fallback URL — must match phone_numbers.number (we also match by digits in SQL).
     const businessLineE164 = calledNumber ? normalizePhoneNumberE164(calledNumber) : ""
 
-    // 1. Resolve routing and “first leg ended” flag together — both hit the DB independently.
-    const [routing, firstLegDone] = await Promise.all([
-      getIncomingRoutingByNumber(calledNumber),
-      isTelnyxInboundDialCallerLegDone(callSid),
-    ])
+    // 1. Resolve the account profile for this dialed number (onboarding_profiles + routing).
+    const routing = await getIncomingRoutingByNumber(calledNumber)
     if (!routing) {
       console.error(
         "[Sigo] No user/routing for inbound — check phone_numbers row matches this line. Detail:",
@@ -266,9 +263,7 @@ async function handleIncomingCall(
       return { kind: "twiml", texml }
     }
 
-    if (debug) console.log(`[Sigo] Found user ${routing.user_id} (${routing.user_name}) for number ${calledNumber}`)
-    if (debug) console.log(`[Sigo] Routing config: receptionist=${routing.selected_receptionist_id || "none"}, fallback=${routing.fallback_type || "owner"}`)
-
+    // 2. Suspension guardrail — must run before any routing, AI, or forwarding legs.
     const accountStatus = await getUserAccountStatus(routing.user_id)
     if (isAccountRoutingBlocked(accountStatus)) {
       console.warn(
@@ -279,10 +274,15 @@ async function handleIncomingCall(
           callSid,
         })
       )
-      texmlSayNatural(texml, "This line is temporarily unavailable. Goodbye.")
+      texmlSayNatural(texml, SUSPENDED_LINE_TEXML_MESSAGE)
       texml.hangup()
       return { kind: "twiml", texml }
     }
+
+    const firstLegDone = await isTelnyxInboundDialCallerLegDone(callSid)
+
+    if (debug) console.log(`[Sigo] Found user ${routing.user_id} (${routing.user_name}) for number ${calledNumber}`)
+    if (debug) console.log(`[Sigo] Routing config: receptionist=${routing.selected_receptionist_id || "none"}, fallback=${routing.fallback_type || "owner"}`)
 
     if (firstLegDone) {
       console.log(

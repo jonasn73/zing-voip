@@ -41,7 +41,7 @@ import {
 import { texmlSayNatural } from "@/lib/texml-say-voice"
 import { buildTelnyxDialFromDisplayName } from "@/lib/telnyx-caller-display"
 import { shouldEmitVoiceHotPathDebugLogs } from "@/lib/voice-log-gate"
-import { isAccountRoutingBlocked } from "@/lib/account-status"
+import { isAccountRoutingBlocked, SUSPENDED_LINE_TEXML_MESSAGE } from "@/lib/account-status"
 
 /** Build FormData from a Telnyx Dial callback (POST body and/or GET query). */
 async function getDialCallbackFormData(req: NextRequest): Promise<FormData> {
@@ -492,7 +492,7 @@ export async function handleTelnyxFallbackDialEnded(
     const accountStatus = await getUserAccountStatus(userId)
     if (isAccountRoutingBlocked(accountStatus)) {
       console.warn(JSON.stringify({ zing: "telnyx-fallback-account-suspended", userId, accountStatus, callSid }))
-      texmlSayNatural(texml, "This line is temporarily unavailable. Goodbye.")
+      texmlSayNatural(texml, SUSPENDED_LINE_TEXML_MESSAGE)
       texml.hangup()
       return new NextResponse(texml.toString(), {
         headers: { "Content-Type": "text/xml" },

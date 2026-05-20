@@ -10,7 +10,9 @@ export function parseAccountStatus(value: unknown): AccountStatus | null {
   return null
 }
 
-/** Suspended accounts are blocked from Telnyx inbound/outbound routing webhooks. */
+/** Spoken when account_status is suspended — inbound Telnyx webhooks must return this and hang up. */
+export const SUSPENDED_LINE_TEXML_MESSAGE = "This line is temporarily unavailable."
+
 export function isAccountRoutingBlocked(status: string | null | undefined): boolean {
   return parseAccountStatus(status) === "suspended"
 }

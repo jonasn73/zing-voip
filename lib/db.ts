@@ -2934,71 +2934,93 @@ export async function adminApplyUserOverride(params: {
     `
     await sql`UPDATE users SET credit_balance_cents = 0 WHERE id = ${userId}`
     clearIncomingRoutingCache()
-  }
+  } else {
+    const profileBefore = await getOnboardingProfile(userId)
+    const shouldWriteStatus = params.targetStatus !== undefined
+    const shouldWriteNotes = params.adminNotes !== undefined
+    const shouldWritePhone =
+      params.manualPhoneOverride !== undefined &&
+      params.manualPhoneOverride !== null &&
+      String(params.manualPhoneOverride).trim().length > 0
 
-  if (params.targetStatus !== undefined) {
-    const status = parseAccountStatus(params.targetStatus)
-    if (!status) throw new Error("targetStatus must be active, suspended, or flagged")
-    try {
-      await sql`
-        UPDATE onboarding_profiles
-        SET account_status = ${status}, updated_at = now()
-        WHERE user_id = ${userId}
-      `
-    } catch (e) {
-      if (isMissingOnboardingProfileColumnError(e)) {
-        throw new Error("account_status requires scripts/034-admin-profile-metrics.sql in Neon.")
+    if (shouldWriteStatus || shouldWriteNotes || shouldWritePhone) {
+      let nextStatus = profileBefore?.account_status ?? "active"
+      if (shouldWriteStatus) {
+        const parsed = parseAccountStatus(params.targetStatus)
+        if (!parsed) throw new Error("targetStatus must be active, suspended, or flagged")
+        nextStatus = parsed
       }
-      throw e
-    }
-    clearIncomingRoutingCache()
-  }
 
-  if (params.adminNotes !== undefined) {
-    const note = params.adminNotes === null ? null : String(params.adminNotes).trim() || null
-    try {
-      await sql`
-        UPDATE onboarding_profiles
-        SET custom_routing_note = ${note}, updated_at = now()
-        WHERE user_id = ${userId}
-      `
-    } catch (e) {
-      if (isMissingOnboardingProfileColumnError(e)) {
-        throw new Error("custom_routing_note requires scripts/034-admin-profile-metrics.sql in Neon.")
-      }
-      throw e
-    }
-  }
+      const nextNote = shouldWriteNotes
+        ? params.adminNotes === null
+          ? null
+          : String(params.adminNotes).trim() || null
+        : (profileBefore?.custom_routing_note ?? null)
 
-  if (params.manualPhoneOverride !== undefined && params.manualPhoneOverride !== null) {
-    const raw = String(params.manualPhoneOverride).trim()
-    if (raw) {
-      const numberE164 = normalizePhoneNumberE164(raw)
-      if (!isReasonablePstnDialString(numberE164)) {
-        throw new Error("manualPhoneOverride must be a valid phone number")
+      let numberE164: string | null = null
+      if (shouldWritePhone) {
+        numberE164 = normalizePhoneNumberE164(String(params.manualPhoneOverride))
+        if (!isReasonablePstnDialString(numberE164)) {
+          throw new Error("manualPhoneOverride must be a valid phone number")
+        }
       }
-      const existing = await getPhoneNumbers(userId)
-      const active = existing.find((p) => p.status === "active")
-      if (active) {
-        await sql`
-          UPDATE phone_numbers
-          SET number = ${numberE164}, friendly_name = ${numberE164}
-          WHERE id = ${active.id} AND user_id = ${userId}
-        `
-      } else {
-        await insertPhoneNumber({
-          user_id: userId,
-          number: numberE164,
-          friendly_name: numberE164,
-          label: "Admin assigned",
-          status: "active",
-        })
+
+      const reservedNumber = numberE164 ?? profileBefore?.reserved_number ?? null
+      const txnStatements: ReturnType<typeof sql>[] = [
+        sql`
+          UPDATE onboarding_profiles
+          SET
+            account_status = ${nextStatus},
+            custom_routing_note = ${nextNote},
+            reserved_number = ${reservedNumber},
+            reserved_number_display = ${reservedNumber},
+            reserved_number_method = ${numberE164 ? "buy" : profileBefore?.reserved_number_method ?? null},
+            updated_at = now()
+          WHERE user_id = ${userId}
+        `,
+      ]
+
+      if (numberE164) {
+        const numbers = await getPhoneNumbers(userId)
+        const active = numbers.find((p) => p.status === "active")
+        if (active) {
+          txnStatements.push(
+            sql`
+              UPDATE phone_numbers
+              SET number = ${numberE164}, friendly_name = ${numberE164}
+              WHERE id = ${active.id} AND user_id = ${userId}
+            `
+          )
+        } else {
+          const phoneId = crypto.randomUUID()
+          txnStatements.push(
+            sql`
+              INSERT INTO phone_numbers (id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at)
+              VALUES (
+                ${phoneId},
+                ${userId},
+                '',
+                '',
+                ${numberE164},
+                ${numberE164},
+                'Admin assigned',
+                'local',
+                'active',
+                now()
+              )
+            `
+          )
+        }
       }
-      await updateOnboardingProfile(userId, {
-        reserved_number: numberE164,
-        reserved_number_display: numberE164,
-        reserved_number_method: "buy",
-      })
+
+      try {
+        await sql.transaction(txnStatements)
+      } catch (e) {
+        if (isMissingOnboardingProfileColumnError(e)) {
+          throw new Error("Admin overrides require scripts/034-admin-profile-metrics.sql in Neon.")
+        }
+        throw e
+      }
       clearIncomingRoutingCache()
     }
   }

@@ -61,6 +61,11 @@ export function AdminUserManageDrawer({
     setManualPhone(row.phone_number ?? "")
   }, [row])
 
+  async function handleSaveSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    await saveOverrides()
+  }
+
   async function saveOverrides() {
     if (!row) return
     setSaving(true)
@@ -121,7 +126,11 @@ export function AdminUserManageDrawer({
         </SheetHeader>
 
         {row ? (
-          <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-2">
+          <form
+            id="admin-user-override-form"
+            className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-2"
+            onSubmit={(e) => void handleSaveSubmit(e)}
+          >
             <div className="space-y-2">
               <Label className="text-slate-300">Account status</Label>
               <Select value={targetStatus} onValueChange={setTargetStatus}>
@@ -203,7 +212,7 @@ export function AdminUserManageDrawer({
                 </AlertDialogContent>
               </AlertDialog>
             </div>
-          </div>
+          </form>
         ) : null}
 
         <SheetFooter className="border-t border-slate-800 pt-4">
@@ -216,10 +225,10 @@ export function AdminUserManageDrawer({
             Cancel
           </Button>
           <Button
-            type="button"
+            type="submit"
+            form="admin-user-override-form"
             className="bg-violet-600 hover:bg-violet-500"
             disabled={!row || saving}
-            onClick={() => void saveOverrides()}
           >
             {saving ? "Saving..." : "Save changes"}
           </Button>

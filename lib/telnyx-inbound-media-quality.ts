@@ -69,6 +69,15 @@ export function readInboundDialRingTone(): string {
 }
 
 /**
+ * Optional second routing_config read on `/incoming` (can add 80–200ms before `<Dial>`).
+ * Default off — `getIncomingRoutingByNumber` already merges per-DID + default rows in one query.
+ */
+export function readInboundRoutingCfgOverlayEnabled(): boolean {
+  const raw = (process.env.ZING_INBOUND_ROUTING_CFG_OVERLAY || "").trim().toLowerCase()
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
+}
+
+/**
  * Two-phase inbound: optional redirect before DB routing (pass 2 adds `<Dial>`).
  * **Default off** — the extra webhook hop adds ~300–800ms and an audible ring-tone switch before `<Dial>`.
  * Enable with `ZING_INBOUND_EARLY_MEDIA=1` only if pass-1 ringback while DB loads is worth the delay.

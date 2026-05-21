@@ -206,12 +206,15 @@ export type IncomingRoutingRow = {
   phone_line_friendly_name: string
   /** onboarding_profiles.account_status — suspended blocks routing (034). */
   account_status: string
+  /** Active lines on account — avoids extra `getPhoneNumbers` on inbound hot path. */
+  active_phone_count: number
+  /** First active DID — PSTN caller-id when account has multiple lines. */
+  primary_phone_number: string
 }
 
 // Cache for incoming voice routing to reduce per-request DB latency on the **same** instance.
-// **Do not rely on this for correctness:** `clearIncomingRoutingCache()` only clears this process; other
-// Vercel/serverless instances keep their own Map. Telnyx `/incoming` must use `{ bypassCache: true }` so
-// receptionist + fallback match the dashboard immediately after saves.
+// Dashboard saves call `clearIncomingRoutingCache()` on the writer instance; other serverless instances
+// may serve cached routing for up to INCOMING_ROUTING_CACHE_TTL_MS (fallback webhooks use bypassCache).
 type IncomingRoutingByNumber = IncomingRoutingRow | null
 
 const incomingRoutingCache = new Map<string, { expiresAt: number; value: IncomingRoutingByNumber }>()
@@ -947,7 +950,19 @@ export async function getIncomingRoutingByNumber(
       reff.phone AS receptionist_phone,
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
-      COALESCE(op.account_status, 'active') AS account_status
+      COALESCE(op.account_status, 'active') AS account_status,
+      (
+        SELECT count(*)::int
+        FROM phone_numbers pn2
+        WHERE pn2.user_id = u.id AND pn2.status = 'active'
+      ) AS active_phone_count,
+      (
+        SELECT pn3.number
+        FROM phone_numbers pn3
+        WHERE pn3.user_id = u.id AND pn3.status = 'active'
+        ORDER BY pn3.created_at ASC NULLS LAST
+        LIMIT 1
+      ) AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
     LEFT JOIN onboarding_profiles op ON op.user_id = u.id
@@ -1016,7 +1031,19 @@ export async function getIncomingRoutingByNumber(
       reff.phone AS receptionist_phone,
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
-      COALESCE(op.account_status, 'active') AS account_status
+      COALESCE(op.account_status, 'active') AS account_status,
+      (
+        SELECT count(*)::int
+        FROM phone_numbers pn2
+        WHERE pn2.user_id = u.id AND pn2.status = 'active'
+      ) AS active_phone_count,
+      (
+        SELECT pn3.number
+        FROM phone_numbers pn3
+        WHERE pn3.user_id = u.id AND pn3.status = 'active'
+        ORDER BY pn3.created_at ASC NULLS LAST
+        LIMIT 1
+      ) AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
     LEFT JOIN onboarding_profiles op ON op.user_id = u.id
@@ -1081,6 +1108,8 @@ export async function getIncomingRoutingByNumber(
     phone_line_label: row.phone_line_label != null ? String(row.phone_line_label) : "Main Line",
     phone_line_friendly_name: row.phone_line_friendly_name != null ? String(row.phone_line_friendly_name) : "",
     account_status: row.account_status != null ? String(row.account_status) : "active",
+    active_phone_count: Math.max(1, Number(row.active_phone_count ?? 1)),
+    primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : "",
   }
 
   incomingRoutingCache.set(normalized, { expiresAt: Date.now() + INCOMING_ROUTING_CACHE_TTL_MS, value })

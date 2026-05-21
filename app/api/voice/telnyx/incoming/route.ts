@@ -19,11 +19,9 @@ import {
   getIncomingRoutingByNumber,
   getReceptionist,
   getRoutingConfigForNumber,
-  getPhoneNumbers,
   getUser,
   insertCallLog,
   getUserAccountStatus,
-  getAccountStatusForInboundNumber,
   isReasonablePstnDialString,
   normalizePhoneNumberE164,
   bumpTelnyxAiIncomingHitCount,
@@ -55,6 +53,7 @@ import {
   buildInboundRoutingContinueUrl,
   finalizeInboundTexmlXml,
   readInboundEarlyMediaEnabled,
+  readInboundRoutingCfgOverlayEnabled,
 } from "@/lib/telnyx-inbound-media-quality"
 
 export const runtime = "nodejs"
@@ -181,6 +180,19 @@ function shouldServeEarlyMediaPass(url: URL, fields: Record<string, string>): bo
   return true
 }
 
+/** True when Telnyx re-posted after a `<Dial>` leg (skip repeat-leg DB on first ring). */
+function inboundWebhookLooksLikeDialRepeat(fields: Record<string, string>): boolean {
+  const dialOutcome = pickField(fields, [
+    "DialCallStatus",
+    "DialStatus",
+    "DialCallLegStatus",
+    "DialCallLegState",
+    "dial_call_status",
+  ]).trim()
+  if (dialOutcome) return true
+  return hasVoiceUrlDialCompletedEvidence(fields)
+}
+
 function resolveReceptionistDialE164(rawPhone: string): string {
   const fromRow = normalizePhoneNumberE164(rawPhone)
   if (fromRow && isReasonablePstnDialString(fromRow)) return fromRow
@@ -245,8 +257,8 @@ async function handleIncomingCall(
     // E.164 for DB + fallback URL — must match phone_numbers.number (we also match by digits in SQL).
     const businessLineE164 = calledNumber ? normalizePhoneNumberE164(calledNumber) : ""
 
-    // 1. Resolve the account profile for this dialed number (onboarding_profiles + routing).
-    const routing = await getIncomingRoutingByNumber(calledNumber, { bypassCache: true })
+    // 1. One cached routing read — everything needed for `<Dial>` (receptionist, fallback, status, primary DID).
+    const routing = await getIncomingRoutingByNumber(calledNumber)
     if (!routing) {
       console.error(
         "[Sigo] No user/routing for inbound — check phone_numbers row matches this line. Detail:",
@@ -264,20 +276,36 @@ async function handleIncomingCall(
       return { kind: "twiml", texml }
     }
 
-    // 2–3. Parallel hot-path reads (status, repeat-leg guard, dashboard routing overlay, receptionist prefetch).
+    // 2. Suspension guard (from join) before any extra DB round trips.
+    const statusFromJoin = parseAccountStatus(routing.account_status)
+    if (statusFromJoin && isAccountRoutingBlocked(statusFromJoin)) {
+      console.warn(
+        JSON.stringify({
+          zing: "telnyx-incoming-account-suspended",
+          userId: routing.user_id,
+          accountStatus: statusFromJoin,
+          callSid,
+        })
+      )
+      return { kind: "raw", xml: buildSuspendedInboundRejectTexml() }
+    }
+
     const cfgDid = businessLineE164 || normalizePhoneNumberE164(calledNumber) || calledNumber.trim()
     const routingRecId = routing.selected_receptionist_id?.trim() || ""
-    const statusFromJoin = parseAccountStatus(routing.account_status)
+    const routingHasRecvPhone = Boolean(routingRecId && routing.receptionist_phone?.trim())
+    const overlayEnabled = readInboundRoutingCfgOverlayEnabled()
+    const mightRepeatLeg = inboundWebhookLooksLikeDialRepeat(webhookFields)
 
-    const [accountStatus, firstLegDone, routingCfgResult, phoneList, prefetchedRoutingRec] = await Promise.all([
+    const [accountStatus, firstLegDone, routingCfgResult, prefetchedRoutingRec] = await Promise.all([
       statusFromJoin != null ? Promise.resolve(statusFromJoin) : getUserAccountStatus(routing.user_id),
-      isTelnyxInboundDialCallerLegDone(callSid),
-      getRoutingConfigForNumber(routing.user_id, cfgDid).catch((cfgErr) => {
-        console.error("[Sigo] getRoutingConfigForNumber on incoming failed (using SQL join only):", cfgErr)
-        return null
-      }),
-      getPhoneNumbers(routing.user_id),
-      routingRecId
+      mightRepeatLeg ? isTelnyxInboundDialCallerLegDone(callSid) : Promise.resolve(false),
+      overlayEnabled
+        ? getRoutingConfigForNumber(routing.user_id, cfgDid).catch((cfgErr) => {
+            console.error("[Sigo] getRoutingConfigForNumber on incoming failed (using SQL join only):", cfgErr)
+            return null
+          })
+        : Promise.resolve(null),
+      routingRecId && !routingHasRecvPhone
         ? getReceptionist(routingRecId).catch(() => null)
         : Promise.resolve(null),
     ])
@@ -630,9 +658,10 @@ async function handleIncomingCall(
     const preferPrimaryCallerId = ["1", "true", "yes", "on"].includes(
       (process.env.ZING_INBOUND_PSTN_CALLER_ID_PRIMARY || "").trim().toLowerCase()
     )
-    const primaryRow = phoneList.find((p) => p.status === "active") ?? phoneList[0]
-    const primaryE164 = primaryRow?.number?.trim() ? normalizePhoneNumberE164(primaryRow.number) : ""
-    const multiLine = phoneList.filter((p) => p.status === "active").length >= 2
+    const primaryE164 = routing.primary_phone_number?.trim()
+      ? normalizePhoneNumberE164(routing.primary_phone_number)
+      : ""
+    const multiLine = routing.active_phone_count >= 2
 
     let outboundCallerId = businessLineE164
     if (preferPrimaryCallerId) {
@@ -784,23 +813,9 @@ function texmlResponseBody(out: IncomingCallResult): string {
   return out.kind === "raw" ? raw : finalizeInboundTexmlXml(raw)
 }
 
-/** Block suspended accounts before early-media or any dial legs (fast DID lookup + instant Reject). */
-async function suspendedInboundTexmlResponse(calledNumberRaw: string): Promise<NextResponse | null> {
-  const calledNumber = calledNumberRaw.trim()
-  if (!calledNumber) return null
-  const { account_status } = await getAccountStatusForInboundNumber(calledNumber)
-  if (!isAccountRoutingBlocked(account_status)) return null
-  return new NextResponse(buildSuspendedInboundRejectTexml(), {
-    headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
-  })
-}
-
 export async function POST(req: NextRequest) {
   const fields = await readWebhookFields(req)
   const reqUrl = new URL(req.url)
-  const calledNumberRaw = resolveCalledParty(fields)
-  const suspended = await suspendedInboundTexmlResponse(calledNumberRaw)
-  if (suspended) return suspended
   if (shouldServeEarlyMediaPass(reqUrl, fields)) {
     const continueUrl = buildInboundRoutingContinueUrl(req.url)
     return new NextResponse(buildInboundEarlyMediaTexml(continueUrl), {
@@ -811,6 +826,7 @@ export async function POST(req: NextRequest) {
     console.log("[Sigo] Telnyx webhook fields:", JSON.stringify(fields))
   }
 
+  const calledNumberRaw = resolveCalledParty(fields)
   if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
     console.log(
       JSON.stringify({
@@ -842,15 +858,13 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const fields = searchParamsToFields(url)
-  const calledNumberRaw = resolveCalledParty(fields)
-  const suspended = await suspendedInboundTexmlResponse(calledNumberRaw)
-  if (suspended) return suspended
   if (shouldServeEarlyMediaPass(url, fields)) {
     const continueUrl = buildInboundRoutingContinueUrl(req.url)
     return new NextResponse(buildInboundEarlyMediaTexml(continueUrl), {
       headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
     })
   }
+  const calledNumberRaw = resolveCalledParty(fields)
   if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
     console.log(
       JSON.stringify({

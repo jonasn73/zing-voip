@@ -929,9 +929,11 @@ export async function getIncomingRoutingByNumber(
       reff.name AS receptionist_name,
       reff.phone AS receptionist_phone,
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
-      COALESCE(pn.friendly_name, '') AS phone_line_friendly_name
+      COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
+      COALESCE(op.account_status, 'active') AS account_status
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
+    LEFT JOIN onboarding_profiles op ON op.user_id = u.id
     LEFT JOIN LATERAL (
       SELECT rc.*
       FROM routing_config rc
@@ -996,9 +998,11 @@ export async function getIncomingRoutingByNumber(
       reff.name AS receptionist_name,
       reff.phone AS receptionist_phone,
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
-      COALESCE(pn.friendly_name, '') AS phone_line_friendly_name
+      COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
+      COALESCE(op.account_status, 'active') AS account_status
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
+    LEFT JOIN onboarding_profiles op ON op.user_id = u.id
     LEFT JOIN LATERAL (
       SELECT rc.*
       FROM routing_config rc
@@ -2902,10 +2906,46 @@ export async function adminToggleUserSubscription(
   }
 }
 
-/** Read account_status for voice routing guard (defaults active). */
+/** Read account_status for voice routing guard — direct column read (never use profile fallbacks). */
 export async function getUserAccountStatus(userId: string): Promise<string> {
-  const profile = await getOnboardingProfile(userId)
-  return profile?.account_status ?? "active"
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT account_status
+      FROM onboarding_profiles
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `
+    const row = rows[0] as { account_status?: string | null } | undefined
+    if (!row || row.account_status == null) return "active"
+    return parseAccountStatus(row.account_status) ?? "active"
+  } catch (e) {
+    if (
+      isMissingOnboardingProfileColumnError(e) ||
+      isMissingOnboardingProfilesTableError(e) ||
+      isWrongLegacyProfilesTableError(e)
+    ) {
+      return "active"
+    }
+    throw e
+  }
+}
+
+/** Resolve account owner from inbound DID and return suspension status (for webhook guard). */
+export async function getAccountStatusForInboundNumber(toNumber: string): Promise<{
+  user_id: string | null
+  account_status: string
+}> {
+  const routing = await getIncomingRoutingByNumber(toNumber, { bypassCache: true })
+  if (!routing?.user_id) {
+    return { user_id: null, account_status: "active" }
+  }
+  const fromRouting = parseAccountStatus(routing.account_status)
+  if (fromRouting) {
+    return { user_id: routing.user_id, account_status: fromRouting }
+  }
+  const account_status = await getUserAccountStatus(routing.user_id)
+  return { user_id: routing.user_id, account_status }
 }
 
 /** Operator overrides: status, notes, manual DID, hard reset lines. */
@@ -3430,7 +3470,7 @@ export async function getOnboardingProfile(userId: string): Promise<OnboardingPr
       SELECT user_id, reserved_number, reserved_number_display, reserved_number_method,
              port_carrier, fallback_type, trade_category, opening_line,
              has_active_subscription,
-             subscription_tier, carrier_credit, low_balance_notified,
+             subscription_tier, carrier_credit,
              total_calls_routed, total_minutes_used, account_status, custom_routing_note,
              billing_cycle_start, billing_cycle_end,
              stripe_customer_id, stripe_subscription_id,

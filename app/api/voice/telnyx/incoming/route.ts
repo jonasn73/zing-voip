@@ -23,6 +23,7 @@ import {
   getUser,
   insertCallLog,
   getUserAccountStatus,
+  getAccountStatusForInboundNumber,
   isReasonablePstnDialString,
   normalizePhoneNumberE164,
   bumpTelnyxAiIncomingHitCount,
@@ -245,7 +246,7 @@ async function handleIncomingCall(
     const businessLineE164 = calledNumber ? normalizePhoneNumberE164(calledNumber) : ""
 
     // 1. Resolve the account profile for this dialed number (onboarding_profiles + routing).
-    const routing = await getIncomingRoutingByNumber(calledNumber)
+    const routing = await getIncomingRoutingByNumber(calledNumber, { bypassCache: true })
     if (!routing) {
       console.error(
         "[Sigo] No user/routing for inbound — check phone_numbers row matches this line. Detail:",
@@ -774,9 +775,26 @@ function texmlResponseBody(out: IncomingCallResult): string {
   return out.kind === "raw" ? raw : finalizeInboundTexmlXml(raw)
 }
 
+/** Block suspended accounts before early-media or any dial legs (direct DB read, not profile cache). */
+async function suspendedInboundTexmlResponse(calledNumberRaw: string): Promise<NextResponse | null> {
+  const calledNumber = calledNumberRaw.trim()
+  if (!calledNumber) return null
+  const { account_status } = await getAccountStatusForInboundNumber(calledNumber)
+  if (!isAccountRoutingBlocked(account_status)) return null
+  const texml = new VoiceResponse()
+  texmlSayNatural(texml, SUSPENDED_LINE_TEXML_MESSAGE)
+  texml.hangup()
+  return new NextResponse(finalizeInboundTexmlXml(texml.toString()), {
+    headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+  })
+}
+
 export async function POST(req: NextRequest) {
   const fields = await readWebhookFields(req)
   const reqUrl = new URL(req.url)
+  const calledNumberRaw = resolveCalledParty(fields)
+  const suspended = await suspendedInboundTexmlResponse(calledNumberRaw)
+  if (suspended) return suspended
   if (shouldServeEarlyMediaPass(reqUrl, fields)) {
     const continueUrl = buildInboundRoutingContinueUrl(req.url)
     return new NextResponse(buildInboundEarlyMediaTexml(continueUrl), {
@@ -787,7 +805,6 @@ export async function POST(req: NextRequest) {
     console.log("[Sigo] Telnyx webhook fields:", JSON.stringify(fields))
   }
 
-  const calledNumberRaw = resolveCalledParty(fields)
   if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
     console.log(
       JSON.stringify({
@@ -819,13 +836,15 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const fields = searchParamsToFields(url)
+  const calledNumberRaw = resolveCalledParty(fields)
+  const suspended = await suspendedInboundTexmlResponse(calledNumberRaw)
+  if (suspended) return suspended
   if (shouldServeEarlyMediaPass(url, fields)) {
     const continueUrl = buildInboundRoutingContinueUrl(req.url)
     return new NextResponse(buildInboundEarlyMediaTexml(continueUrl), {
       headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
     })
   }
-  const calledNumberRaw = resolveCalledParty(fields)
   if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
     console.log(
       JSON.stringify({

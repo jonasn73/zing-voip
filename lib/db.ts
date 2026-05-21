@@ -217,7 +217,7 @@ export type IncomingRoutingRow = {
 type IncomingRoutingByNumber = IncomingRoutingRow | null
 
 const incomingRoutingCache = new Map<string, { expiresAt: number; value: IncomingRoutingByNumber }>()
-const INCOMING_ROUTING_CACHE_TTL_MS = 120_000
+const INCOMING_ROUTING_CACHE_TTL_MS = 3_600_000
 /** Vercel Data Cache tag — shared across serverless instances (unlike the in-memory Map below). */
 const INCOMING_ROUTING_DATA_TAG = "incoming-routing"
 
@@ -289,6 +289,81 @@ export function peekIncomingRoutingCache(toNumber: string): IncomingRoutingRow |
   const cached = incomingRoutingCache.get(normalized)
   if (cached && cached.expiresAt > Date.now() && cached.value) return cached.value
   return null
+}
+
+/** Minimal snapshot read — phone_numbers only (no routing_config joins). */
+async function fetchInboundDialSnapshotSql(
+  normalized: string,
+  digitKey: string
+): Promise<IncomingRoutingRow | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT
+        pn.user_id,
+        pn.number AS primary_phone_number,
+        pn.inbound_dial_e164 AS receptionist_phone,
+        pn.inbound_receptionist_id AS selected_receptionist_id,
+        pn.inbound_receptionist_name AS receptionist_name,
+        COALESCE(pn.inbound_fallback_type, 'owner') AS fallback_type,
+        COALESCE(pn.inbound_ring_timeout_seconds, 30) AS ring_timeout_seconds,
+        COALESCE(pn.inbound_account_status, 'active') AS account_status
+      FROM phone_numbers pn
+      WHERE pn.status = 'active'
+        AND pn.inbound_routing_updated_at IS NOT NULL
+        AND (
+          pn.number = ${normalized}
+          OR regexp_replace(pn.number, '\\D', '', 'g') = ${digitKey}
+        )
+      LIMIT 1
+    `
+    if (!rows[0]) return null
+    const row = rows[0] as Record<string, unknown>
+    return {
+      user_id: String(row.user_id),
+      user_name: "",
+      business_name: "My Business",
+      inbound_receptionist_whisper_enabled: true,
+      owner_phone: "",
+      selected_receptionist_id: row.selected_receptionist_id ? String(row.selected_receptionist_id) : null,
+      fallback_type: (row.fallback_type as RoutingConfig["fallback_type"]) || "owner",
+      ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
+      ai_ring_owner_first: false,
+      receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
+      receptionist_phone: row.receptionist_phone ? String(row.receptionist_phone) : null,
+      phone_line_label: "Main Line",
+      phone_line_friendly_name: "",
+      account_status: row.account_status != null ? String(row.account_status) : "active",
+      active_phone_count: 1,
+      primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : normalized,
+    }
+  } catch (e) {
+    if (isMissingInboundDialSnapshotColumnError(e)) return null
+    throw e
+  }
+}
+
+/**
+ * Voice webhook routing — memory → one-row snapshot SQL → full joins.
+ * Skips Vercel Data Cache to avoid extra latency on the Telnyx hot path.
+ */
+export async function getIncomingRoutingForVoiceWebhook(
+  toNumber: string
+): Promise<IncomingRoutingByNumber> {
+  const normalized = normalizePhoneNumberE164(toNumber)
+  if (!normalized) return null
+  const digitKey = phoneDigitsKey(toNumber)
+
+  const mem = incomingRoutingCache.get(normalized)
+  if (mem && mem.expiresAt > Date.now()) return mem.value
+
+  const snap = await fetchInboundDialSnapshotSql(normalized, digitKey)
+  if (snap) {
+    storeIncomingRoutingInMemory(normalized, snap)
+    return snap
+  }
+
+  return fetchIncomingRoutingByNumberFromDb(normalized, digitKey)
 }
 
 // Normalize toward E.164 so values match `phone_numbers.number` and Telnyx `<Number>` dialing.
@@ -985,50 +1060,6 @@ function mapIncomingRoutingRowFromDb(row: Record<string, unknown>): IncomingRout
   }
 }
 
-/** One indexed row read — precomputed on dashboard save (scripts/036). */
-async function tryFetchInboundRoutingSnapshot(
-  normalized: string,
-  digitKey: string
-): Promise<IncomingRoutingByNumber | null> {
-  const sql = getSql()
-  try {
-    const rows = await sql`
-      SELECT
-        u.id AS user_id,
-        u.name AS user_name,
-        COALESCE(NULLIF(trim(u.business_name), ''), 'My Business') AS business_name,
-        COALESCE(u.inbound_receptionist_whisper_enabled, true) AS inbound_receptionist_whisper_enabled,
-        u.phone AS owner_phone,
-        pn.inbound_receptionist_id AS selected_receptionist_id,
-        COALESCE(pn.inbound_fallback_type, 'owner') AS fallback_type,
-        COALESCE(pn.inbound_ring_timeout_seconds, 30) AS ring_timeout_seconds,
-        COALESCE(pn.inbound_ai_ring_owner_first, false) AS ai_ring_owner_first,
-        pn.inbound_receptionist_name AS receptionist_name,
-        pn.inbound_dial_e164 AS receptionist_phone,
-        COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
-        COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
-        COALESCE(pn.inbound_account_status, 'active') AS account_status,
-        pn.number AS primary_phone_number
-      FROM phone_numbers pn
-      JOIN users u ON u.id = pn.user_id
-      WHERE pn.status = 'active'
-        AND pn.inbound_routing_updated_at IS NOT NULL
-        AND (
-          pn.number = ${normalized}
-          OR regexp_replace(pn.number, '\\D', '', 'g') = ${digitKey}
-        )
-      LIMIT 1
-    `
-    if (!rows[0]) return null
-    return mapIncomingRoutingRowFromDb(rows[0] as Record<string, unknown>)
-  } catch (e) {
-    if (isMissingInboundDialSnapshotColumnError(e) || isMissingInboundReceptionistWhisperColumnError(e)) {
-      return null
-    }
-    throw e
-  }
-}
-
 async function writeInboundRoutingSnapshot(
   normalized: string,
   digitKey: string,
@@ -1262,7 +1293,7 @@ async function fetchIncomingRoutingByNumberFromDb(
   normalized: string,
   digitKey: string
 ): Promise<IncomingRoutingByNumber> {
-  const snap = await tryFetchInboundRoutingSnapshot(normalized, digitKey)
+  const snap = await fetchInboundDialSnapshotSql(normalized, digitKey)
   if (snap) {
     storeIncomingRoutingInMemory(normalized, snap)
     return snap

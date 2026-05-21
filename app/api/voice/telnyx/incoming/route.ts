@@ -9,6 +9,7 @@
 // Falls back to the user's default config if no number-specific config exists.
 
 import { randomUUID } from "crypto"
+import { after } from "next/server"
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { SITE_NAME } from "@/lib/brand"
@@ -16,6 +17,7 @@ import { texmlSayNatural } from "@/lib/texml-say-voice"
 import { buildInboundLineWhisperPhrase } from "@/lib/inbound-line-whisper"
 import { buildTelnyxDialFromDisplayName } from "@/lib/telnyx-caller-display"
 import {
+  getIncomingRoutingForVoiceWebhook,
   getIncomingRoutingByNumber,
   peekBlockedInboundStatusForNumber,
   peekIncomingRoutingCache,
@@ -325,22 +327,24 @@ function tryFastReceptionistDial(params: {
     receptionistE164: recPhone,
   })
 
-  void insertCallLog({
-    user_id: routing.user_id,
-    provider_call_sid: callSid,
-    from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
-    to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
-    caller_name: callerName,
-    call_type: "incoming",
-    status: "ringing",
-    duration_seconds: 0,
-    routed_to_receptionist_id: routing.selected_receptionist_id,
-    routed_to_name: routing.receptionist_name,
-    has_recording: false,
-    recording_url: null,
-    recording_duration_seconds: null,
-  }).catch((logErr) => {
-    console.error("[Sigo] Call log insert failed (fast path):", logErr)
+  after(() => {
+    void insertCallLog({
+      user_id: routing.user_id,
+      provider_call_sid: callSid,
+      from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
+      to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
+      caller_name: callerName,
+      call_type: "incoming",
+      status: "ringing",
+      duration_seconds: 0,
+      routed_to_receptionist_id: routing.selected_receptionist_id,
+      routed_to_name: routing.receptionist_name,
+      has_recording: false,
+      recording_url: null,
+      recording_duration_seconds: null,
+    }).catch((logErr) => {
+      console.error("[Sigo] Call log insert failed (fast path):", logErr)
+    })
   })
 
   console.log(
@@ -375,7 +379,7 @@ async function handleIncomingCall(
     const businessLineE164 = calledNumber ? normalizePhoneNumberE164(calledNumber) : ""
 
     // 1. One cached routing read — everything needed for `<Dial>` (receptionist, fallback, status, primary DID).
-    const routing = await getIncomingRoutingByNumber(calledNumber)
+    const routing = await getIncomingRoutingForVoiceWebhook(calledNumber)
     if (!routing) {
       console.error(
         "[Sigo] No user/routing for inbound — check phone_numbers row matches this line. Detail:",
@@ -932,8 +936,9 @@ async function tryFastInboundReceptionistResponse(fields: Record<string, string>
   const calledNumberRaw = resolveCalledParty(fields)
   if (!calledNumberRaw.trim()) return null
 
+  const memHit = peekIncomingRoutingCache(calledNumberRaw)
   const t0 = Date.now()
-  const routing = await getIncomingRoutingByNumber(calledNumberRaw)
+  const routing = memHit ?? (await getIncomingRoutingForVoiceWebhook(calledNumberRaw))
   const lookupMs = Date.now() - t0
 
   if (!routing) return null
@@ -972,6 +977,7 @@ async function tryFastInboundReceptionistResponse(fields: Record<string, string>
       userId: routing.user_id,
       callSid,
       lookupMs,
+      routingSource: memHit ? "memory" : "db",
     })
   )
 

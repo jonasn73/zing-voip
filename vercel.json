@@ -4,5 +4,10 @@
       "path": "/api/voice/warm",
       "schedule": "0 14 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/voice/telnyx/incoming/route.ts": {
+      "memory": 1024
+    }
+  }
 }

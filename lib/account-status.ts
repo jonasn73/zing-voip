@@ -1,7 +1,5 @@
 // Account status values for onboarding_profiles.account_status (admin overrides + voice routing guard).
 
-import { VoiceResponse } from "@/lib/telnyx"
-
 export const ACCOUNT_STATUSES = ["active", "suspended", "flagged"] as const
 
 export type AccountStatus = (typeof ACCOUNT_STATUSES)[number]
@@ -20,9 +18,7 @@ export const SUSPENDED_LINE_TEXML_MESSAGE = "This line is temporarily unavailabl
  * (A spoken `<Say>` waits for TTS; callers may hear one ring while the webhook + DB round-trip completes.)
  */
 export function buildSuspendedInboundRejectTexml(): string {
-  const texml = new VoiceResponse()
-  texml.reject({ reason: "busy" })
-  return texml.toString()
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Reject reason="busy"/></Response>`
 }
 
 export function isAccountRoutingBlocked(status: string | null | undefined): boolean {

@@ -166,6 +166,50 @@ export function buildInboundPstnNumberAttributes(): Record<string, string | bool
   return out
 }
 
+/** Serialize TeXML attribute map → space-separated `key="value"` fragment (hot path — no VoiceResponse). */
+function serializeTexmlAttrs(attrs: Record<string, string | number | boolean>): string {
+  const parts: string[] = []
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === false || value === undefined || value === null) continue
+    if (value === true) {
+      parts.push(`${key}="true"`)
+    } else {
+      parts.push(`${key}="${escapeXmlAttr(String(value))}"`)
+    }
+  }
+  return parts.join(" ")
+}
+
+/**
+ * Fast inbound `<Dial><Number>` TeXML — PCMU + symmetric RTP inline, no VoiceResponse or regex finalize.
+ * Used on the cache-hit hot path so Telnyx starts the receptionist PSTN leg sooner.
+ */
+export function buildFastReceptionistDialTexml(opts: {
+  callerId?: string
+  answerOnBridge: boolean
+  timeout: number
+  action: string
+  receptionistE164: string
+}): string {
+  const dialAttrs = buildInboundPstnDialAttributes({
+    ...(opts.callerId ? { callerId: opts.callerId } : {}),
+    answerOnBridge: opts.answerOnBridge,
+    timeout: opts.timeout,
+    action: opts.action,
+    method: "POST",
+  })
+  const numberAttrs = buildInboundPstnNumberAttributes()
+  const dialAttrStr = serializeTexmlAttrs(dialAttrs)
+  const numberAttrStr = serializeTexmlAttrs(numberAttrs)
+  const phone = opts.receptionistE164.trim()
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial ${dialAttrStr}>
+    <Number ${numberAttrStr}>${phone}</Number>
+  </Dial>
+</Response>`
+}
+
 /** Inject Telnyx media attributes onto `<Dial>` and `<Number>` tags in generated TeXML. */
 export function finalizeInboundTexmlXml(xml: string): string {
   const codecs = readInboundDialPreferredCodecs()

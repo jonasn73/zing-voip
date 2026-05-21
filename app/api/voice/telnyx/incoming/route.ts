@@ -53,6 +53,7 @@ import {
   buildInboundPstnDialAttributes,
   buildInboundPstnNumberAttributes,
   buildInboundRoutingContinueUrl,
+  buildFastReceptionistDialTexml,
   finalizeInboundTexmlXml,
   readInboundEarlyMediaEnabled,
   readInboundRoutingCfgOverlayEnabled,
@@ -314,17 +315,13 @@ function tryFastReceptionistDial(params: {
   })
   const answerOnBridge = readTelnyxDialAnswerOnBridge()
 
-  const texml = new VoiceResponse()
-  const dial = texml.dial(
-    buildInboundPstnDialAttributes({
-      ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
-      answerOnBridge,
-      timeout: receptionistRingSec,
-      action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${origFromQuery}`,
-      method: "POST",
-    }) as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0]
-  )
-  dial.number(buildInboundPstnNumberAttributes(), recPhone)
+  const xml = buildFastReceptionistDialTexml({
+    ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
+    answerOnBridge,
+    timeout: receptionistRingSec,
+    action: `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${origFromQuery}`,
+    receptionistE164: recPhone,
+  })
 
   void insertCallLog({
     user_id: routing.user_id,
@@ -350,9 +347,10 @@ function tryFastReceptionistDial(params: {
       userId: routing.user_id,
       callSid,
       answerOnBridge,
+      hotPath: "raw-texml",
     })
   )
-  return { kind: "twiml", texml }
+  return { kind: "raw", xml }
 }
 
 // Shared logic for routing a call (used by both POST and GET handlers)
@@ -924,6 +922,56 @@ function texmlResponseBody(out: IncomingCallResult): string {
   return out.kind === "raw" ? raw : finalizeInboundTexmlXml(raw)
 }
 
+/** Cache-first single-hop: return `<Dial>` before any DB when routing was warmed (dashboard save or recent call). */
+function tryHotInboundReceptionistResponse(fields: Record<string, string>): NextResponse | null {
+  if (inboundWebhookLooksLikeDialRepeat(fields)) return null
+  if (readInboundRoutingCfgOverlayEnabled()) return null
+
+  const calledNumberRaw = resolveCalledParty(fields)
+  if (!calledNumberRaw.trim()) return null
+
+  const blockedStatus = peekBlockedInboundStatusForNumber(calledNumberRaw)
+  if (blockedStatus && isAccountRoutingBlocked(blockedStatus)) {
+    return new NextResponse(buildSuspendedInboundRejectTexml(), {
+      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+    })
+  }
+
+  const cachedRouting = peekIncomingRoutingCache(calledNumberRaw)
+  if (!cachedRouting?.receptionist_phone?.trim() || !cachedRouting.selected_receptionist_id?.trim()) {
+    return null
+  }
+
+  const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
+  const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
+  const callerNumber = pickField(fields, ["From", "from", "Caller", "caller", "RemoteParty"])
+  const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
+  const businessLineE164 = normalizePhoneNumberE164(calledNumberRaw)
+
+  const fast = tryFastReceptionistDial({
+    routing: cachedRouting,
+    businessLineE164,
+    calledNumber: calledNumberRaw,
+    callerNumber,
+    callSid,
+    callerName,
+    appUrl: getAppUrl(),
+  })
+  if (!fast) return null
+
+  console.log(
+    JSON.stringify({
+      zing: "telnyx-incoming-hot-cache-dial",
+      userId: cachedRouting.user_id,
+      callSid,
+    })
+  )
+
+  return new NextResponse(texmlResponseBody(fast), {
+    headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+  })
+}
+
 /** Pass 1 (optional): reject suspended DIDs from cache, warm-cache Dial, or redirect-only to pass 2. */
 async function serveInboundPassOne(req: NextRequest, fields: Record<string, string>): Promise<NextResponse | null> {
   if (!shouldServeEarlyMediaPass(new URL(req.url), fields)) return null
@@ -969,6 +1017,10 @@ export async function POST(req: NextRequest) {
   const fields = await readWebhookFields(req)
   const passOne = await serveInboundPassOne(req, fields)
   if (passOne) return passOne
+
+  const hot = tryHotInboundReceptionistResponse(fields)
+  if (hot) return hot
+
   if (process.env.NODE_ENV !== "production") {
     console.log("[Sigo] Telnyx webhook fields:", JSON.stringify(fields))
   }
@@ -1007,6 +1059,10 @@ export async function GET(req: NextRequest) {
   const fields = searchParamsToFields(url)
   const passOne = await serveInboundPassOne(req, fields)
   if (passOne) return passOne
+
+  const hot = tryHotInboundReceptionistResponse(fields)
+  if (hot) return hot
+
   const calledNumberRaw = resolveCalledParty(fields)
   if (!pickField(fields, ["To", "to", "Called"]).trim() && calledNumberRaw) {
     console.log(

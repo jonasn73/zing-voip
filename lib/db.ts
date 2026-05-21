@@ -218,7 +218,7 @@ export type IncomingRoutingRow = {
 type IncomingRoutingByNumber = IncomingRoutingRow | null
 
 const incomingRoutingCache = new Map<string, { expiresAt: number; value: IncomingRoutingByNumber }>()
-const INCOMING_ROUTING_CACHE_TTL_MS = 30_000
+const INCOMING_ROUTING_CACHE_TTL_MS = 120_000
 
 /** Hot-path cache: suspended DIDs reject instantly on this instance (admin override primes it). */
 const blockedInboundStatusCache = new Map<
@@ -240,6 +240,19 @@ function primeBlockedInboundStatusForUser(userId: string, accountStatus: string,
 /** Clear cached routing so voice webhooks see updated fallback_type immediately after dashboard saves. */
 export function clearIncomingRoutingCache(): void {
   incomingRoutingCache.clear()
+}
+
+/** Warm inbound routing cache after dashboard saves (fire-and-forget). */
+export async function primeIncomingRoutingCache(toNumber: string): Promise<void> {
+  const normalized = normalizePhoneNumberE164(toNumber)
+  if (!normalized) return
+  await getIncomingRoutingByNumber(toNumber, { bypassCache: true })
+}
+
+export async function primeIncomingRoutingCacheForUser(userId: string): Promise<void> {
+  const numbers = await getPhoneNumbers(userId)
+  const active = numbers.filter((n) => n.status === "active")
+  await Promise.all(active.map((n) => getIncomingRoutingByNumber(n.number, { bypassCache: true })))
 }
 
 /** Sync peek — blocked DIDs rejected on pass 1 without a DB round trip. */
@@ -442,6 +455,7 @@ export async function updateRoutingConfig(
         VALUES (${crypto.randomUUID()}, ${userId}, ${normalizedBn}, ${selected_receptionist_id}, ${fallback_type}, ${ai_greeting}, ${ring_timeout_seconds}, ${ai_ring_owner_first_insert}, now())
       `
       clearIncomingRoutingCache()
+      void primeIncomingRoutingCache(normalizedBn).catch(() => {})
       return
     }
 
@@ -461,6 +475,7 @@ export async function updateRoutingConfig(
     }
 
     clearIncomingRoutingCache()
+    void primeIncomingRoutingCache(normalizedBn).catch(() => {})
     return
   }
 
@@ -481,9 +496,8 @@ export async function updateRoutingConfig(
   }
 
   clearIncomingRoutingCache()
+  void primeIncomingRoutingCacheForUser(userId).catch(() => {})
 }
-
-// Delete a per-number routing config (reverts to default)
 export async function deleteRoutingConfigForNumber(userId: string, businessNumber: string): Promise<void> {
   const sql = getSql()
   const existingId = await findPerNumberRoutingConfigId(userId, businessNumber)
@@ -491,6 +505,7 @@ export async function deleteRoutingConfigForNumber(userId: string, businessNumbe
     await sql`DELETE FROM routing_config WHERE id = ${existingId}`
   }
   clearIncomingRoutingCache()
+  void primeIncomingRoutingCache(normalizePhoneNumberE164(businessNumber) || businessNumber).catch(() => {})
 }
 
 // Parse a receptionists row from the database
@@ -927,7 +942,7 @@ function inboundWhisperEnabledFromRoutingRow(row: Record<string, unknown>): bool
 // from `rc_def` so inbound `<Dial>` matches what the dashboard shows when only the default row was edited.
 export async function getIncomingRoutingByNumber(
   toNumber: string,
-  options?: { bypassCache?: boolean }
+  options?: { bypassCache?: boolean; lite?: boolean }
 ): Promise<IncomingRoutingByNumber> {
   const normalized = normalizePhoneNumberE164(toNumber)
   const digitKey = phoneDigitsKey(toNumber)
@@ -969,18 +984,7 @@ export async function getIncomingRoutingByNumber(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
-      (
-        SELECT count(*)::int
-        FROM phone_numbers pn2
-        WHERE pn2.user_id = u.id AND pn2.status = 'active'
-      ) AS active_phone_count,
-      (
-        SELECT pn3.number
-        FROM phone_numbers pn3
-        WHERE pn3.user_id = u.id AND pn3.status = 'active'
-        ORDER BY pn3.created_at ASC NULLS LAST
-        LIMIT 1
-      ) AS primary_phone_number
+      pn.number AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
     LEFT JOIN onboarding_profiles op ON op.user_id = u.id
@@ -1050,18 +1054,7 @@ export async function getIncomingRoutingByNumber(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
-      (
-        SELECT count(*)::int
-        FROM phone_numbers pn2
-        WHERE pn2.user_id = u.id AND pn2.status = 'active'
-      ) AS active_phone_count,
-      (
-        SELECT pn3.number
-        FROM phone_numbers pn3
-        WHERE pn3.user_id = u.id AND pn3.status = 'active'
-        ORDER BY pn3.created_at ASC NULLS LAST
-        LIMIT 1
-      ) AS primary_phone_number
+      pn.number AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
     LEFT JOIN onboarding_profiles op ON op.user_id = u.id
@@ -1126,7 +1119,7 @@ export async function getIncomingRoutingByNumber(
     phone_line_label: row.phone_line_label != null ? String(row.phone_line_label) : "Main Line",
     phone_line_friendly_name: row.phone_line_friendly_name != null ? String(row.phone_line_friendly_name) : "",
     account_status: row.account_status != null ? String(row.account_status) : "active",
-    active_phone_count: Math.max(1, Number(row.active_phone_count ?? 1)),
+    active_phone_count: 1,
     primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : "",
   }
 

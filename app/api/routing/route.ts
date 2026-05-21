@@ -16,6 +16,7 @@ import {
   getPhoneNumbers,
   getReceptionist,
   normalizePhoneNumberE164,
+  primeIncomingRoutingCacheForUser,
 } from "@/lib/db"
 import type { UpdateRoutingRequest } from "@/lib/types"
 import {
@@ -78,6 +79,8 @@ export async function GET(req: NextRequest) {
 
     // No params → return default config
     const config = await getRoutingConfig(userId)
+    // Warm inbound voice cache in background so the next call skips Neon before `<Dial>`.
+    void primeIncomingRoutingCacheForUser(userId).catch(() => {})
     return NextResponse.json({ config })
   } catch (error) {
     console.error("[Sigo] Error fetching routing config:", error)

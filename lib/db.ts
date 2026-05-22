@@ -309,6 +309,7 @@ async function fetchInboundDialSnapshotSql(normalized: string): Promise<Incoming
         pn.inbound_receptionist_name AS receptionist_name,
         COALESCE(pn.inbound_fallback_type, 'owner') AS fallback_type,
         COALESCE(pn.inbound_ring_timeout_seconds, 30) AS ring_timeout_seconds,
+        COALESCE(pn.inbound_ai_ring_owner_first, false) AS ai_ring_owner_first,
         COALESCE(pn.inbound_account_status, 'active') AS account_status
       FROM phone_numbers pn
       WHERE pn.status = 'active'
@@ -330,7 +331,7 @@ async function fetchInboundDialSnapshotSql(normalized: string): Promise<Incoming
       selected_receptionist_id: recvId,
       fallback_type: (row.fallback_type as RoutingConfig["fallback_type"]) || "owner",
       ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
-      ai_ring_owner_first: false,
+      ai_ring_owner_first: row.ai_ring_owner_first === true || row.ai_ring_owner_first === "t",
       receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
       receptionist_phone: recvId ? dialE164 : dialE164,
       phone_line_label: "Main Line",
@@ -1050,7 +1051,7 @@ function inboundWhisperEnabledFromRoutingRow(row: Record<string, unknown>): bool
 function isMissingInboundDialSnapshotColumnError(e: unknown): boolean {
   if (pgErrorCode(e) !== "42703") return false
   const msg = pgErrorMessage(e)
-  return msg.includes("inbound_dial_e164") || msg.includes("inbound_routing_updated_at")
+  return msg.includes("inbound_dial_e164") || msg.includes("inbound_routing_updated_at") || msg.includes("inbound_ai_ring_owner_first")
 }
 
 function mapIncomingRoutingRowFromDb(row: Record<string, unknown>): IncomingRoutingRow {
@@ -1702,7 +1703,22 @@ export async function ensureCallLogForInboundLeg(params: {
 // Update a call log (e.g., when status callback arrives)
 export async function updateCallLog(
   providerCallSid: string,
-  updates: Partial<Pick<CallLog, "status" | "duration_seconds" | "call_type" | "has_recording" | "recording_url" | "recording_duration_seconds" | "answered_at" | "ended_at" | "setup_duration_ms" | "post_dial_delay_ms">>
+  updates: Partial<
+    Pick<
+      CallLog,
+      | "status"
+      | "duration_seconds"
+      | "call_type"
+      | "has_recording"
+      | "recording_url"
+      | "recording_duration_seconds"
+      | "answered_at"
+      | "ended_at"
+      | "setup_duration_ms"
+      | "post_dial_delay_ms"
+      | "routed_to_name"
+    >
+  >
 ): Promise<void> {
   const sql = getSql()
   if (updates.status !== undefined) {
@@ -1728,6 +1744,9 @@ export async function updateCallLog(
   }
   if (updates.post_dial_delay_ms !== undefined) {
     await sql`UPDATE call_logs SET post_dial_delay_ms = ${updates.post_dial_delay_ms ?? null} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
+  }
+  if (updates.routed_to_name !== undefined) {
+    await sql`UPDATE call_logs SET routed_to_name = ${updates.routed_to_name ?? null} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
 }
 

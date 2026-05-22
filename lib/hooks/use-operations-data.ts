@@ -227,7 +227,12 @@ export function useOperationsData(options?: UseOperationsDataOptions) {
           ? callsData.calls.map((c: Record<string, unknown>) => {
             const createdAtRaw = String(c.created_at || "")
             const createdAt = createdAtRaw ? new Date(createdAtRaw) : new Date()
-            const routedTo = String(c.routed_to_name || c.routed_to_receptionist_id || "Owner")
+            const statusRaw = String(c.status || "").toLowerCase()
+            const routedToRaw = String(c.routed_to_name || c.routed_to_receptionist_id || "")
+            const routedTo =
+              statusRaw.includes("ai") || routedToRaw.toLowerCase().includes("ai")
+                ? "AI Receptionist"
+                : routedToRaw || "Owner"
             const receptionistId = c.routed_to_receptionist_id ? String(c.routed_to_receptionist_id) : null
             return {
               id: String(c.id || c.provider_call_sid || c.twilio_call_sid || crypto.randomUUID()),

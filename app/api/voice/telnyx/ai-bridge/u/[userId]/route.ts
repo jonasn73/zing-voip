@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { texmlSayNatural } from "@/lib/texml-say-voice"
-import { getUser, getUserAccountStatus } from "@/lib/db"
+import { getUser, getUserAccountStatus, updateCallLog } from "@/lib/db"
 import { isAccountRoutingBlocked, buildSuspendedInboundRejectTexml } from "@/lib/account-status"
 import { ensureTelnyxVoiceAiAssistant } from "@/lib/telnyx-ai-assistant-lifecycle"
 import { buildTelnyxAiAssistantTexml, normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
@@ -90,6 +90,13 @@ async function handleAiBridge(req: NextRequest, userId: string): Promise<NextRes
   }
 
   const forTexml = normalizeTelnyxAssistantIdForTexml(assistantId)
+  if (callSid) {
+    void updateCallLog(callSid, {
+      call_type: "incoming",
+      status: "ai-handoff",
+      routed_to_name: "AI Receptionist",
+    }).catch((e) => console.error("[Sigo] Call log update (ai-bridge connect):", e))
+  }
   console.log(
     JSON.stringify({
       zing: "telnyx-ai-bridge-connect",

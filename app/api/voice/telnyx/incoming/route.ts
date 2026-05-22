@@ -60,6 +60,7 @@ import {
   readInboundEarlyMediaEnabled,
   readInboundFastDialAnswerOnBridge,
   readInboundRoutingCfgOverlayEnabled,
+  resolveInboundForwardDialTimeoutSeconds,
   resolveInboundFastDialTimeoutSeconds,
 } from "@/lib/telnyx-inbound-media-quality"
 
@@ -282,6 +283,38 @@ type IncomingCallResult = { kind: "twiml"; texml: TwimlInstance } | { kind: "raw
 
 type IncomingRoutingRowNonNull = NonNullable<Awaited<ReturnType<typeof getIncomingRoutingByNumber>>>
 
+function inboundWantsAiFallback(routing: IncomingRoutingRowNonNull): boolean {
+  return String(routing.fallback_type ?? "").toLowerCase() === "ai"
+}
+
+function inboundRingOwnerFirst(routing: IncomingRoutingRowNonNull): boolean {
+  return (
+    process.env.ZING_AI_RING_OWNER_FIRST === "1" ||
+    process.env.ZING_AI_RING_OWNER_FIRST === "true" ||
+    routing.ai_ring_owner_first === true
+  )
+}
+
+function inboundHasReceptionistToDial(routing: IncomingRoutingRowNonNull): boolean {
+  const recvId = routing.selected_receptionist_id?.trim() || ""
+  if (!recvId) return false
+  return Boolean(resolveReceptionistDialE164(routing.receptionist_phone || ""))
+}
+
+function resolveInboundRoutedToName(
+  routing: IncomingRoutingRowNonNull,
+  selectedReceptionistId: string,
+  receptionistDisplayName: string | null | undefined
+): string | null {
+  if (selectedReceptionistId?.trim()) {
+    return receptionistDisplayName?.trim() || routing.receptionist_name?.trim() || "Receptionist"
+  }
+  if (inboundWantsAiFallback(routing) && !inboundRingOwnerFirst(routing)) {
+    return "AI Receptionist"
+  }
+  return "Owner"
+}
+
 /** PSTN `<Dial callerId>` for the business line (multi-DID accounts use primary DID when needed). */
 function resolveInboundOutboundCallerId(
   routing: IncomingRoutingRowNonNull,
@@ -335,8 +368,7 @@ function tryFastInboundPstnDial(params: {
 
   const wantsAiAfterNoAnswer = String(routing.fallback_type ?? "").toLowerCase() === "ai"
   const effectiveRingTimeout = Number(routing.ring_timeout_seconds ?? 30) || 30
-  const ringSec = wantsAiAfterNoAnswer ? Math.min(effectiveRingTimeout, 22) : effectiveRingTimeout
-  const dialTimeoutSec = resolveInboundFastDialTimeoutSeconds(ringSec)
+  const dialTimeoutSec = resolveInboundForwardDialTimeoutSeconds(effectiveRingTimeout, wantsAiAfterNoAnswer)
 
   const didDigits = businessLineE164.replace(/\D/g, "")
   const fallbackMode = wantsAiAfterNoAnswer
@@ -398,10 +430,85 @@ function tryFastInboundPstnDial(params: {
       callSid,
       answerOnBridge,
       dialTimeoutSec,
+      wantsAiAfterNoAnswer,
       hotPath: "raw-texml",
     })
   )
   return { kind: "raw", xml }
+}
+
+/** Fast path: AI fallback with no PSTN leg — silent Redirect to `/ai-bridge` → `<Connect><AIAssistant>`. */
+async function tryFastInboundDirectAiHandoff(params: {
+  routing: IncomingRoutingRowNonNull
+  businessLineE164: string
+  calledNumber: string
+  callerNumber: string
+  callSid: string
+  callerName: string | null
+}): Promise<NextResponse | null> {
+  const { routing, businessLineE164, calledNumber, callerNumber, callSid, callerName } = params
+  if (!inboundWantsAiFallback(routing)) return null
+  if (inboundHasReceptionistToDial(routing)) return null
+  if (inboundRingOwnerFirst(routing)) return null
+
+  const user = await getUser(routing.user_id)
+  let assistantId =
+    user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
+  if (!assistantId) {
+    const ensured = await ensureTelnyxVoiceAiAssistant(routing.user_id)
+    if (ensured.linked && ensured.assistantId?.trim()) assistantId = ensured.assistantId.trim()
+  }
+  if (!assistantId) return null
+
+  const incomingHitCount = await bumpTelnyxAiIncomingHitCount(callSid)
+  let handoff = "redirect-silent-ai-bridge"
+  let xml: string
+  if (incomingHitCount > SILENT_INCOMING_LOOP_CAP) {
+    handoff = "ai-handoff-give-up-silent-cap"
+    xml = buildAiHandoffGiveUpTeXML()
+  } else if (incomingHitCount <= 1) {
+    xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid)
+  } else if (incomingHitCount === 2) {
+    handoff = "short-say-redirect-ai-bridge-repeat"
+    xml = buildShortSayThenRedirectToAiBridgeTeXML(routing.user_id, callSid)
+  } else {
+    handoff = "redirect-silent-ai-bridge-repeat"
+    xml = buildRedirectOnlyToAiBridgeTeXML(routing.user_id, callSid)
+  }
+
+  after(() => {
+    void insertCallLog({
+      user_id: routing.user_id,
+      provider_call_sid: callSid,
+      from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
+      to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
+      caller_name: callerName,
+      call_type: "incoming",
+      status: "ai-handoff",
+      duration_seconds: 0,
+      routed_to_receptionist_id: null,
+      routed_to_name: "AI Receptionist",
+      has_recording: false,
+      recording_url: null,
+      recording_duration_seconds: null,
+    }).catch((logErr) => {
+      console.error("[Sigo] Call log insert failed (fast AI path):", logErr)
+    })
+  })
+
+  console.log(
+    JSON.stringify({
+      zing: "telnyx-incoming-fast-ai-direct",
+      userId: routing.user_id,
+      callSid,
+      handoff,
+      incomingHitCount,
+    })
+  )
+
+  return new NextResponse(xml, {
+    headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+  })
 }
 
 // Shared logic for routing a call (used by both POST and GET handlers)
@@ -656,7 +763,7 @@ async function handleIncomingCall(
         status: "ringing",
         duration_seconds: 0,
         routed_to_receptionist_id: selectedReceptionistId || null,
-        routed_to_name: null,
+        routed_to_name: resolveInboundRoutedToName(routing, selectedReceptionistId, receptionistDisplayName),
         has_recording: false,
         recording_url: null,
         recording_duration_seconds: null,
@@ -807,13 +914,15 @@ async function handleIncomingCall(
       )
     }
 
-    // When the next step is Voice AI, cap ring time on the first leg so cell voicemail is less likely to answer the Dial.
-    const receptionistRingSec = wantsAiAfterNoAnswer
-      ? Math.min(effectiveRingTimeout || 20, 22)
-      : effectiveRingTimeout || 20
-    const ownerRingSec = wantsAiAfterNoAnswer
-      ? Math.min(effectiveRingTimeout || 30, 22)
-      : effectiveRingTimeout || 30
+    // When the next step is Voice AI, cap ring time on the first leg (~4 rings) before `/fallback` → AI.
+    const receptionistRingSec = resolveInboundForwardDialTimeoutSeconds(
+      effectiveRingTimeout || 20,
+      wantsAiAfterNoAnswer
+    )
+    const ownerRingSec = resolveInboundForwardDialTimeoutSeconds(
+      effectiveRingTimeout || 30,
+      wantsAiAfterNoAnswer
+    )
 
     const didDigits = businessLineE164.replace(/\D/g, "")
     const fallbackMode = wantsAiAfterNoAnswer
@@ -995,15 +1104,41 @@ async function tryFastInboundReceptionistResponse(fields: Record<string, string>
     })
   }
 
-  if (!resolveReceptionistDialE164(routing.receptionist_phone || routing.owner_phone || "")) {
-    return null
-  }
-
   const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
   const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
   const callerNumber = pickField(fields, ["From", "from", "Caller", "caller", "RemoteParty"])
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
   const businessLineE164 = normalizePhoneNumberE164(calledNumberRaw)
+
+  if (
+    inboundWantsAiFallback(routing) &&
+    !inboundHasReceptionistToDial(routing) &&
+    !inboundRingOwnerFirst(routing)
+  ) {
+    const directAi = await tryFastInboundDirectAiHandoff({
+      routing,
+      businessLineE164,
+      calledNumber: calledNumberRaw,
+      callerNumber,
+      callSid,
+      callerName,
+    })
+    if (directAi) {
+      console.log(
+        JSON.stringify({
+          zing: "telnyx-incoming-fast-ai-path",
+          callSid,
+          lookupMs,
+          routingSource: memHit ? "memory" : "db",
+        })
+      )
+      return directAi
+    }
+  }
+
+  if (!resolveReceptionistDialE164(routing.receptionist_phone || routing.owner_phone || "")) {
+    return null
+  }
 
   const fast = tryFastInboundPstnDial({
     routing,

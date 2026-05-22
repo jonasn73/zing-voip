@@ -47,6 +47,7 @@ function classifyCall(call: UiCallRecord): ActivityCallStatus {
   const routed = call.routedTo ?? ""
   if (call.type === "missed") return "missed"
   if (call.type === "voicemail" || /ai|assistant|voice/i.test(routed)) return "ai_handled"
+  if (/ai receptionist/i.test(routed)) return "ai_handled"
   if (call.durationSeconds > 0) return "answered"
   return "missed"
 }
@@ -260,7 +261,7 @@ function useLineLabelMap(): Map<string, string> {
 }
 
 export const ActivityWorkspaceView = memo(function ActivityWorkspaceView() {
-  const { calls, loading, loadError, refreshing } = useOperationsData()
+  const { calls, loading, loadError, refreshing } = useOperationsData({ refetchIntervalMs: 12_000 })
   const { setActivityLogs, closeActivityLog } = useDashboardWorkspace()
   const lineLabelMap = useLineLabelMap()
 

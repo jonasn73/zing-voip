@@ -42,33 +42,6 @@ type DisplayLead = {
   raw?: LeadRow
 }
 
-const DEMO_LEADS: DisplayLead[] = [
-  {
-    id: "demo-marcus",
-    name: "Marcus Vance",
-    contact: "(502) 883-9120",
-    dateLabel: "Today, 1:15 PM",
-    intentLabel: "Lockout Emergency",
-    intentVariant: "amber",
-  },
-  {
-    id: "demo-derrick",
-    name: "Derrick Hall",
-    contact: "(502) 441-0923",
-    dateLabel: "Yesterday, 4:40 PM",
-    intentLabel: "Price Quote Request",
-    intentVariant: "blue",
-  },
-  {
-    id: "demo-elena",
-    name: "Elena Rostova",
-    contact: "(305) 991-8841",
-    dateLabel: "May 15, 11:02 AM",
-    intentLabel: "General Inquiry",
-    intentVariant: "muted",
-  },
-]
-
 function formatCaller(num: string | null): string {
   if (!num) return "—"
   const d = num.replace(/\D/g, "")
@@ -189,6 +162,17 @@ const LeadsTable = memo(function LeadsTable({
 }) {
   const openLead = useWorkspaceRightSheet<DisplayLead>()
 
+  if (rows.length === 0) {
+    return (
+      <WorkspacePanel className="flex min-h-[280px] flex-col items-center justify-center px-6 py-16 text-center">
+        <p className="text-sm font-medium text-zinc-200">No AI leads yet</p>
+        <p className="mt-2 max-w-sm text-sm text-zinc-500">
+          When callers interact with your AI receptionist, captured intents and contact details will appear here.
+        </p>
+      </WorkspacePanel>
+    )
+  }
+
   return (
     <WorkspacePanel className="min-h-[280px]">
       <WorkspaceTableWrap>
@@ -256,7 +240,7 @@ const LeadsWorkspaceBody = memo(function LeadsWorkspaceBody({
         <div className="flex justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
-      ) : error && !usingDemo ? (
+      ) : error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : (
         <LeadsTable rows={leads} selectedLead={selectedLead} onSelectLead={onSelectLead} />
@@ -267,7 +251,7 @@ const LeadsWorkspaceBody = memo(function LeadsWorkspaceBody({
 
 export const LeadsWorkspaceView = memo(function LeadsWorkspaceView() {
   const [apiLeads, setApiLeads] = useState<LeadRow[]>([])
-  const [leads, setLeads] = useState<DisplayLead[]>(DEMO_LEADS)
+  const [leads, setLeads] = useState<DisplayLead[]>([])
   const [selectedLead, setSelectedLead] = useState<DisplayLead | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -297,14 +281,10 @@ export const LeadsWorkspaceView = memo(function LeadsWorkspaceView() {
   }, [])
 
   useEffect(() => {
-    if (apiLeads.length > 0) {
-      setLeads(apiLeads.map(apiLeadToDisplay))
-    } else {
-      setLeads(DEMO_LEADS)
-    }
+    setLeads(apiLeads.map(apiLeadToDisplay))
   }, [apiLeads])
 
-  const usingDemo = apiLeads.length === 0
+  const usingDemo = false
 
   return (
     <WorkspaceRightSheetGate<DisplayLead>

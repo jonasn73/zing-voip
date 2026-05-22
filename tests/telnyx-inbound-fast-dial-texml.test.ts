@@ -4,6 +4,7 @@ import {
   buildInboundDialRingbackAttributes,
   readInboundFastDialAnswerOnBridge,
   resolveInboundFastDialTimeoutSeconds,
+  resolveInboundForwardDialTimeoutSeconds,
 } from "@/lib/telnyx-inbound-media-quality"
 
 describe("readInboundFastDialAnswerOnBridge", () => {
@@ -25,6 +26,21 @@ describe("resolveInboundFastDialTimeoutSeconds", () => {
   it("honors ZING_INBOUND_FAST_DIAL_TIMEOUT=20", () => {
     vi.stubEnv("ZING_INBOUND_FAST_DIAL_TIMEOUT", "20")
     expect(resolveInboundFastDialTimeoutSeconds(30)).toBe(20)
+  })
+})
+
+describe("resolveInboundForwardDialTimeoutSeconds", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("caps at 20s when AI fallback is enabled", () => {
+    vi.stubEnv("ZING_INBOUND_AI_DIAL_TIMEOUT", "20")
+    expect(resolveInboundForwardDialTimeoutSeconds(30, true)).toBe(20)
+  })
+
+  it("uses full routing timeout when AI fallback is off", () => {
+    expect(resolveInboundForwardDialTimeoutSeconds(30, false)).toBe(30)
   })
 })
 

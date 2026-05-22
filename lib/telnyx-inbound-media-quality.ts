@@ -99,6 +99,24 @@ export function resolveInboundFastDialTimeoutSeconds(ringTimeoutFromRouting: num
   return Math.max(5, Math.min(120, ring))
 }
 
+/**
+ * When AI is the no-answer fallback, cap PSTN ring time (~4 rings) before `/fallback` → AI bridge.
+ * Default cap: 20s (`ZING_INBOUND_AI_DIAL_TIMEOUT`).
+ */
+export function resolveInboundForwardDialTimeoutSeconds(
+  ringTimeoutFromRouting: number,
+  wantsAiAfterNoAnswer: boolean
+): number {
+  if (!wantsAiAfterNoAnswer) {
+    return resolveInboundFastDialTimeoutSeconds(ringTimeoutFromRouting)
+  }
+  const raw = (process.env.ZING_INBOUND_AI_DIAL_TIMEOUT || "20").trim()
+  const aiCap = parseInt(raw, 10)
+  const cap = Number.isFinite(aiCap) && aiCap >= 5 && aiCap <= 120 ? aiCap : 20
+  const ring = Number(ringTimeoutFromRouting) || 30
+  return Math.min(ring, cap)
+}
+
 /** Fast inbound PSTN forward always bridges with US ringback — no dead air before B-leg rings. */
 export function readInboundFastDialAnswerOnBridge(): boolean {
   return true

@@ -14,6 +14,10 @@ import {
 } from "@/lib/auth"
 import { getUser } from "@/lib/db"
 import { isPlatformAdminUser } from "@/lib/platform-admin"
+import {
+  IMPERSONATION_ADMIN_COOKIE,
+  verifyImpersonationAdminCookie,
+} from "@/lib/admin-impersonation"
 
 export async function GET(req: NextRequest) {
   try {
@@ -62,8 +66,20 @@ export async function GET(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 401 })
     }
+
+    const impersonationRaw = cookieStore.get(IMPERSONATION_ADMIN_COOKIE)?.value
+    const impersonatingAdminId = verifyImpersonationAdminCookie(impersonationRaw)
+
     const res = NextResponse.json({
-      data: { user: { ...user, operator_access: isPlatformAdminUser(user) } },
+      data: {
+        user: { ...user, operator_access: isPlatformAdminUser(user) },
+        impersonation: impersonatingAdminId
+          ? {
+              active: true,
+              admin_user_id: impersonatingAdminId,
+            }
+          : { active: false },
+      },
     })
     res.cookies.set(getSessionCookieName(), newCookieValue, opts)
     return res

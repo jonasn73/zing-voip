@@ -2,12 +2,13 @@
 
 // Lyncr platform operator dashboard — KPIs, user directory, credit + subscription overrides.
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useTransition } from "react"
 import {
   Activity,
   Copy,
   CreditCard,
   Database,
+  Loader2,
   MoreVertical,
   Phone,
   RefreshCw,
@@ -17,6 +18,8 @@ import {
   Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
+import { adjustUserCredit } from "@/app/actions/admin-billing"
+import { startImpersonation } from "@/app/actions/admin-impersonation"
 import type { LyncrAdminDirectoryRow, LyncrAdminMetrics } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -200,6 +203,7 @@ function UserRowActions({
   const [creditDialogOpen, setCreditDialogOpen] = useState(false)
   const [creditAmount, setCreditAmount] = useState("")
   const [creditBusy, setCreditBusy] = useState(false)
+  const [impersonatePending, startImpersonateTransition] = useTransition()
   const [toggleBusy, setToggleBusy] = useState(false)
 
   async function handleAdjustCreditClick() {
@@ -210,15 +214,9 @@ function UserRowActions({
     }
     setCreditBusy(true)
     try {
-      const res = await fetch("/api/admin/adjust-credit", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: row.user_id, amount }),
-      })
-      const json = (await res.json()) as { error?: string; data?: { carrier_credit_after?: number } }
-      if (!res.ok) throw new Error(json.error ?? "Adjust credit failed")
-      toast.success(`Credit updated — new balance ${formatUsd(json.data?.carrier_credit_after ?? 0)}`)
+      const result = await adjustUserCredit(row.user_id, amount)
+      if (!result.ok) throw new Error(result.error)
+      toast.success(`Credit updated — new balance ${formatUsd(result.carrier_credit_after)}`)
       setCreditAmount("")
       setCreditDialogOpen(false)
       await fetchLatestAdminStats(true)
@@ -227,6 +225,16 @@ function UserRowActions({
     } finally {
       setCreditBusy(false)
     }
+  }
+
+  function handleImpersonateClick() {
+    setMenuOpen(false)
+    startImpersonateTransition(async () => {
+      const result = await startImpersonation(row.user_id)
+      if (result?.ok === false) {
+        toast.error(result.error)
+      }
+    })
   }
 
   async function handleSubscriptionToggle(shouldActivate: boolean) {
@@ -277,15 +285,20 @@ function UserRowActions({
         >
           <DropdownMenuItem
             className="focus:bg-slate-800 focus:text-slate-50"
+            disabled={impersonatePending}
             onSelect={(e) => {
               e.preventDefault()
-              setMenuOpen(false)
-              toast.info("Impersonate workspace", {
-                description: `Placeholder — sign in as ${row.email} will ship in a future release.`,
-              })
+              handleImpersonateClick()
             }}
           >
-            Impersonate workspace
+            {impersonatePending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                Starting impersonation…
+              </>
+            ) : (
+              "Impersonate workspace"
+            )}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="focus:bg-slate-800 focus:text-slate-50"
@@ -365,7 +378,14 @@ function UserRowActions({
               disabled={creditBusy}
               onClick={() => void handleAdjustCreditClick()}
             >
-              {creditBusy ? "Saving…" : "Apply adjustment"}
+              {creditBusy ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  Saving…
+                </>
+              ) : (
+                "Apply adjustment"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

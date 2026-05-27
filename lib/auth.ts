@@ -20,8 +20,13 @@ function getSecret(): string {
 
 /** Build signed cookie value: base64url(payload) + "." + signature */
 export function createSessionCookie(userId: string): string {
+  return createSessionCookieWithTtl(userId, MAX_AGE_SEC)
+}
+
+/** Signed session cookie with a custom TTL (seconds). */
+export function createSessionCookieWithTtl(userId: string, maxAgeSec: number): string {
   const secret = getSecret()
-  const expiresAt = Date.now() + MAX_AGE_SEC * 1000
+  const expiresAt = Date.now() + maxAgeSec * 1000
   const payload = JSON.stringify({ userId, exp: expiresAt })
   const payloadB64 = Buffer.from(payload, "utf8").toString("base64url")
   const sig = createHmac("sha256", secret).update(payloadB64).digest("base64url")

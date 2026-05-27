@@ -12,6 +12,7 @@ import { DashboardMainContent } from "@/components/dashboard-main-content"
 import { AnsweredCallCustomerPopup } from "@/components/answered-call-customer-popup"
 import { DashboardActivationProvider } from "@/components/dashboard-activation-context"
 import { DashboardActivationBanner } from "@/components/dashboard-activation-banner"
+import { AdminImpersonationBanner } from "@/components/admin-impersonation-banner"
 
 const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "help"]
 
@@ -109,7 +110,12 @@ export function DashboardShell({
               <AppShell
                 pathname={pathname}
                 accountHeader={accountHeader}
-                topBanner={<DashboardActivationBanner />}
+                topBanner={
+                  <>
+                    <AdminImpersonationBanner />
+                    <DashboardActivationBanner />
+                  </>
+                }
               >
                 <DashboardMainContent activePage={activePage} routedChildren={children} />
                 <DashboardAnsweredCallPopup enabled={popupEnabled} />

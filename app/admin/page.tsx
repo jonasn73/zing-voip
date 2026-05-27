@@ -8,13 +8,8 @@ import type { LyncrAdminDirectoryRow } from "@/lib/types"
 
 export default function AdminHomePage() {
   const { metrics, users, loading, refreshing, fetchLatestAdminStats } = useLyncrAdminDashboardData()
-  const [creditInputs, setCreditInputs] = useState<Record<string, string>>({})
   const [manageUser, setManageUser] = useState<LyncrAdminDirectoryRow | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
-
-  function setCreditInputForUser(userId: string, value: string) {
-    setCreditInputs((prev) => ({ ...prev, [userId]: value }))
-  }
 
   function openManageUser(row: LyncrAdminDirectoryRow) {
     setManageUser(row)
@@ -29,8 +24,6 @@ export default function AdminHomePage() {
         loading={loading}
         refreshing={refreshing}
         fetchLatestAdminStats={fetchLatestAdminStats}
-        creditInputs={creditInputs}
-        setCreditInputForUser={setCreditInputForUser}
         onManageUser={openManageUser}
       />
       <AdminUserManageDrawer

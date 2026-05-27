@@ -8,6 +8,7 @@ import {
   Copy,
   CreditCard,
   Database,
+  MoreVertical,
   Phone,
   RefreshCw,
   Search,
@@ -38,6 +39,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { accountStatusLabel } from "@/lib/account-status"
 
 const ROUTING_POOL_LOW_BALANCE_USD = 15
@@ -173,17 +189,16 @@ function AccountStatusBadge({ status }: { status: string }) {
 
 function UserRowActions({
   row,
-  creditAmount,
-  onCreditAmountChange,
   fetchLatestAdminStats,
   onManageUser,
 }: {
   row: LyncrAdminDirectoryRow
-  creditAmount: string
-  onCreditAmountChange: (value: string) => void
   fetchLatestAdminStats: (silent?: boolean) => Promise<void>
   onManageUser: () => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false)
+  const [creditAmount, setCreditAmount] = useState("")
   const [creditBusy, setCreditBusy] = useState(false)
   const [toggleBusy, setToggleBusy] = useState(false)
 
@@ -204,7 +219,8 @@ function UserRowActions({
       const json = (await res.json()) as { error?: string; data?: { carrier_credit_after?: number } }
       if (!res.ok) throw new Error(json.error ?? "Adjust credit failed")
       toast.success(`Credit updated — new balance ${formatUsd(json.data?.carrier_credit_after ?? 0)}`)
-      onCreditAmountChange("")
+      setCreditAmount("")
+      setCreditDialogOpen(false)
       await fetchLatestAdminStats(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Adjust credit failed")
@@ -232,6 +248,7 @@ function UserRowActions({
           ? `Subscription activated (${json.data?.subscription_tier ?? "business"})`
           : `Subscription deactivated (${json.data?.subscription_tier ?? "free_trial"})`
       )
+      setMenuOpen(false)
       await fetchLatestAdminStats(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Subscription update failed")
@@ -241,77 +258,119 @@ function UserRowActions({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Input
-            type="number"
-            step="0.01"
-            placeholder="± USD"
-            value={creditAmount}
-            onChange={(e) => onCreditAmountChange(e.target.value)}
-            className="h-8 w-24 border-slate-700 bg-slate-950/80 text-slate-100"
-            disabled={creditBusy}
-            aria-label={`Credit adjustment for ${row.email}`}
-          />
+    <>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            size="sm"
-            variant="secondary"
-            className="h-8 bg-violet-600/80 text-white hover:bg-violet-600"
-            disabled={creditBusy}
-            onClick={() => void handleAdjustCreditClick()}
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            aria-label={`Actions for ${row.email}`}
           >
-            {creditBusy ? "Saving..." : "Adjust credit"}
+            <MoreVertical className="h-4 w-4" aria-hidden />
           </Button>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 border-slate-600 text-slate-200 hover:bg-slate-800"
-          onClick={() =>
-            toast.info("Impersonate workspace", {
-              description: `Placeholder — sign in as ${row.email} will ship in a future release.`,
-            })
-          }
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-56 border-slate-700 bg-slate-900 text-slate-100"
         >
-          Impersonate workspace
-        </Button>
-      </div>
-      {row.has_active_subscription ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 border-slate-600 text-amber-200 hover:bg-amber-950/40"
-          disabled={toggleBusy}
-          onClick={() => void handleSubscriptionToggle(false)}
-        >
-          {toggleBusy ? "Saving..." : "Deactivate subscription"}
-        </Button>
-      ) : (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 border-slate-600 text-emerald-200 hover:bg-emerald-950/40"
-          disabled={toggleBusy}
-          onClick={() => void handleSubscriptionToggle(true)}
-        >
-          {toggleBusy ? "Saving..." : "Activate subscription"}
-        </Button>
-      )}
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="h-8 w-fit text-violet-300 hover:bg-violet-950/40 hover:text-violet-200"
-        onClick={onManageUser}
-      >
-        Manage user
-      </Button>
-    </div>
+          <DropdownMenuItem
+            className="focus:bg-slate-800 focus:text-slate-50"
+            onSelect={(e) => {
+              e.preventDefault()
+              setMenuOpen(false)
+              toast.info("Impersonate workspace", {
+                description: `Placeholder — sign in as ${row.email} will ship in a future release.`,
+              })
+            }}
+          >
+            Impersonate workspace
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="focus:bg-slate-800 focus:text-slate-50"
+            onSelect={(e) => {
+              e.preventDefault()
+              setMenuOpen(false)
+              setCreditDialogOpen(true)
+            }}
+          >
+            Adjust credit balance
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="focus:bg-slate-800 focus:text-slate-50"
+            onSelect={() => {
+              setMenuOpen(false)
+              onManageUser()
+            }}
+          >
+            Manage user
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-slate-700" />
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={toggleBusy}
+            className="focus:bg-red-950/40 focus:text-red-300"
+            onSelect={(e) => {
+              e.preventDefault()
+              void handleSubscriptionToggle(!row.has_active_subscription)
+            }}
+          >
+            {toggleBusy
+              ? "Saving…"
+              : row.has_active_subscription
+                ? "Deactivate subscription"
+                : "Activate subscription"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={creditDialogOpen} onOpenChange={setCreditDialogOpen}>
+        <DialogContent className="border-slate-700 bg-slate-900 text-slate-100 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Adjust credit balance</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Apply a positive or negative USD adjustment for {row.email}. Current balance:{" "}
+              {formatUsd(row.carrier_credit)}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <label className="mb-2 block text-xs font-medium text-slate-400" htmlFor={`credit-${row.user_id}`}>
+              Amount (± USD)
+            </label>
+            <Input
+              id={`credit-${row.user_id}`}
+              type="number"
+              step="0.01"
+              placeholder="e.g. 10 or -5"
+              value={creditAmount}
+              onChange={(e) => setCreditAmount(e.target.value)}
+              className="border-slate-700 bg-slate-950/80 text-slate-100"
+              disabled={creditBusy}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-slate-600 text-slate-200 hover:bg-slate-800"
+              disabled={creditBusy}
+              onClick={() => setCreditDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-violet-600 text-white hover:bg-violet-500"
+              disabled={creditBusy}
+              onClick={() => void handleAdjustCreditClick()}
+            >
+              {creditBusy ? "Saving…" : "Apply adjustment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
@@ -321,8 +380,6 @@ export function LyncrAdminDashboard({
   loading,
   refreshing,
   fetchLatestAdminStats,
-  creditInputs,
-  setCreditInputForUser,
   onManageUser,
 }: {
   metrics: LyncrAdminMetrics | null
@@ -330,8 +387,6 @@ export function LyncrAdminDashboard({
   loading: boolean
   refreshing: boolean
   fetchLatestAdminStats: (silent?: boolean) => Promise<void>
-  creditInputs: Record<string, string>
-  setCreditInputForUser: (userId: string, value: string) => void
   onManageUser: (row: LyncrAdminDirectoryRow) => void
 }) {
   const [filter, setFilter] = useState("")
@@ -505,7 +560,7 @@ export function LyncrAdminDashboard({
                   <TableHead className="text-slate-400">Account status</TableHead>
                   <TableHead className="text-slate-400">Phone</TableHead>
                   <TableHead className="text-slate-400">Carrier credit</TableHead>
-                  <TableHead className="min-w-[320px] text-slate-400">Actions</TableHead>
+                  <TableHead className="w-[4.5rem] text-slate-400">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -543,11 +598,9 @@ export function LyncrAdminDashboard({
                       </TableCell>
                       <TableCell className="font-mono text-sm text-slate-300">{row.phone_number ?? "—"}</TableCell>
                       <TableCell className="font-medium text-slate-100">{formatUsd(row.carrier_credit)}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-right">
                         <UserRowActions
                           row={row}
-                          creditAmount={creditInputs[row.user_id] ?? ""}
-                          onCreditAmountChange={(value) => setCreditInputForUser(row.user_id, value)}
                           fetchLatestAdminStats={fetchLatestAdminStats}
                           onManageUser={() => onManageUser(row)}
                         />

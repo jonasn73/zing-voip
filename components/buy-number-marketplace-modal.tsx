@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Hash, Loader2, RefreshCw, Zap } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Hash, Loader2, Zap } from "lucide-react"
 import { submitFormEvent } from "@/lib/form-keyboard"
 import { cn } from "@/lib/utils"
 import {
@@ -23,40 +23,68 @@ type AvailableLine = {
   type: string
 }
 
-const INITIAL_BATCH = 4
-const LOAD_MORE_BATCH = 3
+type SearchMeta = {
+  page: number
+  page_size: number
+  total_results: number
+  total_pages: number
+  has_more: boolean
+}
+
 const SEARCH_PULSE_MS = 480
-const TELNYX_SEARCH_LIMIT = 25
 
 function normalizeAreaCode(raw: string): string {
   return raw.replace(/\D/g, "").slice(0, 3)
 }
 
+function mergeUniqueLines(existing: AvailableLine[], incoming: AvailableLine[]): AvailableLine[] {
+  const seen = new Set(existing.map((row) => row.number))
+  const merged = [...existing]
+  for (const row of incoming) {
+    if (seen.has(row.number)) continue
+    seen.add(row.number)
+    merged.push(row)
+  }
+  return merged
+}
+
 /** Live Telnyx inventory only — never pad with fake numbers. */
 async function fetchTelnyxLines(
   areaCode: string,
-  opts?: { endsWith?: string; contains?: string }
-): Promise<AvailableLine[]> {
+  opts?: { endsWith?: string; contains?: string; page?: number }
+): Promise<{ lines: AvailableLine[]; meta: SearchMeta | null }> {
   const qs = new URLSearchParams({ area_code: areaCode, type: "local" })
   const ends = (opts?.endsWith || "").replace(/\D/g, "").slice(-4)
   const contains = (opts?.contains || "").replace(/\D/g, "").slice(-4)
   if (ends.length >= 2) qs.set("ends_with", ends)
   else if (contains.length >= 2) qs.set("contains", contains)
+  if (opts?.page && opts.page > 1) qs.set("page", String(opts.page))
 
   const res = await fetch(`/api/numbers/telnyx?${qs.toString()}`, { credentials: "include" })
   const data = (await res.json().catch(() => ({}))) as {
     numbers?: { number: string; type?: string }[]
+    meta?: Partial<SearchMeta>
     error?: string
   }
   if (!res.ok) {
     throw new Error(data.error || "Could not search Telnyx inventory")
   }
-  if (!Array.isArray(data.numbers)) return []
-  return data.numbers.slice(0, TELNYX_SEARCH_LIMIT).map((n) => ({
+  if (!Array.isArray(data.numbers)) return { lines: [], meta: data.meta as SearchMeta | null }
+  const lines = data.numbers.map((n) => ({
     number: String(n.number),
     display: formatPhoneDisplay(String(n.number)),
     type: String(n.type ?? "local"),
   }))
+  const meta = data.meta
+    ? {
+        page: Number(data.meta.page ?? opts?.page ?? 1),
+        page_size: Number(data.meta.page_size ?? lines.length),
+        total_results: Number(data.meta.total_results ?? lines.length),
+        total_pages: Number(data.meta.total_pages ?? (lines.length > 0 ? 1 : 0)),
+        has_more: Boolean(data.meta.has_more),
+      }
+    : null
+  return { lines, meta }
 }
 
 function InventoryRow({
@@ -115,7 +143,7 @@ export function BuyNumberMarketplaceModal({
   const [searching, setSearching] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [inventoryPool, setInventoryPool] = useState<AvailableLine[]>([])
-  const [visibleCount, setVisibleCount] = useState(0)
+  const [searchMeta, setSearchMeta] = useState<SearchMeta | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [purchasing, setPurchasing] = useState<string | null>(null)
@@ -124,14 +152,14 @@ export function BuyNumberMarketplaceModal({
   const [entitlementsBlocked, setEntitlementsBlocked] = useState<string | null>(null)
   const searchSeqRef = useRef(0)
 
-  const results = useMemo(() => inventoryPool.slice(0, visibleCount), [inventoryPool, visibleCount])
+  const results = inventoryPool
 
   useEffect(() => {
     if (!open) return
     setAreaCode("502")
     setActiveAreaCode(null)
     setInventoryPool([])
-    setVisibleCount(0)
+    setSearchMeta(null)
     setHasSearched(false)
     setSearchError(null)
     setSearching(false)
@@ -157,7 +185,7 @@ export function BuyNumberMarketplaceModal({
 
     const seq = ++searchSeqRef.current
     setInventoryPool([])
-    setVisibleCount(0)
+    setSearchMeta(null)
     setHasSearched(true)
     setSearchError(null)
     setSearching(true)
@@ -168,12 +196,13 @@ export function BuyNumberMarketplaceModal({
 
     try {
       const pattern = lastFourDigits.replace(/\D/g, "").slice(-4)
-      const fromApi = await fetchTelnyxLines(ac, {
+      const { lines, meta } = await fetchTelnyxLines(ac, {
         endsWith: pattern.length >= 2 ? pattern : undefined,
+        page: 1,
       })
       if (seq !== searchSeqRef.current) return
-      setInventoryPool(fromApi)
-      setVisibleCount(Math.min(INITIAL_BATCH, fromApi.length))
+      setInventoryPool(lines)
+      setSearchMeta(meta)
       setActiveAreaCode(ac)
     } catch (e) {
       if (seq !== searchSeqRef.current) return
@@ -186,32 +215,29 @@ export function BuyNumberMarketplaceModal({
 
   const loadMoreNumbers = useCallback(async () => {
     const ac = activeAreaCode ?? normalizeAreaCode(areaCode)
-    if (ac.length < 3 || searching || loadingMore) return
-
-    if (visibleCount < inventoryPool.length) {
-      setVisibleCount((n) => Math.min(n + LOAD_MORE_BATCH, inventoryPool.length))
-      return
-    }
+    if (ac.length < 3 || searching || loadingMore || !searchMeta?.has_more) return
 
     setLoadingMore(true)
     try {
       const pattern = lastFourDigits.replace(/\D/g, "").slice(-4)
-      const fresh = await fetchTelnyxLines(ac, {
+      const nextPage = (searchMeta?.page ?? 1) + 1
+      const { lines, meta } = await fetchTelnyxLines(ac, {
         endsWith: pattern.length >= 2 ? pattern : undefined,
+        page: nextPage,
       })
-      setInventoryPool(fresh)
-      setVisibleCount(Math.min(INITIAL_BATCH + LOAD_MORE_BATCH, fresh.length))
+      setInventoryPool((prev) => mergeUniqueLines(prev, lines))
+      setSearchMeta(meta)
       setSearchError(null)
     } catch (e) {
       toast({
         variant: "destructive",
-        title: "Refresh failed",
+        title: "Could not load more",
         description: e instanceof Error ? e.message : "Try again in a moment.",
       })
     } finally {
       setLoadingMore(false)
     }
-  }, [activeAreaCode, areaCode, searching, loadingMore, visibleCount, inventoryPool.length, lastFourDigits, toast])
+  }, [activeAreaCode, areaCode, searching, loadingMore, searchMeta, lastFourDigits, toast])
 
   async function purchaseLine(line: AvailableLine) {
     setPurchasing(line.number)
@@ -236,7 +262,14 @@ export function BuyNumberMarketplaceModal({
           /no longer available|not available/i.test(data.error || "")
         ) {
           setInventoryPool((prev) => prev.filter((row) => row.number !== line.number))
-          setVisibleCount((n) => Math.max(0, Math.min(n, inventoryPool.length - 1)))
+          setSearchMeta((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  total_results: Math.max(0, prev.total_results - 1),
+                }
+              : prev
+          )
         }
         throw new Error(data.error || "Purchase failed")
       }
@@ -263,7 +296,8 @@ export function BuyNumberMarketplaceModal({
     !searching &&
     !searchError &&
     inventoryPool.length > 0 &&
-    activeAreaCode != null
+    activeAreaCode != null &&
+    searchMeta?.has_more
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -362,7 +396,7 @@ export function BuyNumberMarketplaceModal({
           <div className="flex min-h-0 flex-1 flex-col px-6 pb-4">
             <div
               className={cn(
-                "max-h-[380px] min-h-[12rem] overflow-y-auto overscroll-contain pr-1",
+                "max-h-[min(52dvh,520px)] min-h-[12rem] overflow-y-auto overscroll-contain pr-1",
                 showInventory && "rounded-xl border border-zinc-800/80 bg-zinc-950/30"
               )}
             >
@@ -392,6 +426,15 @@ export function BuyNumberMarketplaceModal({
                 </p>
               ) : (
                 <div className="p-3">
+                  {searchMeta && searchMeta.total_results > 0 ? (
+                    <p className="mb-3 px-1 text-xs text-zinc-500">
+                      Showing {results.length}
+                      {searchMeta.total_results > results.length
+                        ? ` of ${searchMeta.total_results}+`
+                        : ""}{" "}
+                      available {activeAreaCode ?? normalizeAreaCode(areaCode)} lines
+                    </p>
+                  ) : null}
                   <ul className="space-y-3">
                     {results.map((line) => (
                       <InventoryRow
@@ -419,10 +462,8 @@ export function BuyNumberMarketplaceModal({
                       >
                         {loadingMore ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                        )}
-                        {visibleCount < inventoryPool.length ? "Show more lines" : "Refresh inventory"}
+                        ) : null}
+                        {loadingMore ? "Loading more…" : "Load more numbers"}
                       </button>
                     </div>
                   ) : null}

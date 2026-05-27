@@ -14,6 +14,9 @@ function getApiKey(): string {
   return key
 }
 
+const DEFAULT_PAGE_SIZE = 50
+const MAX_PAGE_SIZE = 100
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -22,6 +25,13 @@ export async function GET(req: NextRequest) {
     const contains = (searchParams.get("contains") || "").replace(/\D/g, "").slice(-4)
     const endsWith = (searchParams.get("ends_with") || "").replace(/\D/g, "").slice(-4)
     const startsWith = (searchParams.get("starts_with") || "").replace(/\D/g, "")
+    const pageRaw = Number.parseInt(searchParams.get("page") || "1", 10)
+    const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1
+    const pageSizeRaw = Number.parseInt(searchParams.get("page_size") || String(DEFAULT_PAGE_SIZE), 10)
+    const pageSize =
+      Number.isFinite(pageSizeRaw) && pageSizeRaw >= 1
+        ? Math.min(pageSizeRaw, MAX_PAGE_SIZE)
+        : DEFAULT_PAGE_SIZE
 
     // Build Telnyx query params
     const params = new URLSearchParams({
@@ -29,8 +39,11 @@ export async function GET(req: NextRequest) {
       "filter[national_destination_code]": areaCode,
       "filter[phone_number_type]": type === "toll_free" ? "toll_free" : "local",
       "filter[features][]": "voice",
-      "filter[limit]": contains || endsWith || startsWith ? "50" : "25",
+      // Telnyx allows up to 250; we paginate so the UI can load more without re-searching.
+      "filter[limit]": "250",
       "filter[best_effort]": "false",
+      "page[size]": String(pageSize),
+      "page[number]": String(page),
     })
     if (contains.length >= 2) {
       params.set("filter[phone_number][contains]", contains)
@@ -66,7 +79,26 @@ export async function GET(req: NextRequest) {
       monthly_cost: (item.cost_information as Record<string, unknown>)?.monthly_cost ?? 1.0,
     }))
 
-    return NextResponse.json({ numbers })
+    const metaRaw = (body?.meta ?? {}) as Record<string, unknown>
+    const totalResults = Number(metaRaw.total_results ?? numbers.length)
+    const totalPages = Number(metaRaw.total_pages ?? (numbers.length > 0 ? 1 : 0))
+    const pageNumber = Number(metaRaw.page_number ?? page)
+    const metaPageSize = Number(metaRaw.page_size ?? pageSize)
+    const hasMore =
+      totalPages > 0
+        ? pageNumber < totalPages
+        : numbers.length >= pageSize
+
+    return NextResponse.json({
+      numbers,
+      meta: {
+        page: pageNumber,
+        page_size: metaPageSize,
+        total_results: Number.isFinite(totalResults) ? totalResults : numbers.length,
+        total_pages: Number.isFinite(totalPages) ? totalPages : numbers.length > 0 ? 1 : 0,
+        has_more: hasMore,
+      },
+    })
   } catch (error) {
     console.error("[Telnyx] Error searching numbers:", error)
     return NextResponse.json(

@@ -43,11 +43,40 @@ function formatDuration(seconds: number): string {
   return `${m}m ${s.toString().padStart(2, "0")}s`
 }
 
+/** e.g. "Today, 4:15 PM" or "May 25, 2:30 PM" */
+function formatCallTimestamp(call: UiCallRecord): string {
+  if (call.createdAt) {
+    const d = new Date(call.createdAt)
+    if (!Number.isNaN(d.getTime())) {
+      const now = new Date()
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+      const startThatDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+      const diffDays = Math.floor((startToday - startThatDay) / 86_400_000)
+      const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      if (diffDays === 0) return `Today, ${time}`
+      if (diffDays === 1) return `Yesterday, ${time}`
+      return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${time}`
+    }
+  }
+  if (call.date && call.time) return `${call.date}, ${call.time}`
+  return "—"
+}
+
+/** Human label for who/what answered the call. */
+function formatRoutedToLabel(routedTo: string): string {
+  const raw = routedTo.trim()
+  if (!raw) return "Routed to owner"
+  if (/^owner$/i.test(raw)) return "Routed to owner"
+  if (/ai receptionist|voice ai|assistant/i.test(raw)) return "Routed to AI receptionist"
+  if (/receptionist/i.test(raw)) return raw.replace(/^routed to\s+/i, "") || "Routed to receptionist"
+  return `Routed to ${raw}`
+}
+
 function classifyCall(call: UiCallRecord): ActivityCallStatus {
   const routed = call.routedTo ?? ""
+  if (call.type === "voicemail") return "voicemail"
   if (call.type === "missed") return "missed"
-  if (call.type === "voicemail" || /ai|assistant|voice/i.test(routed)) return "ai_handled"
-  if (/ai receptionist/i.test(routed)) return "ai_handled"
+  if (/ai receptionist|voice ai|assistant/i.test(routed)) return "ai_handled"
   if (call.durationSeconds > 0) return "answered"
   return "missed"
 }
@@ -106,10 +135,10 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
     <WorkspacePanel className="min-h-[380px]">
       <WorkspaceTableWrap className="min-h-[340px]">
         <colgroup>
-          <col className="w-[22%]" />
-          <col className="w-[30%]" />
-          <col className="w-[14%]" />
-          <col className="w-[24%]" />
+          <col className="w-[18%]" />
+          <col className="w-[28%]" />
+          <col className="w-[12%]" />
+          <col className="w-[32%]" />
           <col className="w-[10%]" />
         </colgroup>
         <thead>
@@ -138,8 +167,11 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
                     <ActivityStatusPill status={st} />
                   </WorkspaceTd>
                   <WorkspaceTd>
-                    <p className="font-medium">{call.callerName}</p>
+                    <p className="font-medium text-foreground">{call.callerName}</p>
                     <p className="text-xs text-zinc-500">{call.callerNumber}</p>
+                    <p className="mt-1 text-[11px] tabular-nums text-zinc-600">
+                      {formatCallTimestamp(call)}
+                    </p>
                   </WorkspaceTd>
                   <WorkspaceTd className="tabular-nums text-zinc-400">
                     {formatDuration(call.durationSeconds)}
@@ -147,6 +179,9 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
                   <WorkspaceTd>
                     <p className="truncate font-medium text-zinc-200" title={targetLabel}>
                       {targetLabel}
+                    </p>
+                    <p className="mt-1 truncate text-[11px] text-zinc-500" title={call.routedTo}>
+                      {formatRoutedToLabel(call.routedTo)}
                     </p>
                   </WorkspaceTd>
                   <WorkspaceTd className="text-right">
@@ -191,7 +226,11 @@ const ActivityWorkspaceBody = memo(function ActivityWorkspaceBody({
     if (activeLine) {
       list = list.filter((c) => businessNumbersMatch(c.targetLineE164, activeLine))
     }
-    return [...list].sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
+    return [...list].sort((a, b) => {
+      const aTs = a.createdAt || `${a.date} ${a.time}`
+      const bTs = b.createdAt || `${b.date} ${b.time}`
+      return bTs.localeCompare(aTs)
+    })
   }, [activityLogs, activeLine])
 
   return (

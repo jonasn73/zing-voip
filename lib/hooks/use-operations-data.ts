@@ -17,6 +17,8 @@ export interface UiCallRecord {
   routedColor: string
   date: string
   time: string
+  /** ISO timestamp from call_logs.created_at for sorting and display. */
+  createdAt: string
   durationSeconds: number
   hasRecording: boolean
   recordingUrl: string | null
@@ -159,6 +161,7 @@ function normalizeUiCallRecord(c: UiCallRecord): UiCallRecord {
     ...c,
     targetLineE164: c.targetLineE164 ?? "",
     routedToReceptionistId: c.routedToReceptionistId ?? null,
+    createdAt: c.createdAt ?? "",
   }
 }
 
@@ -246,6 +249,7 @@ export function useOperationsData(options?: UseOperationsDataOptions) {
               routedColor: "bg-primary",
               date: getDateLabel(createdAt),
               time: createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+              createdAt: createdAt.toISOString(),
               durationSeconds: Number(c.duration_seconds || 0),
               hasRecording: Boolean(c.has_recording),
               recordingUrl: c.recording_url ? String(c.recording_url) : null,

@@ -178,18 +178,23 @@ export function LeadIntentPill({ label, variant }: { label: string; variant: Lea
   )
 }
 
-export type ActivityCallStatus = "answered" | "ai_handled" | "missed"
+export type ActivityCallStatus = "answered" | "ai_handled" | "missed" | "voicemail"
 
 export function ActivityStatusPill({ status }: { status: ActivityCallStatus }) {
   const styles: Record<ActivityCallStatus, string> = {
-    answered: "border-zinc-600/80 bg-zinc-900/80 text-emerald-400",
-    ai_handled: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400",
-    missed: "border-zinc-600/80 bg-zinc-900/80 text-red-400",
+    answered:
+      "border-emerald-500/45 bg-emerald-500/12 text-emerald-300 shadow-[0_0_14px_-6px_rgba(16,185,129,0.55)]",
+    ai_handled:
+      "border-violet-500/45 bg-violet-500/12 text-violet-300 shadow-[0_0_14px_-6px_rgba(139,92,246,0.45)]",
+    voicemail:
+      "border-amber-500/40 bg-amber-500/10 text-amber-300 shadow-[0_0_14px_-6px_rgba(245,158,11,0.35)]",
+    missed: "border-red-500/35 bg-red-500/8 text-red-400",
   }
   const labels: Record<ActivityCallStatus, string> = {
-    answered: "📞 Answered",
-    ai_handled: "🤖 AI Handled",
-    missed: "❌ Missed",
+    answered: "Answered",
+    ai_handled: "AI handled",
+    voicemail: "Voicemail",
+    missed: "Missed",
   }
   return (
     <span

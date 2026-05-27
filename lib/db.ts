@@ -2323,7 +2323,7 @@ function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {
     friendly_name: String(row.friendly_name ?? ""),
     label: String(row.label ?? "Business Line"),
     type: (row.type as "local" | "toll-free") || "local",
-    status: (row.status as "active" | "pending" | "porting") || "active",
+    status: (row.status as PhoneNumber["status"]) || "active",
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
 }
@@ -2336,6 +2336,50 @@ export async function getPhoneNumbers(userId: string): Promise<PhoneNumber[]> {
     FROM phone_numbers WHERE user_id = ${userId} ORDER BY created_at ASC
   `
   return rows.map(parsePhoneNumberRow)
+}
+
+/** One owned line by database id — used before release / patch. */
+export async function getPhoneNumberByIdForUser(
+  phoneNumberId: string,
+  userId: string
+): Promise<PhoneNumber | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at
+    FROM phone_numbers
+    WHERE id = ${phoneNumberId} AND user_id = ${userId}
+    LIMIT 1
+  `
+  return rows[0] ? parsePhoneNumberRow(rows[0] as Record<string, unknown>) : null
+}
+
+/** Mark a line released and clear inbound routing snapshot so webhooks ignore it. */
+export async function markPhoneNumberReleasedForUser(
+  phoneNumberId: string,
+  userId: string
+): Promise<boolean> {
+  const sql = getSql()
+  const rows = await sql`
+    UPDATE phone_numbers
+    SET
+      status = 'released',
+      inbound_dial_e164 = NULL,
+      inbound_receptionist_id = NULL,
+      inbound_receptionist_name = NULL,
+      inbound_fallback_type = NULL,
+      inbound_ring_timeout_seconds = NULL,
+      inbound_account_status = NULL,
+      inbound_ai_ring_owner_first = false,
+      inbound_routing_updated_at = NULL
+    WHERE id = ${phoneNumberId}
+      AND user_id = ${userId}
+      AND status = 'active'
+    RETURNING id
+  `
+  if (rows.length > 0) {
+    clearIncomingRoutingCache()
+  }
+  return rows.length > 0
 }
 
 /**

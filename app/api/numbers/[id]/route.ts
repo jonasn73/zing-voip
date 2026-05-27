@@ -1,13 +1,50 @@
 // ============================================
-// PATCH /api/numbers/[id]
+// PATCH /api/numbers/[id] — update label / friendly name
+// DELETE /api/numbers/[id] — release line back to Telnyx
 // ============================================
-// Updates metadata for one owned business number (label shown in whisper / UI). Session required.
 
-import { NextRequest, NextResponse } from "next/server" // Next.js request/response helpers for API routes
-import { getUserIdFromRequest } from "@/lib/auth" // Reads signed-in user id from the session cookie header
-import { patchPhoneNumberForUser } from "@/lib/db" // Runs the UPDATE on phone_numbers for that owner
+import { NextRequest, NextResponse } from "next/server"
+import { getUserIdFromRequest } from "@/lib/auth"
+import { patchPhoneNumberForUser } from "@/lib/db"
+import { releasePhoneNumberForUser } from "@/lib/number-release"
 
-const MAX_LINE_LABEL_LEN = 120 // Keeps whisper phrases and UI rows from storing huge strings
+const MAX_LINE_LABEL_LEN = 120
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const userId = getUserIdFromRequest(req.headers.get("cookie"))
+  if (!userId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+  }
+
+  const { id } = await params
+  if (!id) {
+    return NextResponse.json({ error: "Missing number id" }, { status: 400 })
+  }
+
+  try {
+    const result = await releasePhoneNumberForUser(userId, id)
+    if (!result.ok) {
+      const status =
+        result.reason === "not_found"
+          ? 404
+          : result.reason === "last_line" || result.reason === "porting_line" || result.reason === "not_active"
+            ? 409
+            : result.reason === "carrier_error"
+              ? 502
+              : 400
+      return NextResponse.json({ error: result.error, reason: result.reason }, { status })
+    }
+
+    console.log(`[Sigo] Released ${result.phone_number} for user ${userId}`)
+    return NextResponse.json({ data: { ok: true, phone_number: result.phone_number } })
+  } catch (error) {
+    console.error("[Sigo] DELETE /api/numbers/[id] error:", error)
+    return NextResponse.json({ error: "Failed to release number" }, { status: 500 })
+  }
+}
 
 export async function PATCH(
   req: NextRequest, // Incoming HTTP request (JSON body)

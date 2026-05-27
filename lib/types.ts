@@ -222,7 +222,7 @@ export interface PhoneNumber {
   friendly_name: string // e.g. "(555) 123-4567"
   label: string // e.g. "Main Line"
   type: "local" | "toll-free"
-  status: "active" | "pending" | "porting"
+  status: "active" | "pending" | "porting" | "released"
   created_at: string
 }
 

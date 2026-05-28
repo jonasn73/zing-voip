@@ -1,6 +1,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { DashboardShell } from "@/components/dashboard-shell"
+import { isSandboxTestReceptionistEmail } from "@/lib/receptionist-portal-auth"
 import { getSessionUser } from "@/lib/server-session-user"
 import { isPlatformAdminUser } from "@/lib/platform-admin"
 import { userMayAccessDashboard } from "@/lib/server-onboarding-guard"
@@ -25,6 +26,9 @@ export default async function DashboardLayout({
   }
   if (user.account_role === "receptionist") {
     redirect("/receptionist")
+  }
+  if (isSandboxTestReceptionistEmail(user.email)) {
+    redirect("/receptionist/training/automotive_core")
   }
   if (isPlatformAdminUser(user)) {
     redirect("/admin")

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { ReceptionistPortalChrome } from "@/components/receptionist-portal-chrome"
 import { ReceptionistPortalView } from "@/components/receptionist-portal-view"
-import { getReceptionistPortalContext } from "@/lib/receptionist-portal-auth"
+import { getReceptionistPortalContext, isReceptionistPortalUser } from "@/lib/receptionist-portal-auth"
 import { getSessionUser } from "@/lib/server-session-user"
 import { isLyncrAdminUser } from "@/lib/lyncr-admin"
 
@@ -16,7 +16,7 @@ export default async function ReceptionistPortalLayout({ children }: { children:
   const displayName = user.name?.trim() || user.email
 
   if (!ctx) {
-    if (user.account_role === "receptionist") {
+    if (isReceptionistPortalUser(user)) {
       return (
         <ReceptionistPortalChrome userName={displayName}>
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-6 text-sm text-amber-100">

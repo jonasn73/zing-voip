@@ -5419,6 +5419,24 @@ export async function insertReceptionistPortal(params: {
   }
 }
 
+/** Best-effort link receptionists.portal_user_id (no-op when column missing). */
+export async function tryLinkReceptionistPortalUser(
+  receptionistId: string,
+  ownerUserId: string,
+  portalUserId: string
+): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE receptionists
+      SET portal_user_id = ${portalUserId}
+      WHERE id = ${receptionistId} AND user_id = ${ownerUserId}
+    `
+  } catch (e) {
+    if (!isMissingPortalUserColumnError(e)) throw e
+  }
+}
+
 /** Idempotent dev sandbox receptionist — uses createUser + insertReceptionistPortal (schema-safe). */
 export async function ensureSandboxTestReceptionistAccount(params: {
   owner_user_id: string

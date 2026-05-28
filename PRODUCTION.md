@@ -24,6 +24,7 @@ In your Vercel project: **Settings → Environment Variables**. Add:
 | `TELNYX_AI_VOICE` | Optional: Telnyx Voice AI **assistant** voice id for **new** assistants (default **`Telnyx.NaturalHD.astra`**). Per-user override: AI call flow saves `telnyxVoice` in intake. |
 | `TELNYX_MESSAGING_FROM_E164` | Optional override for **outbound SMS** sender (E.164). Must exist on your Telnyx account (e.g. `+15025758166`). If wrong or missing, lyncr falls back to your first purchased line in Neon. |
 | `TELNYX_MESSAGING_PROFILE_ID` | Optional: existing Telnyx messaging profile UUID (skip auto-create). |
+| `TELNYX_MESSAGING_WHITELIST` | Optional: comma-separated ISO country codes for SMS destinations (default `US,CA`). Required by Telnyx on every messaging profile. |
 | `SANDBOX_SMS_DISPATCH_E164` | Optional: your **real cell** (E.164) for **Admin → Dev sandbox** lead-alert SMS tests. If unset, sandbox uses the first real phone on your platform account. |
 | `ZING_AI_RING_OWNER_FIRST` | Optional global override (same as dashboard **Ring my phone first**). Stored on the **default** `routing_config` row (`business_number` null) so it applies even when you use **per-number** routing. Run **`015`**. **Default:** straight to Voice AI when off. |
 | `ZING_AI_HANDOFF_TWO_STEP` | Optional. If `true` / `1`: **Say + Pause + Redirect** to **`/ai-bridge`** from `/incoming`. Default is a **silent** Redirect (no Say) to **`/ai-bridge`** — avoids **dead air** from `<Connect>` on the first `/incoming` response and avoids a **repeating hold line** if Telnyx re-requests `/incoming`. |

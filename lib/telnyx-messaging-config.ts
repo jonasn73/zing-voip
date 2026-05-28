@@ -14,6 +14,12 @@ const MESSAGING_PROFILE_NAMES = [
   "HeySigo SMS",
 ] as const
 
+type MessagingProfileRow = {
+  id?: string
+  name?: string
+  whitelisted_destinations?: string[] | null
+}
+
 function messagingProfileWebhookUrl(): string {
   return `${getAppUrl().replace(/\/$/, "")}/api/webhooks/telnyx/messaging`
 }
@@ -23,15 +29,49 @@ function telnyxErrorMessage(body: unknown, fallback: string): string {
   return errors?.[0]?.detail || errors?.[0]?.title || fallback
 }
 
+/** ISO country codes allowed for outbound SMS (Telnyx requires this on every profile). */
+export function messagingWhitelistedDestinations(): string[] {
+  const raw = process.env.TELNYX_MESSAGING_WHITELIST?.trim()
+  if (raw) {
+    return raw
+      .split(",")
+      .map((code) => code.trim().toUpperCase())
+      .filter(Boolean)
+  }
+  return ["US", "CA"]
+}
+
 /** Optional explicit profile id from Vercel — skips list/create. */
 export function getConfiguredMessagingProfileId(): string | null {
   return process.env.TELNYX_MESSAGING_PROFILE_ID?.trim() || null
 }
 
+/** PATCH whitelisted_destinations onto a profile (required by Telnyx since 2024). */
+export async function ensureMessagingProfileWhitelisted(profileId: string): Promise<void> {
+  getTelnyxApiKey()
+  const destinations = messagingWhitelistedDestinations()
+  const patchRes = await fetch(`${TELNYX_BASE}/messaging_profiles/${profileId}`, {
+    method: "PATCH",
+    headers: telnyxHeaders(),
+    body: JSON.stringify({ whitelisted_destinations: destinations }),
+  })
+  if (patchRes.ok) {
+    console.log(`[Telnyx] Messaging profile ${profileId} destinations → ${destinations.join(", ")}`)
+    return
+  }
+  const patchBody = await patchRes.json().catch(() => ({}))
+  throw new Error(
+    telnyxErrorMessage(patchBody, "Could not set whitelisted destinations on messaging profile")
+  )
+}
+
 /** Find or create the platform SMS messaging profile. */
 export async function getOrCreateMessagingProfile(): Promise<string> {
   const configured = getConfiguredMessagingProfileId()
-  if (configured) return configured
+  if (configured) {
+    await ensureMessagingProfileWhitelisted(configured)
+    return configured
+  }
 
   getTelnyxApiKey()
 
@@ -39,14 +79,18 @@ export async function getOrCreateMessagingProfile(): Promise<string> {
     headers: telnyxHeaders(),
   })
   const listBody = (await listRes.json().catch(() => ({}))) as {
-    data?: { id?: string; name?: string }[]
+    data?: MessagingProfileRow[]
   }
   const profiles = listBody.data ?? []
   const existing = profiles.find((p) =>
     MESSAGING_PROFILE_NAMES.includes(p.name as (typeof MESSAGING_PROFILE_NAMES)[number])
   )
-  if (existing?.id) return String(existing.id)
-  if (profiles[0]?.id) return String(profiles[0].id)
+  const chosen = existing ?? profiles[0]
+  if (chosen?.id) {
+    const profileId = String(chosen.id)
+    await ensureMessagingProfileWhitelisted(profileId)
+    return profileId
+  }
 
   const createRes = await fetch(`${TELNYX_BASE}/messaging_profiles`, {
     method: "POST",
@@ -56,6 +100,7 @@ export async function getOrCreateMessagingProfile(): Promise<string> {
       webhook_url: messagingProfileWebhookUrl(),
       webhook_api_version: "2",
       enabled: true,
+      whitelisted_destinations: messagingWhitelistedDestinations(),
     }),
   })
   const createBody = await createRes.json().catch(() => ({}))

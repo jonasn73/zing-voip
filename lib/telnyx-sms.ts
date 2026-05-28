@@ -1,8 +1,9 @@
 // Telnyx outbound SMS (lead alerts to owner).
 
-import { getProviderLinkedActiveNumber } from "@/lib/db"
+import { getProviderLinkedActiveNumber, normalizePhoneNumberE164 } from "@/lib/db"
 import {
   configureNumberMessaging,
+  ensureMessagingProfileWhitelisted,
   getOrCreateMessagingProfile,
   isTelnyxOwnedNumber,
 } from "@/lib/telnyx-messaging-config"
@@ -32,25 +33,31 @@ function isInvalidFromAddressError(raw: string): boolean {
   return raw.includes("40305") || raw.toLowerCase().includes("invalid 'from' address")
 }
 
+function isMissingWhitelistError(raw: string): boolean {
+  return raw.toLowerCase().includes("whitelisted destinations")
+}
+
 /**
- * Resolve outbound SMS sender.
- * Ignores TELNYX_MESSAGING_FROM_E164 when that number is not on the Telnyx account
- * (common typo in Vercel env) and falls back to the first purchased line in Neon.
+ * Resolve outbound SMS sender — Neon purchased line wins over Vercel env
+ * (avoids typos like +15025758186 vs +15025758166).
  */
 export async function resolveTelnyxMessagingFromE164(userId?: string): Promise<string | null> {
-  const envFrom = process.env.TELNYX_MESSAGING_FROM_E164?.trim()
   const dbFrom =
     (await getProviderLinkedActiveNumber(userId)) ?? (await getProviderLinkedActiveNumber())
 
-  if (envFrom) {
-    const envValid = await isTelnyxOwnedNumber(envFrom)
-    if (envValid) return envFrom
-    console.warn(
-      `[Telnyx SMS] TELNYX_MESSAGING_FROM_E164=${envFrom} not found on Telnyx — using ${dbFrom ?? "no fallback"}`
-    )
+  if (dbFrom) {
+    const envFrom = process.env.TELNYX_MESSAGING_FROM_E164?.trim()
+    if (envFrom && normalizePhoneNumberE164(envFrom) !== normalizePhoneNumberE164(dbFrom)) {
+      console.warn(
+        `[Telnyx SMS] Ignoring TELNYX_MESSAGING_FROM_E164=${envFrom} — using purchased line ${dbFrom}`
+      )
+    }
+    return dbFrom
   }
 
-  return dbFrom
+  const envFrom = process.env.TELNYX_MESSAGING_FROM_E164?.trim()
+  if (envFrom && (await isTelnyxOwnedNumber(envFrom))) return envFrom
+  return null
 }
 
 /**
@@ -109,6 +116,17 @@ export async function sendTelnyxSms(params: {
   let res = await sendOnce(messagingProfileId)
   if (!res.ok) {
     let errText = await res.text().catch(() => res.statusText)
+    if (isMissingWhitelistError(errText) && messagingProfileId) {
+      try {
+        await ensureMessagingProfileWhitelisted(messagingProfileId)
+        res = await sendOnce(messagingProfileId)
+        if (res.ok) return { ok: true }
+        errText = await res.text().catch(() => res.statusText)
+      } catch (whitelistErr) {
+        const msg = whitelistErr instanceof Error ? whitelistErr.message : String(whitelistErr)
+        return { ok: false, error: msg }
+      }
+    }
     if (isInvalidFromAddressError(errText)) {
       try {
         await configureNumberMessaging(from)

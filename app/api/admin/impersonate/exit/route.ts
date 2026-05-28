@@ -9,7 +9,10 @@ import {
 import {
   getImpersonationAdminCookieClearOptions,
   IMPERSONATION_ADMIN_COOKIE,
+  IMPERSONATION_RETURN_COOKIE,
+  normalizeImpersonationReturnPath,
   verifyImpersonationAdminCookie,
+  getImpersonationReturnCookieClearOptions,
 } from "@/lib/admin-impersonation"
 import { getUser } from "@/lib/db"
 import { isLyncrAdminUser } from "@/lib/lyncr-admin"
@@ -27,9 +30,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid impersonation session" }, { status: 403 })
     }
 
-    const res = NextResponse.json({ data: { redirect: "/admin" } })
+    const returnRaw = req.headers.get("cookie")?.match(new RegExp(`${IMPERSONATION_RETURN_COOKIE}=([^;]+)`))?.[1]
+    const returnTo =
+      normalizeImpersonationReturnPath(returnRaw ? decodeURIComponent(returnRaw.trim()) : null) ?? "/admin"
+
+    const res = NextResponse.json({ data: { redirect: returnTo } })
     res.cookies.set(getSessionCookieName(), createSessionCookie(adminUserId), getSessionCookieOptions())
     res.cookies.set(IMPERSONATION_ADMIN_COOKIE, "", getImpersonationAdminCookieClearOptions())
+    res.cookies.set(IMPERSONATION_RETURN_COOKIE, "", getImpersonationReturnCookieClearOptions())
     return res
   } catch (e) {
     console.error("[lyncr-admin] impersonate exit:", e)

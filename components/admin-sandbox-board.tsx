@@ -6,6 +6,7 @@ import { useCallback, useState, useTransition } from "react"
 import Link from "next/link"
 import {
   Database,
+  KeyRound,
   Loader2,
   PhoneIncoming,
   RefreshCw,
@@ -17,6 +18,7 @@ import { toast } from "sonner"
 import {
   fetchSandboxIntakeLogs,
   runSeedSandboxData,
+  runSwitchToSandboxTestReceptionist,
   runTriggerMockCall,
   type SandboxEnvironment,
   type SandboxIntakeLogRow,
@@ -72,6 +74,19 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
     })
   }
 
+  function handleQuickSwitch() {
+    startTransition(async () => {
+      try {
+        const result = await runSwitchToSandboxTestReceptionist()
+        if (result && !result.ok) {
+          toast.error(result.error)
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Quick-switch failed unexpectedly")
+      }
+    })
+  }
+
   function handleMockCall() {
     const lineId = environment?.business_line_id
     if (!lineId) {
@@ -116,6 +131,79 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
           {lastAction}
         </p>
       ) : null}
+
+      <section className="rounded-xl border border-slate-700/80 bg-slate-900/40 p-5 sm:p-6">
+        <h2 className="text-base font-semibold text-slate-100">End-to-end test flow</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          Follow these steps to exercise quiz → routing pool → HUD → SMS intake without manual signup.
+        </p>
+        <ol className="mt-4 space-y-3 text-sm text-slate-300">
+          <li className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600/30 text-xs font-semibold text-violet-200">
+              1
+            </span>
+            <span>
+              Click <strong className="font-medium text-slate-200">Seed sandbox data</strong> — creates Test Locksmith
+              Co. and provisions{" "}
+              <span className="font-mono text-violet-300">test_receptionist@lyncr.app</span> with empty skills (quiz-first).
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600/30 text-xs font-semibold text-violet-200">
+              2
+            </span>
+            <span>
+              Use <strong className="font-medium text-slate-200">Quick-Switch</strong> below — opens the{" "}
+              <code className="text-violet-300">automotive_core</code> quiz as the test receptionist.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600/30 text-xs font-semibold text-violet-200">
+              3
+            </span>
+            <span>
+              Pass the quiz to earn the automotive badge, then click{" "}
+              <strong className="font-medium text-slate-200">Return to Admin Sandbox</strong> in the violet bar at the
+              top of the receptionist portal.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600/30 text-xs font-semibold text-violet-200">
+              4
+            </span>
+            <span>
+              Fire <strong className="font-medium text-slate-200">Simulate inbound call</strong> — the HUD should ring
+              for the certified receptionist. Review intake rows in the table below.
+            </span>
+          </li>
+        </ol>
+
+        <div className="mt-5 rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-950/80 via-violet-900/40 to-slate-900/60 p-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-violet-100">
+              <KeyRound className="h-4 w-4 shrink-0 text-violet-300" aria-hidden />
+              Quick-Switch to Test Receptionist Session
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-violet-200/80">
+              Impersonates <span className="font-mono">test_receptionist@lyncr.app</span> and jumps straight to the
+              automotive_core training quiz. Auto-seeds if the account is missing.
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="mt-3 w-full shrink-0 bg-violet-600 hover:bg-violet-500 sm:mt-0 sm:w-auto"
+            disabled={pending}
+            onClick={handleQuickSwitch}
+          >
+            {pending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <KeyRound className="mr-2 h-4 w-4" aria-hidden />
+            )}
+            Quick-Switch to Test Receptionist Session
+          </Button>
+        </div>
+      </section>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="border-violet-500/30 bg-slate-900/60">
@@ -189,6 +277,16 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
                 <Row label="SMS leads" value={environment.sms_leads_enabled ? "Enabled" : "Off"} />
                 <Row label="Dispatch SMS" value={environment.dispatch_sms_phone ?? "—"} mono />
                 <Row label="Quiz module" value={environment.certification_code} mono />
+                <Row
+                  label="Test receptionist"
+                  value={environment.test_receptionist_email}
+                  mono
+                />
+                <Row
+                  label="Receptionist user ID"
+                  value={environment.test_receptionist_user_id ?? "Not provisioned — re-seed"}
+                  mono
+                />
               </>
             ) : (
               <p className="text-slate-500">Not seeded yet — run DB Environment Seed.</p>
@@ -271,12 +369,12 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
       </section>
 
       <p className="text-xs text-slate-600">
-        Training quiz:{" "}
-        <Link href="/receptionist/training/automotive_core" className="text-violet-400 hover:underline">
-          /receptionist/training/automotive_core
-        </Link>
+        Test receptionist login:{" "}
+        <span className="font-mono text-slate-500">test_receptionist@lyncr.app</span>
         {" · "}
-        Sandbox owner login: <span className="font-mono text-slate-500">sandbox-test-locksmith@lyncr.app</span>
+        Sandbox owner: <span className="font-mono text-slate-500">sandbox-test-locksmith@lyncr.app</span>
+        {" · "}
+        Dev password (both): <span className="font-mono text-slate-500">SandboxDev123!</span>
       </p>
     </div>
   )

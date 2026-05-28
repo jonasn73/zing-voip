@@ -2,12 +2,31 @@
 
 // Admin-only server actions for the internal dev sandbox board.
 
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
+import {
+  createSessionCookie,
+  getSessionCookieName,
+  getSessionCookieOptions,
+} from "@/lib/auth"
+import {
+  createImpersonationAdminCookie,
+  getImpersonationAdminCookieOptions,
+  getImpersonationReturnCookieOptions,
+  IMPERSONATION_ADMIN_COOKIE,
+  IMPERSONATION_RETURN_COOKIE,
+  SANDBOX_IMPERSONATION_RETURN_PATH,
+} from "@/lib/admin-impersonation"
 import { AdminAuthError, requireLyncrAdminSession } from "@/lib/admin-server-auth"
+import { getAuthUserByEmail } from "@/lib/db"
+import { isLyncrAdminUser } from "@/lib/lyncr-admin"
 import {
   getSandboxEnvironment,
   listSandboxIntakeLogs,
   seedSandboxData,
   triggerMockCall,
+  SANDBOX_TEST_RECEPTIONIST_EMAIL,
+  SANDBOX_TEST_RECEPTIONIST_TRAINING_PATH,
   type SandboxEnvironment,
   type SandboxIntakeLogRow,
   type SeedSandboxDataResult,
@@ -20,6 +39,8 @@ export type {
   SeedSandboxDataResult,
   TriggerMockCallResult,
 }
+
+export type SwitchToTestReceptionistResult = { ok: false; error: string }
 
 async function guardAdmin(): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -56,6 +77,49 @@ export async function runTriggerMockCall(businessLineId: string): Promise<Trigge
     console.error("[sandbox-engine action] runTriggerMockCall:", e)
     return { ok: false, error: msg }
   }
+}
+
+/**
+ * Operator-only: impersonate test_receptionist@lyncr.app and open the automotive_core quiz.
+ * Seeds sandbox data first when the test receptionist row is missing.
+ */
+export async function runSwitchToSandboxTestReceptionist(): Promise<SwitchToTestReceptionistResult | void> {
+  try {
+    const { userId: adminUserId } = await requireLyncrAdminSession()
+
+    let target = await getAuthUserByEmail(SANDBOX_TEST_RECEPTIONIST_EMAIL)
+    if (!target) {
+      const seeded = await seedSandboxData()
+      if (!seeded.ok) return seeded
+      target = await getAuthUserByEmail(SANDBOX_TEST_RECEPTIONIST_EMAIL)
+    }
+    if (!target) {
+      return { ok: false, error: "Test receptionist account missing — run DB Environment Seed first." }
+    }
+    if (isLyncrAdminUser(target)) {
+      return { ok: false, error: "Test receptionist account is misconfigured as an operator login." }
+    }
+
+    const cookieStore = await cookies()
+    cookieStore.set(getSessionCookieName(), createSessionCookie(target.id), getSessionCookieOptions())
+    cookieStore.set(
+      IMPERSONATION_ADMIN_COOKIE,
+      createImpersonationAdminCookie(adminUserId),
+      getImpersonationAdminCookieOptions()
+    )
+    cookieStore.set(
+      IMPERSONATION_RETURN_COOKIE,
+      encodeURIComponent(SANDBOX_IMPERSONATION_RETURN_PATH),
+      getImpersonationReturnCookieOptions()
+    )
+  } catch (e) {
+    if (e instanceof AdminAuthError) return { ok: false, error: e.message }
+    const msg = e instanceof Error ? e.message : "Quick-switch failed"
+    console.error("[sandbox-engine action] runSwitchToSandboxTestReceptionist:", e)
+    return { ok: false, error: msg }
+  }
+
+  redirect(SANDBOX_TEST_RECEPTIONIST_TRAINING_PATH)
 }
 
 /** Operator-only: load sandbox workspace snapshot for the admin board. */

@@ -5419,6 +5419,194 @@ export async function insertReceptionistPortal(params: {
   }
 }
 
+/** Idempotent dev sandbox receptionist — fixed ids, empty skills, no badges. */
+export async function ensureSandboxTestReceptionistAccount(params: {
+  owner_user_id: string
+  user_id: string
+  receptionist_id: string
+  email: string
+  name: string
+  phone: string
+  password_hash: string
+}): Promise<{ portal_user_id: string; receptionist_id: string; created_user: boolean; created_receptionist: boolean }> {
+  const sql = getSql()
+  const email = params.email.trim().toLowerCase()
+  const phone = normalizePhoneNumberE164(params.phone)
+  let created_user = false
+  let created_receptionist = false
+
+  const existingAuth = await getAuthUserByEmail(email)
+  if (!existingAuth) {
+    try {
+      await sql`
+        INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, account_role, created_at)
+        VALUES (
+          ${params.user_id},
+          ${email},
+          ${params.name},
+          ${phone},
+          'Lyncr Receptionist',
+          'generic',
+          ${params.password_hash},
+          'receptionist',
+          now()
+        )
+      `
+    } catch (e) {
+      if (isMissingAccountRoleColumnError(e)) {
+        await sql`
+          INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, created_at)
+          VALUES (
+            ${params.user_id},
+            ${email},
+            ${params.name},
+            ${phone},
+            'Lyncr Receptionist',
+            'generic',
+            ${params.password_hash},
+            now()
+          )
+        `
+      } else if (isMissingIndustryColumnError(e)) {
+        await sql`
+          INSERT INTO users (id, email, name, phone, business_name, password_hash, account_role, created_at)
+          VALUES (
+            ${params.user_id},
+            ${email},
+            ${params.name},
+            ${phone},
+            'Lyncr Receptionist',
+            ${params.password_hash},
+            'receptionist',
+            now()
+          )
+        `
+      } else {
+        throw e
+      }
+    }
+    created_user = true
+  }
+
+  const portalUserId = existingAuth?.id ?? params.user_id
+  const nameParts = params.name.trim().split(/\s+/)
+  const initials =
+    nameParts.length >= 2
+      ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+      : params.name.slice(0, 2).toUpperCase()
+
+  let receptionist = await getReceptionistByPortalUserId(portalUserId)
+  if (!receptionist) {
+    try {
+      await sql`
+        INSERT INTO receptionists (
+          id, user_id, name, phone, initials, color, rate_per_minute, pay_mode, flat_rate_usd,
+          is_active, portal_user_id, skills, created_at
+        )
+        VALUES (
+          ${params.receptionist_id},
+          ${params.owner_user_id},
+          ${params.name},
+          ${phone},
+          ${initials},
+          'bg-primary',
+          0.25,
+          'FLAT_RATE',
+          2.5,
+          true,
+          ${portalUserId},
+          '{}'::text[],
+          now()
+        )
+      `
+    } catch (e) {
+      if (isMissingReceptionistSkillsColumnError(e)) {
+        await sql`
+          INSERT INTO receptionists (
+            id, user_id, name, phone, initials, color, rate_per_minute, pay_mode, flat_rate_usd,
+            is_active, portal_user_id, created_at
+          )
+          VALUES (
+            ${params.receptionist_id},
+            ${params.owner_user_id},
+            ${params.name},
+            ${phone},
+            ${initials},
+            'bg-primary',
+            0.25,
+            'FLAT_RATE',
+            2.5,
+            true,
+            ${portalUserId},
+            now()
+          )
+        `
+      } else if (isMissingPortalUserColumnError(e) || isMissingReceptionistPayColumnError(e)) {
+        await sql`
+          INSERT INTO receptionists (id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at)
+          VALUES (
+            ${params.receptionist_id},
+            ${params.owner_user_id},
+            ${params.name},
+            ${phone},
+            ${initials},
+            'bg-primary',
+            0.25,
+            true,
+            now()
+          )
+        `
+        try {
+          await sql`
+            UPDATE receptionists
+            SET portal_user_id = ${portalUserId}
+            WHERE id = ${params.receptionist_id} AND user_id = ${params.owner_user_id}
+          `
+        } catch {
+          /* pre-040 schema */
+        }
+      } else {
+        throw e
+      }
+    }
+    created_receptionist = true
+    receptionist = await getReceptionistByPortalUserId(portalUserId)
+  }
+
+  if (receptionist) {
+    try {
+      await sql`
+        UPDATE receptionists
+        SET
+          user_id = ${params.owner_user_id},
+          is_active = true,
+          portal_user_id = ${portalUserId},
+          name = ${params.name},
+          phone = ${phone}
+        WHERE id = ${receptionist.id}
+      `
+    } catch {
+      await sql`
+        UPDATE receptionists
+        SET user_id = ${params.owner_user_id}, is_active = true, name = ${params.name}, phone = ${phone}
+        WHERE id = ${receptionist.id}
+      `
+    }
+  }
+
+  const loaded = await getReceptionistByPortalUserId(portalUserId)
+  if (!loaded) {
+    throw new Error("ensureSandboxTestReceptionistAccount: receptionist row missing after upsert")
+  }
+
+  return {
+    portal_user_id: portalUserId,
+    receptionist_id: loaded.id,
+    created_user,
+    created_receptionist,
+  }
+}
+
 /** Redeem invite at signup — locks account_role receptionist + portal link. */
 export async function acceptTeamInviteSignup(params: {
   token: string

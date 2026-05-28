@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs"
 import { certificationsData } from "@/lib/data/certifications"
 import {
   createUser,
+  ensureSandboxTestReceptionistAccount,
   getActivePhoneNumberByE164,
   getAuthUserByEmail,
   getOnboardingProfile,
@@ -43,6 +44,18 @@ export const SANDBOX_PROFILE_MARKER = "lyncr-dev-sandbox:v1"
 /** Automotive skill tag for routing pool matching. */
 export const SANDBOX_INDUSTRY_TAG = "automotive"
 
+/** Dev sandbox test receptionist portal login (provisioned by seed). */
+export const SANDBOX_TEST_RECEPTIONIST_EMAIL = "test_receptionist@lyncr.app"
+
+/** Stable UUID for the test receptionist user row in Neon. */
+export const SANDBOX_TEST_RECEPTIONIST_USER_ID = "11111111-1111-4111-8111-111111111111"
+
+/** Stable UUID for the linked receptionists row. */
+export const SANDBOX_TEST_RECEPTIONIST_ROW_ID = "22222222-2222-4222-8222-222222222222"
+
+/** Quiz entry point for quick-switch impersonation. */
+export const SANDBOX_TEST_RECEPTIONIST_TRAINING_PATH = "/receptionist/training/automotive_core"
+
 export type SandboxEnvironment = {
   user_id: string
   email: string
@@ -52,6 +65,8 @@ export type SandboxEnvironment = {
   sms_leads_enabled: boolean
   dispatch_sms_phone: string | null
   certification_code: string
+  test_receptionist_user_id: string | null
+  test_receptionist_email: string
 }
 
 export type SandboxIntakeLogRow = {
@@ -108,6 +123,7 @@ function buildEnvironmentFromParts(params: {
   lineId: string | null
   lineE164: string | null
   profile: Awaited<ReturnType<typeof getOnboardingProfile>>
+  testReceptionistUserId: string | null
 }): SandboxEnvironment {
   return {
     user_id: params.userId,
@@ -118,6 +134,36 @@ function buildEnvironmentFromParts(params: {
     sms_leads_enabled: params.profile?.sms_leads_enabled ?? false,
     dispatch_sms_phone: params.profile?.dispatch_sms_phone ?? null,
     certification_code: "automotive_core",
+    test_receptionist_user_id: params.testReceptionistUserId,
+    test_receptionist_email: SANDBOX_TEST_RECEPTIONIST_EMAIL,
+  }
+}
+
+async function resolveTestReceptionistUserId(): Promise<string | null> {
+  const auth = await getAuthUserByEmail(SANDBOX_TEST_RECEPTIONIST_EMAIL)
+  return auth?.id ?? null
+}
+
+/** Provision test_receptionist@lyncr.app linked to the sandbox owner (empty skills — quiz-first). */
+async function provisionSandboxTestReceptionist(ownerUserId: string): Promise<{
+  portal_user_id: string
+  receptionist_id: string
+  created: boolean
+}> {
+  const password_hash = await bcrypt.hash("SandboxDev123!", 10)
+  const result = await ensureSandboxTestReceptionistAccount({
+    owner_user_id: ownerUserId,
+    user_id: SANDBOX_TEST_RECEPTIONIST_USER_ID,
+    receptionist_id: SANDBOX_TEST_RECEPTIONIST_ROW_ID,
+    email: SANDBOX_TEST_RECEPTIONIST_EMAIL,
+    name: "Test Receptionist",
+    phone: "+15552223333",
+    password_hash,
+  })
+  return {
+    portal_user_id: result.portal_user_id,
+    receptionist_id: result.receptionist_id,
+    created: result.created_user || result.created_receptionist,
   }
 }
 
@@ -127,9 +173,10 @@ export async function getSandboxEnvironment(): Promise<SandboxEnvironment | null
     const auth = await getAuthUserByEmail(SANDBOX_OWNER_EMAIL)
     if (!auth) return null
 
-    const [profile, numbers] = await Promise.all([
+    const [profile, numbers, testReceptionistUserId] = await Promise.all([
       getOnboardingProfile(auth.id),
       getPhoneNumbers(auth.id),
+      resolveTestReceptionistUserId(),
     ])
 
     const line = numbers.find((n) => n.status === "active") ?? null
@@ -141,6 +188,7 @@ export async function getSandboxEnvironment(): Promise<SandboxEnvironment | null
       lineId: line?.id ?? null,
       lineE164: line?.number ?? null,
       profile,
+      testReceptionistUserId,
     })
   } catch (e) {
     console.error("[sandbox-engine] getSandboxEnvironment:", e)
@@ -148,7 +196,15 @@ export async function getSandboxEnvironment(): Promise<SandboxEnvironment | null
   }
 }
 
-/** Latest AI intake rows for the sandbox business (collected JSON shown as intake_payload). Never throws. */
+/** Resolve provisioned test receptionist portal user id (null before seed). */
+export async function getSandboxTestReceptionistUserId(): Promise<string | null> {
+  try {
+    return await resolveTestReceptionistUserId()
+  } catch {
+    return null
+  }
+}
+
 export async function listSandboxIntakeLogs(limit = 25): Promise<SandboxIntakeLogRow[]> {
   try {
     const env = await getSandboxEnvironment()
@@ -223,6 +279,13 @@ export async function seedSandboxData(): Promise<SeedSandboxDataResult> {
 
     await patchRoutingConfigIndustryTag(owner.id, SANDBOX_INDUSTRY_TAG)
 
+    try {
+      await provisionSandboxTestReceptionist(owner.id)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not provision test receptionist"
+      warnings.push(`Test receptionist skipped: ${msg}`)
+    }
+
     let line =
       (await getPhoneNumbers(owner.id)).find(
         (n) => n.number === SANDBOX_BUSINESS_LINE_E164 && n.status === "active"
@@ -292,6 +355,7 @@ export async function seedSandboxData(): Promise<SeedSandboxDataResult> {
     }
 
     const profile = await getOnboardingProfile(owner.id)
+    const testReceptionistUserId = await resolveTestReceptionistUserId()
     const environment = buildEnvironmentFromParts({
       userId: owner.id,
       email: owner.email,
@@ -299,6 +363,7 @@ export async function seedSandboxData(): Promise<SeedSandboxDataResult> {
       lineId: line.id,
       lineE164: line.number,
       profile,
+      testReceptionistUserId,
     })
 
     const warningSuffix = warnings.length ? ` Notes: ${warnings.join(" ")}` : ""

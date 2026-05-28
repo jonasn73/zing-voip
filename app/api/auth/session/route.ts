@@ -16,6 +16,7 @@ import { getUser } from "@/lib/db"
 import { isPlatformAdminUser } from "@/lib/platform-admin"
 import {
   IMPERSONATION_ADMIN_COOKIE,
+  IMPERSONATION_RETURN_COOKIE,
   verifyImpersonationAdminCookie,
 } from "@/lib/admin-impersonation"
 
@@ -70,6 +71,7 @@ export async function GET(req: NextRequest) {
 
     const impersonationRaw = cookieStore.get(IMPERSONATION_ADMIN_COOKIE)?.value
     const impersonatingAdminId = verifyImpersonationAdminCookie(impersonationRaw)
+    const returnRaw = cookieStore.get(IMPERSONATION_RETURN_COOKIE)?.value
 
     const res = NextResponse.json({
       data: {
@@ -78,6 +80,7 @@ export async function GET(req: NextRequest) {
           ? {
               active: true,
               admin_user_id: impersonatingAdminId,
+              return_to: returnRaw ? decodeURIComponent(returnRaw) : null,
             }
           : { active: false },
       },

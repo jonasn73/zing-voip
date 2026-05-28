@@ -84,6 +84,13 @@ export async function purchaseAndConfigureTelnyxLine(
     }
   }
 
+  try {
+    const { configureNumberMessaging } = await import("@/lib/telnyx-messaging-config")
+    await configureNumberMessaging(boughtNumber)
+  } catch (messagingErr) {
+    console.error("[Telnyx] messaging profile assignment failed (number still purchased):", messagingErr)
+  }
+
   console.log(`[Telnyx] Purchased and configured ${boughtNumber} (order ${orderId})`)
   return { ok: true, phone_number: boughtNumber, order_id: orderId }
 }

@@ -2736,6 +2736,28 @@ export async function getProviderLinkedActiveNumber(userId?: string): Promise<st
   return pick(rows as Record<string, unknown>[])
 }
 
+/** First real (non-555) owner phone on the platform — used for sandbox SMS E2E when env unset. */
+export async function getPlatformLeadAlertTestRecipientE164(): Promise<string | null> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT phone
+    FROM users
+    WHERE phone IS NOT NULL
+      AND trim(phone) <> ''
+      AND phone NOT LIKE '+100%'
+      AND regexp_replace(phone, '\\D', '', 'g') NOT LIKE '%555%'
+    ORDER BY created_at ASC
+    LIMIT 5
+  `
+  for (const row of rows as { phone?: string }[]) {
+    const phone = row.phone?.trim()
+    if (!phone) continue
+    const digits = phone.replace(/\D/g, "")
+    if (digits.length >= 10 && digits.length <= 15) return phone
+  }
+  return null
+}
+
 // Get phone numbers for a user
 export async function getPhoneNumbers(userId: string): Promise<PhoneNumber[]> {
   const sql = getSql()

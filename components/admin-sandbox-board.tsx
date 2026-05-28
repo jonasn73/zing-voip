@@ -164,6 +164,54 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
     })
   }
 
+  function handleRepairSms() {
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/admin/sandbox/repair-sms", {
+          method: "POST",
+          credentials: "include",
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string
+          data?: {
+            sms_from: string | null
+            dispatch_to: string
+            test_sent: boolean
+            test_error: string | null
+            setup_warnings: string[]
+          }
+        }
+        if (!res.ok) {
+          toast.error(json.error || "SMS repair failed")
+          return
+        }
+        const result = json.data
+        if (!result) {
+          toast.error("SMS repair returned no data")
+          return
+        }
+        if (result.test_sent) {
+          toast.success(`Test SMS sent to ${result.dispatch_to} from ${result.sms_from ?? "Telnyx line"}`)
+        } else {
+          toast.error(result.test_error || "Test SMS failed")
+        }
+        if (result.setup_warnings.length > 0) {
+          setSeedWarnings(result.setup_warnings)
+        }
+        if (environment) {
+          setEnvironment({
+            ...environment,
+            sms_leads_enabled: true,
+            dispatch_sms_phone: result.dispatch_to,
+          })
+        }
+        refreshLogs()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "SMS repair failed unexpectedly")
+      }
+    })
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -380,17 +428,30 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
               workspace.
             </p>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-slate-400"
-            disabled={pending}
-            onClick={refreshLogs}
-          >
-            <RefreshCw className={cn("mr-1 h-4 w-4", pending && "animate-spin")} />
-            Refresh table
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-emerald-500/40 text-emerald-200"
+              disabled={pending}
+              onClick={handleRepairSms}
+            >
+              {pending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              Repair SMS
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-slate-400"
+              disabled={pending}
+              onClick={refreshLogs}
+            >
+              <RefreshCw className={cn("mr-1 h-4 w-4", pending && "animate-spin")} />
+              Refresh table
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-700/80 bg-slate-900/50">

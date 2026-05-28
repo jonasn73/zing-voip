@@ -9,6 +9,8 @@ import {
   getAuthUserByEmail,
   getOnboardingProfile,
   getPhoneNumbers,
+  getPlatformLeadAlertTestRecipientE164,
+  getProviderLinkedActiveNumber,
   getUser,
   insertCallLog,
   insertPhoneNumber,
@@ -25,6 +27,7 @@ import {
 import { saveCallIntake } from "@/lib/intake-engine"
 import { isLyncrAdminUser } from "@/lib/lyncr-admin"
 import { getAvailableReceptionistsForLine } from "@/lib/routing-pool"
+import { ensureProviderNumbersMessagingReady } from "@/lib/telnyx-messaging-config"
 import type { CertificationModuleData } from "@/lib/types"
 
 /** Stable sandbox owner login — idempotent seed target. */
@@ -39,10 +42,12 @@ export const SANDBOX_BUSINESS_LINE_E164 = "+15557654321"
 /** Dispatch SMS target for lead-alert E2E tests (fake 555 when no env override). */
 export const SANDBOX_DISPATCH_SMS_E164 = "+15559876543"
 
-/** Real cell for sandbox SMS — set SANDBOX_SMS_DISPATCH_E164 in Vercel (E.164). */
-export function resolveSandboxDispatchSmsE164(): string {
+/** Real cell for sandbox SMS — env override, else first real platform phone, else fake 555. */
+export async function resolveSandboxDispatchSmsE164(): Promise<string> {
   const override = process.env.SANDBOX_SMS_DISPATCH_E164?.trim()
   if (override) return override
+  const platformPhone = await getPlatformLeadAlertTestRecipientE164()
+  if (platformPhone) return platformPhone
   return SANDBOX_DISPATCH_SMS_E164
 }
 
@@ -320,16 +325,34 @@ export async function seedSandboxData(): Promise<SeedSandboxDataResult> {
       account_status: "active",
     })
 
+    const dispatchSms = await resolveSandboxDispatchSmsE164()
+
     try {
       await updateNotificationPreferencesDb({
         userId: owner.id,
         sms_leads_enabled: true,
-        dispatch_sms_phone: resolveSandboxDispatchSmsE164(),
-        notification_phone: resolveSandboxDispatchSmsE164(),
+        dispatch_sms_phone: dispatchSms,
+        notification_phone: dispatchSms,
       })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "SMS preferences could not be saved"
       warnings.push(msg)
+    }
+
+    try {
+      const smsFrom =
+        (await getProviderLinkedActiveNumber(owner.id)) ?? (await getProviderLinkedActiveNumber())
+      if (smsFrom) {
+        const messagingWarnings = await ensureProviderNumbersMessagingReady([smsFrom])
+        if (messagingWarnings.length > 0) {
+          warnings.push(...messagingWarnings.map((w) => `Telnyx SMS setup: ${w}`))
+        }
+      } else {
+        warnings.push("Telnyx SMS setup: no purchased Telnyx line found — buy a number or set TELNYX_MESSAGING_FROM_E164")
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Telnyx messaging profile setup failed"
+      warnings.push(`Telnyx SMS setup: ${msg}`)
     }
 
     try {

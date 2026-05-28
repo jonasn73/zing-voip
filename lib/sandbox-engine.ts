@@ -3,6 +3,7 @@
 import bcrypt from "bcryptjs"
 import { certificationsData } from "@/lib/data/certifications"
 import {
+  closeStaleSandboxMockCalls,
   createUser,
   ensureSandboxTestReceptionistAccount,
   getActivePhoneNumberByE164,
@@ -514,6 +515,9 @@ export async function triggerMockCall(businessLineId: string): Promise<TriggerMo
 
     const owner = await getUser(line.user_id)
     const businessName = owner?.business_name?.trim() || SANDBOX_BUSINESS_NAME
+
+    // Clear any phantom in-progress sandbox calls so receptionists aren't stuck "busy".
+    await closeStaleSandboxMockCalls(line.user_id)
 
     const match = await getAvailableReceptionistsForLine(lineId)
     if (!match || match.receptionists.length === 0) {

@@ -2236,6 +2236,29 @@ export async function updateCallLog(
   }
 }
 
+/**
+ * Close out lingering sandbox mock calls (provider_call_sid like 'sandbox-mock-%') for an owner.
+ * Sandbox sims never get a real status callback, so an in-progress row would otherwise make the
+ * receptionist look busy for 2 hours and block the next simulate. Returns rows updated.
+ */
+export async function closeStaleSandboxMockCalls(userId: string): Promise<number> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      UPDATE call_logs
+      SET status = 'completed'
+      WHERE user_id = ${userId}
+        AND provider_call_sid LIKE 'sandbox-mock-%'
+        AND lower(status) IN ('answered', 'in-progress', 'ringing')
+      RETURNING id
+    `
+    return (rows as unknown[]).length
+  } catch (e) {
+    console.warn("[db] closeStaleSandboxMockCalls:", pgErrorMessage(e))
+    return 0
+  }
+}
+
 /** Resolve account owner from a Telnyx/Twilio call SID (for usage billing side-effects). */
 export async function getCallLogUserIdByProviderSid(providerCallSid: string): Promise<string | null> {
   const sid = providerCallSid.trim()

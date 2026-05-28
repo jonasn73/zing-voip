@@ -15,11 +15,7 @@ import {
   Zap,
 } from "lucide-react"
 import { toast } from "sonner"
-import {
-  fetchSandboxIntakeLogs,
-  type SandboxEnvironment,
-  type SandboxIntakeLogRow,
-} from "@/app/actions/sandbox-engine"
+import type { SandboxEnvironment, SandboxIntakeLogRow } from "@/lib/sandbox-engine"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -47,8 +43,22 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
 
   const refreshLogs = useCallback(() => {
     startTransition(async () => {
-      const rows = await fetchSandboxIntakeLogs(30)
-      setIntakeLogs(rows)
+      try {
+        const res = await fetch("/api/admin/sandbox/intake-logs?limit=30", {
+          credentials: "include",
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string
+          data?: SandboxIntakeLogRow[]
+        }
+        if (!res.ok) {
+          toast.error(json.error || "Could not refresh intake logs")
+          return
+        }
+        setIntakeLogs(json.data ?? [])
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not refresh intake logs")
+      }
     })
   }, [])
 

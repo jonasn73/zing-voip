@@ -181,6 +181,58 @@ export async function isTelnyxOwnedNumber(e164: string): Promise<boolean> {
   return Boolean(id)
 }
 
+export type Telnyx10DlcStatus = {
+  assigned: boolean
+  campaign_id: string | null
+  detail: string | null
+}
+
+/** US local numbers need a 10DLC campaign or carriers silently drop SMS after API accept. */
+export async function getTelnyx10DlcAssignmentStatus(e164: string): Promise<Telnyx10DlcStatus> {
+  const target = normalizePhoneNumberE164(e164.trim())
+  if (!target.startsWith("+1") || target.length < 12) {
+    return { assigned: true, campaign_id: null, detail: null }
+  }
+
+  try {
+    getTelnyxApiKey()
+  } catch {
+    return { assigned: false, campaign_id: null, detail: "TELNYX_API_KEY missing" }
+  }
+
+  const res = await fetch(
+    `${TELNYX_BASE}/10dlc/phoneNumberCampaign?phoneNumber=${encodeURIComponent(target)}`,
+    { headers: telnyxHeaders() }
+  )
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    return {
+      assigned: false,
+      campaign_id: null,
+      detail:
+        "10DLC campaign not assigned — in Telnyx Mission Control go to Messaging → 10DLC, register a brand + campaign, then assign your business line.",
+    }
+  }
+
+  const data = (body as { data?: Record<string, unknown> }).data ?? {}
+  const campaignId =
+    (data.campaignId as string | undefined) ||
+    (data.campaign_id as string | undefined) ||
+    (data.campaign as { id?: string } | undefined)?.id ||
+    null
+
+  if (campaignId) {
+    return { assigned: true, campaign_id: String(campaignId), detail: null }
+  }
+
+  return {
+    assigned: false,
+    campaign_id: null,
+    detail:
+      "10DLC campaign not assigned — Telnyx accepted the API request but US carriers block delivery until you assign +15025758166 to an approved 10DLC campaign.",
+  }
+}
+
 /** Assign every purchased Telnyx line we know about (best-effort). */
 export async function ensureProviderNumbersMessagingReady(numbers: string[]): Promise<string[]> {
   const warnings: string[] = []

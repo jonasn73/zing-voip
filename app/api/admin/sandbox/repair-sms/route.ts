@@ -15,6 +15,7 @@ import { sendTelnyxSms } from "@/lib/telnyx-sms"
 import {
   ensureProviderNumbersMessagingReady,
   getOrCreateMessagingProfile,
+  getTelnyx10DlcAssignmentStatus,
 } from "@/lib/telnyx-messaging-config"
 
 export async function POST(req: NextRequest) {
@@ -53,6 +54,8 @@ export async function POST(req: NextRequest) {
       fromE164: smsFrom ?? undefined,
     })
 
+    const dlcStatus = smsFrom ? await getTelnyx10DlcAssignmentStatus(smsFrom) : null
+
     return NextResponse.json({
       data: {
         messaging_profile_id: profileId,
@@ -61,6 +64,10 @@ export async function POST(req: NextRequest) {
         setup_warnings: setupWarnings,
         test_sent: test.ok,
         test_error: test.ok ? null : test.error,
+        telnyx_message_id: test.ok ? test.message_id : null,
+        delivery_warning: test.ok ? test.delivery_warning : null,
+        ten_dlc_assigned: dlcStatus?.assigned ?? null,
+        ten_dlc_detail: dlcStatus?.detail ?? null,
       },
     })
   } catch (e) {

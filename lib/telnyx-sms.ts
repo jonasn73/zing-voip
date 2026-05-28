@@ -5,12 +5,24 @@ import {
   configureNumberMessaging,
   ensureMessagingProfileWhitelisted,
   getOrCreateMessagingProfile,
+  getTelnyx10DlcAssignmentStatus,
   isTelnyxOwnedNumber,
 } from "@/lib/telnyx-messaging-config"
 
 type TelnyxErrorBody = {
   errors?: { code?: string; title?: string; detail?: string }[]
 }
+
+export type TelnyxSmsSendResult =
+  | {
+      ok: true
+      message_id: string | null
+      from: string
+      to: string
+      /** Set when Telnyx accepts the message but carrier delivery may still fail (e.g. missing 10DLC). */
+      delivery_warning: string | null
+    }
+  | { ok: false; error: string }
 
 function formatTelnyxSmsError(raw: string, fromE164: string | null): string {
   try {
@@ -35,6 +47,11 @@ function isInvalidFromAddressError(raw: string): boolean {
 
 function isMissingWhitelistError(raw: string): boolean {
   return raw.toLowerCase().includes("whitelisted destinations")
+}
+
+async function buildDeliveryWarning(fromE164: string): Promise<string | null> {
+  const dlc = await getTelnyx10DlcAssignmentStatus(fromE164)
+  return dlc.assigned ? null : dlc.detail
 }
 
 /**
@@ -62,14 +79,14 @@ export async function resolveTelnyxMessagingFromE164(userId?: string): Promise<s
 
 /**
  * Send a plain SMS via Telnyx REST API.
- * Auto-assigns the sender to the messaging profile when Telnyx returns 40305.
+ * Returns ok:true when Telnyx accepts the message (not guaranteed phone delivery).
  */
 export async function sendTelnyxSms(params: {
   toE164: string
   text: string
   userId?: string
   fromE164?: string
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<TelnyxSmsSendResult> {
   const apiKey = process.env.TELNYX_API_KEY?.trim()
   let from =
     params.fromE164?.trim() || (await resolveTelnyxMessagingFromE164(params.userId))
@@ -105,6 +122,19 @@ export async function sendTelnyxSms(params: {
     })
   }
 
+  const successResult = async (res: Response): Promise<TelnyxSmsSendResult> => {
+    const successBody = await res.json().catch(() => ({}))
+    const messageId = (successBody as { data?: { id?: string } })?.data?.id ?? null
+    const delivery_warning = await buildDeliveryWarning(from)
+    return {
+      ok: true,
+      message_id: messageId,
+      from,
+      to: params.toE164,
+      delivery_warning,
+    }
+  }
+
   let messagingProfileId: string | null = null
   try {
     messagingProfileId = await getOrCreateMessagingProfile()
@@ -120,7 +150,7 @@ export async function sendTelnyxSms(params: {
       try {
         await ensureMessagingProfileWhitelisted(messagingProfileId)
         res = await sendOnce(messagingProfileId)
-        if (res.ok) return { ok: true }
+        if (res.ok) return successResult(res)
         errText = await res.text().catch(() => res.statusText)
       } catch (whitelistErr) {
         const msg = whitelistErr instanceof Error ? whitelistErr.message : String(whitelistErr)
@@ -134,7 +164,7 @@ export async function sendTelnyxSms(params: {
           messagingProfileId = await getOrCreateMessagingProfile()
         }
         res = await sendOnce(messagingProfileId)
-        if (res.ok) return { ok: true }
+        if (res.ok) return successResult(res)
         errText = await res.text().catch(() => res.statusText)
       } catch (repairErr) {
         const repairMsg = repairErr instanceof Error ? repairErr.message : String(repairErr)
@@ -147,5 +177,5 @@ export async function sendTelnyxSms(params: {
     return { ok: false, error: formatTelnyxSmsError(errText, from) }
   }
 
-  return { ok: true }
+  return successResult(res)
 }

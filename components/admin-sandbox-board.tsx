@@ -75,6 +75,13 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
             environment: SandboxEnvironment
             message: string
             warnings: string[]
+            sample_intake_sms?: {
+              sent: boolean
+              error: string | null
+              telnyx_message_id: string | null
+              from: string | null
+              to: string | null
+            } | null
           }
         }
         if (!res.ok) {
@@ -89,7 +96,18 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
         setEnvironment(result.environment)
         setLastAction(result.message)
         setSeedWarnings(result.warnings ?? [])
-        if (result.warnings.length > 0) {
+        const sms = result.sample_intake_sms
+        if (sms?.sent && sms.error) {
+          toast.warning(
+            `Telnyx accepted the lead SMS but it may not reach your phone yet. ${sms.error}`
+          )
+        } else if (sms?.sent) {
+          toast.success(
+            `Lead SMS queued: ${sms.from ?? "?"} → ${sms.to ?? "?"}${sms.telnyx_message_id ? ` (${sms.telnyx_message_id})` : ""}`
+          )
+        } else if (sms?.error) {
+          toast.error(`Lead SMS failed: ${sms.error}`)
+        } else if (result.warnings.length > 0) {
           toast.warning("Sandbox seeded — see notes banner below.")
         } else {
           toast.success("Sandbox environment seeded")
@@ -178,6 +196,8 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
             dispatch_to: string
             test_sent: boolean
             test_error: string | null
+            telnyx_message_id: string | null
+            delivery_warning: string | null
             setup_warnings: string[]
           }
         }
@@ -190,8 +210,14 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
           toast.error("SMS repair returned no data")
           return
         }
-        if (result.test_sent) {
-          toast.success(`Test SMS sent to ${result.dispatch_to} from ${result.sms_from ?? "Telnyx line"}`)
+        if (result.test_sent && result.delivery_warning) {
+          toast.warning(
+            `Telnyx accepted test SMS (${result.sms_from ?? "?"} → ${result.dispatch_to}) but delivery may be blocked: ${result.delivery_warning}`
+          )
+        } else if (result.test_sent) {
+          toast.success(
+            `Test SMS queued: ${result.sms_from ?? "Telnyx line"} → ${result.dispatch_to}${result.telnyx_message_id ? ` (${result.telnyx_message_id})` : ""}`
+          )
         } else {
           toast.error(result.test_error || "Test SMS failed")
         }
@@ -487,7 +513,13 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
                       </td>
                       <td className="px-4 py-3">
                         {row.sms_sent ? (
-                          <Badge className="border-0 bg-emerald-500/20 text-emerald-200">Sent</Badge>
+                          row.sms_error ? (
+                            <Badge variant="outline" className="border-amber-500/40 text-amber-200">
+                              Queued — {row.sms_error}
+                            </Badge>
+                          ) : (
+                            <Badge className="border-0 bg-emerald-500/20 text-emerald-200">Queued</Badge>
+                          )
                         ) : row.sms_error ? (
                           <Badge variant="outline" className="border-amber-500/40 text-amber-200">
                             {row.sms_error}
@@ -516,8 +548,11 @@ export function AdminSandboxBoard({ initialEnvironment, initialIntakeLogs }: Pro
       <p className="text-xs leading-relaxed text-slate-600">
         Live SMS tests: add{" "}
         <span className="font-mono text-slate-500">SANDBOX_SMS_DISPATCH_E164</span> in Vercel (your real cell,
-        E.164). Outbound sender auto-uses your Telnyx line, or set{" "}
-        <span className="font-mono text-slate-500">TELNYX_MESSAGING_FROM_E164</span> explicitly — then re-seed.
+        E.164). Outbound sender uses your Telnyx line{" "}
+        <span className="font-mono text-slate-500">+15025758166</span>. If the table shows{" "}
+        <strong className="font-medium text-slate-500">Queued</strong> but no text arrives, register{" "}
+        <strong className="font-medium text-slate-500">10DLC</strong> in Telnyx Mission Control → Messaging → 10DLC
+        and assign your line to an approved campaign.
       </p>
     </div>
   )

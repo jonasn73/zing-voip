@@ -93,12 +93,21 @@ export type SandboxIntakeLogRow = {
   sms_error: string | null
 }
 
+export type SandboxSampleIntakeSms = {
+  sent: boolean
+  error: string | null
+  telnyx_message_id: string | null
+  from: string | null
+  to: string | null
+}
+
 export type SeedSandboxDataResult =
   | {
       ok: true
       environment: SandboxEnvironment
       certification_id: string | null
       sample_intake_id: string | null
+      sample_intake_sms: SandboxSampleIntakeSms | null
       warnings: string[]
       message: string
     }
@@ -417,6 +426,7 @@ export async function seedSandboxData(): Promise<SeedSandboxDataResult> {
     }
 
     let sampleIntakeId: string | null = null
+    let sampleIntakeSms: SandboxSampleIntakeSms | null = null
     try {
       const intake = await saveCallIntake({
         user_id: owner.id,
@@ -435,6 +445,18 @@ export async function seedSandboxData(): Promise<SeedSandboxDataResult> {
         vapi_call_id: `sandbox-seed-${Date.now()}`,
       })
       sampleIntakeId = intake.id
+      sampleIntakeSms = {
+        sent: intake.sms_sent,
+        error: intake.sms_error,
+        telnyx_message_id: intake.telnyx_message_id,
+        from: intake.sms_from,
+        to: intake.sms_to,
+      }
+      if (intake.sms_sent && intake.sms_error) {
+        warnings.push(intake.sms_error)
+      } else if (!intake.sms_sent && intake.sms_error) {
+        warnings.push(`Sample lead SMS failed: ${intake.sms_error}`)
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Sample intake could not be saved"
       warnings.push(`Sample intake skipped: ${msg}`)
@@ -454,13 +476,22 @@ export async function seedSandboxData(): Promise<SeedSandboxDataResult> {
 
     const warningSuffix = warnings.length ? ` Notes: ${warnings.join(" ")}` : ""
 
+    const smsNote = sampleIntakeSms?.sent
+      ? sampleIntakeSms.error
+        ? ` Lead SMS accepted by Telnyx (${sampleIntakeSms.from ?? "?"} → ${sampleIntakeSms.to ?? "?"}). ${sampleIntakeSms.error}`
+        : ` Lead SMS queued via Telnyx (${sampleIntakeSms.from ?? "?"} → ${sampleIntakeSms.to ?? "?"}${sampleIntakeSms.telnyx_message_id ? `, id ${sampleIntakeSms.telnyx_message_id}` : ""}).`
+      : sampleIntakeSms?.error
+        ? ` Lead SMS failed: ${sampleIntakeSms.error}`
+        : ""
+
     return {
       ok: true,
       environment,
       certification_id: cert?.id ?? null,
       sample_intake_id: sampleIntakeId,
+      sample_intake_sms: sampleIntakeSms,
       warnings,
-      message: `Sandbox workspace ready — Test Locksmith Co. line, SMS dispatch, and sample intake seeded.${warningSuffix}`,
+      message: `Sandbox workspace ready — Test Locksmith Co. line, SMS dispatch, and sample intake seeded.${smsNote}${warningSuffix}`,
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Sandbox seed failed"

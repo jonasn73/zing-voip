@@ -677,6 +677,11 @@ function isMissingPortalUserColumnError(e: unknown): boolean {
   return pgErrorMessage(e).includes("portal_user_id")
 }
 
+function isMissingEndedAtColumnError(e: unknown): boolean {
+  // 42703 = undefined_column. Thrown until scripts/007-call-quality-metrics.sql runs in Neon.
+  return pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("ended_at")
+}
+
 function isMissingReceptionistSkillsColumnError(e: unknown): boolean {
   if (pgErrorCode(e) !== "42703") return false
   return pgErrorMessage(e).includes("skills")
@@ -917,6 +922,91 @@ export async function listAvailablePlatformReceptionistsForIndustryTag(
         skills: parseSkillsArray(row.skills),
         is_active: row.is_active !== false,
       }))
+    }
+    if (isMissingEndedAtColumnError(e)) {
+      // call_logs.ended_at not migrated yet (scripts/007). Detect a live call via
+      // status + recency only, which is equivalent for the busy-receptionist filter.
+      console.warn(
+        "[db] listAvailablePlatformReceptionistsForIndustryTag: ended_at missing — run scripts/007-call-quality-metrics.sql in Neon."
+      )
+      try {
+        const rows = await sql`
+          SELECT r.id, r.name, r.phone, r.skills, r.is_active
+          FROM receptionists r
+          INNER JOIN users u ON u.id = r.portal_user_id
+          WHERE r.portal_user_id IS NOT NULL
+            AND r.is_active = true
+            AND coalesce(u.account_role, 'receptionist') = 'receptionist'
+            AND (
+              ${tag} = ANY(r.skills)
+              OR EXISTS (
+                SELECT 1 FROM unnest(r.skills) AS skill_slug
+                WHERE split_part(replace(skill_slug, '-', '_'), '_', 1) = ${tag}
+              )
+            )
+            AND (
+              NOT EXISTS (
+                SELECT 1 FROM receptionist_badges rb
+                WHERE rb.user_id = r.portal_user_id AND rb.status = 'certified'
+              )
+              OR EXISTS (
+                SELECT 1 FROM receptionist_badges rb
+                INNER JOIN certifications cert ON cert.id = rb.certification_id
+                WHERE rb.user_id = r.portal_user_id
+                  AND rb.status = 'certified'
+                  AND rb.active_toggle = true
+                  AND split_part(replace(cert.code_identifier, '-', '_'), '_', 1) = ${tag}
+              )
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM call_logs cl
+              WHERE cl.routed_to_receptionist_id = r.id
+                AND lower(cl.status) IN ('answered', 'in-progress', 'ringing')
+                AND cl.created_at > (now() - interval '2 hours')
+            )
+          ORDER BY r.name ASC
+        `
+        return (rows as Record<string, unknown>[]).map((row) => ({
+          id: String(row.id),
+          name: String(row.name),
+          phone: String(row.phone),
+          skills: parseSkillsArray(row.skills),
+          is_active: row.is_active !== false,
+        }))
+      } catch (inner) {
+        if (isMissingCertificationsTableError(inner)) {
+          const rows = await sql`
+            SELECT r.id, r.name, r.phone, r.skills, r.is_active
+            FROM receptionists r
+            INNER JOIN users u ON u.id = r.portal_user_id
+            WHERE r.portal_user_id IS NOT NULL
+              AND r.is_active = true
+              AND coalesce(u.account_role, 'receptionist') = 'receptionist'
+              AND (
+                ${tag} = ANY(r.skills)
+                OR EXISTS (
+                  SELECT 1 FROM unnest(r.skills) AS skill_slug
+                  WHERE split_part(replace(skill_slug, '-', '_'), '_', 1) = ${tag}
+                )
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM call_logs cl
+                WHERE cl.routed_to_receptionist_id = r.id
+                  AND lower(cl.status) IN ('answered', 'in-progress', 'ringing')
+                  AND cl.created_at > (now() - interval '2 hours')
+              )
+            ORDER BY r.name ASC
+          `
+          return (rows as Record<string, unknown>[]).map((row) => ({
+            id: String(row.id),
+            name: String(row.name),
+            phone: String(row.phone),
+            skills: parseSkillsArray(row.skills),
+            is_active: row.is_active !== false,
+          }))
+        }
+        throw inner
+      }
     }
     throw e
   }

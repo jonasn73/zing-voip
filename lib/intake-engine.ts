@@ -31,6 +31,9 @@ export type SaveCallIntakeResult = {
   id: string
   sms_sent: boolean
   sms_error: string | null
+  telnyx_message_id: string | null
+  sms_from: string | null
+  sms_to: string | null
 }
 
 async function maybeDispatchLeadSmsAlert(params: {
@@ -40,19 +43,37 @@ async function maybeDispatchLeadSmsAlert(params: {
   intent_slug: string | null
   collected: Record<string, unknown>
   summary: string | null
-}): Promise<{ sms_sent: boolean; sms_error: string | null }> {
+}): Promise<{
+  sms_sent: boolean
+  sms_error: string | null
+  telnyx_message_id: string | null
+  sms_from: string | null
+  sms_to: string | null
+}> {
   const [profile, user] = await Promise.all([
     getOnboardingProfile(params.userId),
     getUser(params.userId),
   ])
 
   if (!profile?.sms_leads_enabled) {
-    return { sms_sent: false, sms_error: null }
+    return {
+      sms_sent: false,
+      sms_error: null,
+      telnyx_message_id: null,
+      sms_from: null,
+      sms_to: null,
+    }
   }
 
   const targetSmsNumber = resolveLeadAlertSmsRecipient(profile, user)
   if (!targetSmsNumber) {
-    return { sms_sent: false, sms_error: "No dispatch or profile phone configured for SMS alerts" }
+    return {
+      sms_sent: false,
+      sms_error: "No dispatch or profile phone configured for SMS alerts",
+      telnyx_message_id: null,
+      sms_from: null,
+      sms_to: null,
+    }
   }
 
   if (isLikelyFictionalUs555Number(targetSmsNumber)) {
@@ -60,6 +81,9 @@ async function maybeDispatchLeadSmsAlert(params: {
       sms_sent: false,
       sms_error:
         "Dispatch number is a sandbox 555 line — set SANDBOX_SMS_DISPATCH_E164 in Vercel to your real cell, then re-seed",
+      telnyx_message_id: null,
+      sms_from: null,
+      sms_to: targetSmsNumber,
     }
   }
 
@@ -73,9 +97,21 @@ async function maybeDispatchLeadSmsAlert(params: {
 
   const sent = await sendTelnyxSms({ toE164: targetSmsNumber, text, userId: params.userId })
   if (sent.ok) {
-    return { sms_sent: true, sms_error: null }
+    return {
+      sms_sent: true,
+      sms_error: sent.delivery_warning,
+      telnyx_message_id: sent.message_id,
+      sms_from: sent.from,
+      sms_to: sent.to,
+    }
   }
-  return { sms_sent: false, sms_error: sent.error }
+  return {
+    sms_sent: false,
+    sms_error: sent.error,
+    telnyx_message_id: null,
+    sms_from: null,
+    sms_to: targetSmsNumber,
+  }
 }
 
 /**
@@ -110,5 +146,8 @@ export async function saveCallIntake(params: SaveCallIntakeParams): Promise<Save
     id: leadId,
     sms_sent: smsOutcome.sms_sent,
     sms_error: smsOutcome.sms_error,
+    telnyx_message_id: smsOutcome.telnyx_message_id,
+    sms_from: smsOutcome.sms_from,
+    sms_to: smsOutcome.sms_to,
   }
 }

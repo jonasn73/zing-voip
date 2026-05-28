@@ -18,7 +18,7 @@ import {
   Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
-import { adjustUserCredit } from "@/app/actions/admin-billing"
+import { adjustUserCredit } from "@/app/actions/admin-actions"
 import { startImpersonation } from "@/app/actions/admin-impersonation"
 import type { LyncrAdminDirectoryRow, LyncrAdminMetrics } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -58,8 +58,32 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { accountStatusLabel } from "@/lib/account-status"
+import { formatRoutingPoolSkillLabel } from "@/lib/routing-pool-skills"
+import { AdminInviteReceptionistDialog } from "@/components/admin-invite-receptionist-dialog"
 
 const ROUTING_POOL_LOW_BALANCE_USD = 15
+
+function SpecialtySkillsBadges({ skills, accountRole }: { skills: string[]; accountRole: LyncrAdminDirectoryRow["account_role"] }) {
+  if (accountRole !== "receptionist") {
+    return <span className="text-slate-600">—</span>
+  }
+  if (!skills.length) {
+    return <span className="text-xs text-slate-500">No skills assigned</span>
+  }
+  return (
+    <div className="flex max-w-[220px] flex-wrap gap-1">
+      {skills.map((skill) => (
+        <Badge
+          key={skill}
+          variant="outline"
+          className="border-violet-500/35 bg-violet-500/10 text-[11px] font-medium text-violet-200"
+        >
+          {formatRoutingPoolSkillLabel(skill)}
+        </Badge>
+      ))}
+    </div>
+  )
+}
 
 function formatUsd(amount: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount)
@@ -527,6 +551,11 @@ export function LyncrAdminDashboard({
         </Card>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">Invite platform receptionists to the payout portal.</p>
+        <AdminInviteReceptionistDialog />
+      </div>
+
       <Card className="border-slate-800 bg-slate-900/40">
         <CardHeader className="border-b border-slate-800/80 pb-4">
           <CardTitle className="text-lg text-slate-100">User directory</CardTitle>
@@ -580,13 +609,14 @@ export function LyncrAdminDashboard({
                   <TableHead className="text-slate-400">Account status</TableHead>
                   <TableHead className="text-slate-400">Phone</TableHead>
                   <TableHead className="text-slate-400">Carrier credit</TableHead>
+                  <TableHead className="min-w-[180px] text-slate-400">Specialty skills</TableHead>
                   <TableHead className="w-[4.5rem] text-slate-400">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.length === 0 ? (
                   <TableRow className="border-slate-800">
-                    <TableCell colSpan={10} className="py-10 text-center text-slate-500">
+                    <TableCell colSpan={11} className="py-10 text-center text-slate-500">
                       No users match your filter.
                     </TableCell>
                   </TableRow>
@@ -618,6 +648,9 @@ export function LyncrAdminDashboard({
                       </TableCell>
                       <TableCell className="font-mono text-sm text-slate-300">{row.phone_number ?? "—"}</TableCell>
                       <TableCell className="font-medium text-slate-100">{formatUsd(row.carrier_credit)}</TableCell>
+                      <TableCell>
+                        <SpecialtySkillsBadges skills={row.receptionist_skills} accountRole={row.account_role} />
+                      </TableCell>
                       <TableCell className="text-right">
                         <UserRowActions
                           row={row}

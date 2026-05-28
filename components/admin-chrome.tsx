@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
-import { Shield, LogOut } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { useState } from "react"
+import { FlaskConical, Shield, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { signOutAndGoToLogin } from "@/lib/client-auth"
 import { Button } from "@/components/ui/button"
@@ -40,6 +41,12 @@ function AdminTopBar({ userName, userEmail }: { userName: string; userEmail: str
 }
 
 function AdminSidebar() {
+  const pathname = usePathname()
+  const nav = [
+    { href: "/admin", label: "Dashboard", active: pathname === "/admin" },
+    { href: "/admin/sandbox", label: "Dev sandbox", active: pathname?.startsWith("/admin/sandbox") },
+  ]
+
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-slate-800 bg-[#060a12] lg:w-56 lg:border-r lg:border-b-0">
       <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-4 lg:px-3 lg:py-5">
@@ -54,15 +61,25 @@ function AdminSidebar() {
           <p className="truncate text-sm font-semibold text-slate-100">Platform console</p>
         </div>
       </div>
-      <div className="px-4 py-3 lg:px-3">
-        <p
-          className={cn(
-            "rounded-lg bg-violet-600/25 px-3 py-2.5 text-sm font-medium text-violet-100 ring-1 ring-violet-500/40"
-          )}
-        >
-          Dashboard
-        </p>
-      </div>
+      <nav className="space-y-1 px-4 py-3 lg:px-3">
+        {nav.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              item.active
+                ? "bg-violet-600/25 text-violet-100 ring-1 ring-violet-500/40"
+                : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
+            )}
+          >
+            {item.href.includes("sandbox") ? (
+              <FlaskConical className="h-4 w-4 shrink-0" aria-hidden />
+            ) : null}
+            {item.label}
+          </Link>
+        ))}
+      </nav>
       <div className="mt-auto hidden border-t border-slate-800 p-3 lg:block">
         <p className="text-[10px] uppercase tracking-wider text-slate-500">Restricted</p>
         <p className="mt-1 text-xs leading-snug text-slate-500">Only admin@lyncr.app may access this console.</p>

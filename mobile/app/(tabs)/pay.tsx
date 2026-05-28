@@ -23,12 +23,17 @@ export default function PayScreen() {
 
   useEffect(() => {
     const { start, end } = getWeekRange(0)
-    apiGet<{ summary: { total_minutes: number; total_earnings: number; total_calls: number }; agents: { name: string; total_minutes: number; total_earnings: number }[] }>(
+    apiGet<{
+      data?: {
+        summary: { total_minutes: number; total_earnings: number; total_calls: number }
+        agents: { name: string; total_minutes: number; total_earnings: number }[]
+      }
+    }>(
       `/api/analytics?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
     )
       .then((d) => {
-        setSummary((d as { summary?: typeof summary }).summary ?? null)
-        setAgents((d as { agents?: typeof agents }).agents ?? [])
+        setSummary(d.data?.summary ?? null)
+        setAgents(d.data?.agents ?? [])
       })
       .catch((e) => {
         const err = e as Error & { status?: number }

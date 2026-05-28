@@ -23,6 +23,9 @@ export default async function DashboardLayout({
         : "/dashboard"
     redirect(`/login?next=${encodeURIComponent(next)}`)
   }
+  if (user.account_role === "receptionist") {
+    redirect("/receptionist")
+  }
   if (isPlatformAdminUser(user)) {
     redirect("/admin")
   }

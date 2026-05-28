@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
         billing_plan: "trial",
         is_platform_admin: false,
         answered_call_customer_popup_enabled: true,
+        account_role: "owner" as const,
       }
       const res = NextResponse.json({
         data: {

@@ -190,6 +190,7 @@ export function buildInboundPstnDialAttributes(opts: {
   timeout: number
   action: string
   method?: "GET" | "POST"
+  sequential?: boolean
 }): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {
     answerOnBridge: opts.answerOnBridge,
@@ -204,6 +205,7 @@ export function buildInboundPstnDialAttributes(opts: {
   }
   if (opts.callerId) out.callerId = opts.callerId
   if (opts.fromDisplayName) out.fromDisplayName = opts.fromDisplayName
+  if (opts.sequential) out.sequential = true
   return out
 }
 
@@ -259,6 +261,41 @@ export function buildFastReceptionistDialTexml(opts: {
 <Response>
   <Dial ${dialAttrStr}>
     <Number ${numberAttrStr}>${phone}</Number>
+  </Dial>
+</Response>`
+}
+
+/**
+ * Skill-pool inbound TeXML — dials one or many receptionist PSTN legs sequentially or simultaneously.
+ */
+export function buildRoutingPoolDialTexml(opts: {
+  callerId?: string
+  answerOnBridge: boolean
+  timeout: number
+  action: string
+  receptionistE164List: string[]
+  mode: "sequential" | "simultaneous"
+}): string {
+  const phones = opts.receptionistE164List.map((p) => p.trim()).filter((p) => p.length > 0)
+  if (phones.length === 0) {
+    return `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`
+  }
+  const dialAttrs = buildInboundPstnDialAttributes({
+    ...(opts.callerId ? { callerId: opts.callerId } : {}),
+    answerOnBridge: opts.answerOnBridge,
+    timeout: opts.timeout,
+    action: opts.action,
+    method: "POST",
+    ...(opts.mode === "sequential" ? { sequential: true } : {}),
+  })
+  const numberAttrs = buildInboundPstnNumberAttributes()
+  const dialAttrStr = serializeTexmlAttrs(dialAttrs)
+  const numberAttrStr = serializeTexmlAttrs(numberAttrs)
+  const numberTags = phones.map((phone) => `    <Number ${numberAttrStr}>${phone}</Number>`).join("\n")
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial ${dialAttrStr}>
+${numberTags}
   </Dial>
 </Response>`
 }

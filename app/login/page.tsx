@@ -2,18 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { AuthPage } from "@/components/auth-pages"
-
-/** Safe post-login path: operators go to `/admin` (or `?next=` if under `/admin`). */
-function postLoginPath(operator: boolean): string {
-  if (typeof window === "undefined") return operator ? "/admin" : "/dashboard"
-  const next = new URLSearchParams(window.location.search).get("next")
-  if (operator) {
-    if (next && next.startsWith("/admin")) return next
-    return "/admin"
-  }
-  if (next && (next.startsWith("/dashboard") || next.startsWith("/onboarding"))) return next
-  return "/dashboard"
-}
+import { resolvePostAuthPath } from "@/lib/post-auth-redirect"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,7 +13,28 @@ export default function LoginPage() {
         if (page === "landing") router.push("/")
         else if (page === "signup") router.push("/signup")
       }}
-      onAuth={(ctx) => router.replace(postLoginPath(Boolean(ctx?.operator_access)))}
+      onAuth={(ctx) => {
+        if (ctx?.redirect) {
+          router.replace(ctx.redirect)
+          return
+        }
+        const next =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("next")
+            : null
+        router.replace(
+          resolvePostAuthPath(
+            {
+              operator_access: ctx?.operator_access,
+              user: {
+                email: "",
+                account_role: (ctx?.account_role as "owner" | "receptionist") ?? "owner",
+              },
+            },
+            next
+          )
+        )
+      }}
     />
   )
 }

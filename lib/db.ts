@@ -9,6 +9,7 @@ import { neon } from "@neondatabase/serverless"
 import { unstable_cache, revalidateTag } from "next/cache"
 import { resolveNeonDatabaseUrl } from "@/lib/neon-database-url"
 import { SITE_NAME } from "@/lib/brand"
+import { parseRoutingPoolMode, parseSkillsArray, normalizeRoutingPoolSkillTag, routingSkillTagFromCertCode } from "@/lib/routing-pool-skills"
 import type {
   RoutingConfig,
   Receptionist,
@@ -27,6 +28,15 @@ import type {
   LyncrAdminDirectoryRow,
   LyncrAdminMetrics,
   AdminUserOverrideResult,
+  ReceptionistPayoutMetrics,
+  TeamInvite,
+  TeamInvitePreview,
+  Certification,
+  CertificationModuleData,
+  CertificationLesson,
+  CertificationQuizQuestion,
+  ReceptionistBadge,
+  ReceptionistBadgeStatus,
 } from "./types"
 import { isAccountRoutingBlocked, parseAccountStatus } from "./account-status"
 import { defaultProfileFromUserIndustry } from "./business-industries"
@@ -82,7 +92,10 @@ function isMissingOnboardingProfileColumnError(e: unknown): boolean {
     msg.includes("total_calls_routed") ||
     msg.includes("total_minutes_used") ||
     msg.includes("account_status") ||
-    msg.includes("custom_routing_note")
+    msg.includes("custom_routing_note") ||
+    msg.includes("sms_leads_enabled") ||
+    msg.includes("notification_phone") ||
+    msg.includes("dispatch_sms_phone")
   )
 }
 
@@ -183,6 +196,7 @@ function parseRoutingRow(row: Record<string, unknown>): RoutingConfig {
     ai_greeting: String(row.ai_greeting ?? ""),
     ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
     ai_ring_owner_first: pgBool(row.ai_ring_owner_first),
+    industry_tag: row.industry_tag != null && String(row.industry_tag).trim() !== "" ? String(row.industry_tag).trim() : null,
     updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
   }
 }
@@ -618,6 +632,7 @@ export async function deleteRoutingConfigForNumber(userId: string, businessNumbe
 
 // Parse a receptionists row from the database
 function parseReceptionistRow(row: Record<string, unknown>): Receptionist {
+  const payModeRaw = String(row.pay_mode ?? "PER_MINUTE").toUpperCase()
   return {
     id: String(row.id),
     user_id: String(row.user_id),
@@ -626,29 +641,274 @@ function parseReceptionistRow(row: Record<string, unknown>): Receptionist {
     initials: String(row.initials ?? ""),
     color: String(row.color ?? "bg-primary"),
     rate_per_minute: Number(row.rate_per_minute ?? 0.25),
+    pay_mode: payModeRaw === "FLAT_RATE" ? "FLAT_RATE" : "PER_MINUTE",
+    flat_rate_usd: Number(row.flat_rate_usd ?? 2.5),
     is_active: row.is_active !== false,
+    portal_user_id: row.portal_user_id ? String(row.portal_user_id) : null,
+    skills: parseSkillsArray(row.skills),
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
+}
+
+function isMissingReceptionistPayColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  const msg = pgErrorMessage(e)
+  return msg.includes("pay_mode") || msg.includes("flat_rate_usd")
+}
+
+function isMissingAccountRoleColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  return pgErrorMessage(e).includes("account_role")
+}
+
+function isMissingPortalUserColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  return pgErrorMessage(e).includes("portal_user_id")
+}
+
+function isMissingReceptionistSkillsColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  return pgErrorMessage(e).includes("skills")
+}
+
+function isMissingIndustryTagColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  const msg = pgErrorMessage(e)
+  return msg.includes("industry_tag") || msg.includes("routing_pool_mode")
+}
+
+function isMissingCertificationsTableError(e: unknown): boolean {
+  if (pgErrorCode(e) === "42P01") return true
+  const msg = pgErrorMessage(e)
+  return msg.includes("certifications") || msg.includes("receptionist_badges")
 }
 
 // Get a receptionist by ID
 export async function getReceptionist(receptionistId: string): Promise<Receptionist | null> {
   const sql = getSql()
-  const rows = await sql`
-    SELECT id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at
-    FROM receptionists WHERE id = ${receptionistId} LIMIT 1
-  `
-  return rows[0] ? parseReceptionistRow(rows[0]) : null
+  try {
+    const rows = await sql`
+      SELECT id, user_id, name, phone, initials, color, rate_per_minute, pay_mode, flat_rate_usd, is_active, created_at
+      FROM receptionists WHERE id = ${receptionistId} LIMIT 1
+    `
+    return rows[0] ? parseReceptionistRow(rows[0]) : null
+  } catch (e) {
+    if (!isMissingReceptionistPayColumnError(e)) throw e
+    const rows = await sql`
+      SELECT id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at
+      FROM receptionists WHERE id = ${receptionistId} LIMIT 1
+    `
+    return rows[0] ? parseReceptionistRow(rows[0]) : null
+  }
 }
 
 // Get all receptionists for a user
 export async function getReceptionists(userId: string): Promise<Receptionist[]> {
   const sql = getSql()
-  const rows = await sql`
-    SELECT id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at
-    FROM receptionists WHERE user_id = ${userId} ORDER BY created_at ASC
-  `
-  return rows.map(parseReceptionistRow)
+  try {
+    const rows = await sql`
+      SELECT id, user_id, name, phone, initials, color, rate_per_minute, pay_mode, flat_rate_usd, is_active, created_at
+      FROM receptionists WHERE user_id = ${userId} ORDER BY created_at ASC
+    `
+    return rows.map(parseReceptionistRow)
+  } catch (e) {
+    if (!isMissingReceptionistPayColumnError(e)) throw e
+    const rows = await sql`
+      SELECT id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at
+      FROM receptionists WHERE user_id = ${userId} ORDER BY created_at ASC
+    `
+    return rows.map(parseReceptionistRow)
+  }
+}
+
+/** Active phone_numbers row by primary key — used by skill-pool routing. */
+export async function getPhoneNumberLineById(lineId: string): Promise<PhoneNumber | null> {
+  const sql = getSql()
+  const id = lineId.trim()
+  if (!id) return null
+  try {
+    const rows = await sql`
+      SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status,
+             industry_tag, routing_pool_mode, created_at
+      FROM phone_numbers
+      WHERE id = ${id} AND status = 'active'
+      LIMIT 1
+    `
+    return rows[0] ? parsePhoneNumberRow(rows[0] as Record<string, unknown>) : null
+  } catch (e) {
+    if (!isMissingIndustryTagColumnError(e)) throw e
+    const rows = await sql`
+      SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at
+      FROM phone_numbers
+      WHERE id = ${id} AND status = 'active'
+      LIMIT 1
+    `
+    return rows[0] ? parsePhoneNumberRow(rows[0] as Record<string, unknown>) : null
+  }
+}
+
+/** Active phone_numbers row by inbound DID (E.164 or digit variants). */
+export async function getActivePhoneNumberByE164(toNumber: string): Promise<PhoneNumber | null> {
+  const sql = getSql()
+  const normalized = normalizePhoneNumberE164(toNumber)
+  if (!normalized) return null
+  const digitKey = phoneDigitsKey(toNumber)
+  try {
+    const rows = await sql`
+      SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status,
+             industry_tag, routing_pool_mode, created_at
+      FROM phone_numbers
+      WHERE status = 'active'
+        AND (number = ${normalized} OR regexp_replace(number, '\\D', '', 'g') = ${digitKey})
+      ORDER BY created_at ASC
+      LIMIT 1
+    `
+    return rows[0] ? parsePhoneNumberRow(rows[0] as Record<string, unknown>) : null
+  } catch (e) {
+    if (!isMissingIndustryTagColumnError(e)) throw e
+    const rows = await sql`
+      SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at
+      FROM phone_numbers
+      WHERE status = 'active'
+        AND (number = ${normalized} OR regexp_replace(number, '\\D', '', 'g') = ${digitKey})
+      ORDER BY created_at ASC
+      LIMIT 1
+    `
+    return rows[0] ? parsePhoneNumberRow(rows[0] as Record<string, unknown>) : null
+  }
+}
+
+/** Resolve the industry tag for a line — phone_numbers override, then routing_config, then users.industry. */
+export async function resolveIndustryTagForLine(line: PhoneNumber): Promise<string | null> {
+  if (line.industry_tag?.trim()) return normalizeRoutingPoolSkillTag(line.industry_tag)
+  const cfg = await getRoutingConfigForNumber(line.user_id, line.number)
+  if (cfg?.industry_tag?.trim()) return normalizeRoutingPoolSkillTag(cfg.industry_tag)
+  const def = await getRoutingConfig(line.user_id)
+  if (def?.industry_tag?.trim()) return normalizeRoutingPoolSkillTag(def.industry_tag)
+  const sql = getSql()
+  try {
+    const rows = await sql`SELECT industry FROM users WHERE id = ${line.user_id} LIMIT 1`
+    const industry = rows[0]?.industry != null ? String(rows[0].industry).trim() : ""
+    if (industry && industry !== "generic") return normalizeRoutingPoolSkillTag(industry)
+  } catch {
+    // users.industry optional on older schemas
+  }
+  return null
+}
+
+export type PlatformRoutingPoolReceptionist = Pick<Receptionist, "id" | "name" | "phone" | "skills" | "is_active">
+
+/**
+ * Platform-managed receptionists available for a skill tag — active, portal-linked, not on another live call.
+ */
+export async function listAvailablePlatformReceptionistsForIndustryTag(
+  industryTag: string
+): Promise<PlatformRoutingPoolReceptionist[]> {
+  const sql = getSql()
+  const tag = normalizeRoutingPoolSkillTag(industryTag)
+  if (!tag) return []
+  try {
+    const rows = await sql`
+      SELECT r.id, r.name, r.phone, r.skills, r.is_active
+      FROM receptionists r
+      INNER JOIN users u ON u.id = r.portal_user_id
+      WHERE r.portal_user_id IS NOT NULL
+        AND r.is_active = true
+        AND coalesce(u.account_role, 'receptionist') = 'receptionist'
+        AND (
+          ${tag} = ANY(r.skills)
+          OR EXISTS (
+            SELECT 1 FROM unnest(r.skills) AS skill_slug
+            WHERE split_part(replace(skill_slug, '-', '_'), '_', 1) = ${tag}
+          )
+        )
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM receptionist_badges rb
+            WHERE rb.user_id = r.portal_user_id AND rb.status = 'certified'
+          )
+          OR EXISTS (
+            SELECT 1 FROM receptionist_badges rb
+            INNER JOIN certifications cert ON cert.id = rb.certification_id
+            WHERE rb.user_id = r.portal_user_id
+              AND rb.status = 'certified'
+              AND rb.active_toggle = true
+              AND split_part(replace(cert.code_identifier, '-', '_'), '_', 1) = ${tag}
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM call_logs cl
+          WHERE cl.routed_to_receptionist_id = r.id
+            AND cl.ended_at IS NULL
+            AND lower(cl.status) IN ('answered', 'in-progress', 'ringing')
+            AND cl.created_at > (now() - interval '2 hours')
+        )
+      ORDER BY r.name ASC
+    `
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      phone: String(row.phone),
+      skills: parseSkillsArray(row.skills),
+      is_active: row.is_active !== false,
+    }))
+  } catch (e) {
+    if (isMissingReceptionistSkillsColumnError(e)) return []
+    if (isMissingCertificationsTableError(e)) {
+      try {
+        const rows = await sql`
+          SELECT r.id, r.name, r.phone, r.skills, r.is_active
+          FROM receptionists r
+          INNER JOIN users u ON u.id = r.portal_user_id
+          WHERE r.portal_user_id IS NOT NULL
+            AND r.is_active = true
+            AND coalesce(u.account_role, 'receptionist') = 'receptionist'
+            AND (
+              ${tag} = ANY(r.skills)
+              OR EXISTS (
+                SELECT 1 FROM unnest(r.skills) AS skill_slug
+                WHERE split_part(replace(skill_slug, '-', '_'), '_', 1) = ${tag}
+              )
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM call_logs cl
+              WHERE cl.routed_to_receptionist_id = r.id
+                AND cl.ended_at IS NULL
+                AND lower(cl.status) IN ('answered', 'in-progress', 'ringing')
+                AND cl.created_at > (now() - interval '2 hours')
+            )
+          ORDER BY r.name ASC
+        `
+        return (rows as Record<string, unknown>[]).map((row) => ({
+          id: String(row.id),
+          name: String(row.name),
+          phone: String(row.phone),
+          skills: parseSkillsArray(row.skills),
+          is_active: row.is_active !== false,
+        }))
+      } catch {
+        return []
+      }
+    }
+    if (isMissingPortalUserColumnError(e) || isMissingAccountRoleColumnError(e)) {
+      const rows = await sql`
+        SELECT r.id, r.name, r.phone, r.skills, r.is_active
+        FROM receptionists r
+        WHERE r.portal_user_id IS NOT NULL
+          AND r.is_active = true
+          AND ${tag} = ANY(r.skills)
+        ORDER BY r.name ASC
+      `
+      return (rows as Record<string, unknown>[]).map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        phone: String(row.phone),
+        skills: parseSkillsArray(row.skills),
+        is_active: row.is_active !== false,
+      }))
+    }
+    throw e
+  }
 }
 
 export async function insertReceptionist(params: {
@@ -678,7 +938,10 @@ export async function insertReceptionist(params: {
     initials,
     color,
     rate_per_minute: 0.25,
+    pay_mode: "PER_MINUTE",
+    flat_rate_usd: 2.5,
     is_active: true,
+    skills: [],
     created_at: new Date().toISOString(),
   }
 }
@@ -687,7 +950,7 @@ export async function insertReceptionist(params: {
 export async function updateReceptionist(
   receptionistId: string,
   userId: string,
-  updates: Partial<Pick<Receptionist, "name" | "phone" | "is_active" | "rate_per_minute">>
+  updates: Partial<Pick<Receptionist, "name" | "phone" | "is_active" | "rate_per_minute" | "pay_mode" | "flat_rate_usd">>
 ): Promise<void> {
   const sql = getSql()
   if (updates.name !== undefined) {
@@ -704,6 +967,20 @@ export async function updateReceptionist(
   }
   if (updates.rate_per_minute !== undefined) {
     await sql`UPDATE receptionists SET rate_per_minute = ${updates.rate_per_minute} WHERE id = ${receptionistId} AND user_id = ${userId}`
+  }
+  if (updates.pay_mode !== undefined) {
+    try {
+      await sql`UPDATE receptionists SET pay_mode = ${updates.pay_mode} WHERE id = ${receptionistId} AND user_id = ${userId}`
+    } catch (e) {
+      if (!isMissingReceptionistPayColumnError(e)) throw e
+    }
+  }
+  if (updates.flat_rate_usd !== undefined) {
+    try {
+      await sql`UPDATE receptionists SET flat_rate_usd = ${updates.flat_rate_usd} WHERE id = ${receptionistId} AND user_id = ${userId}`
+    } catch (e) {
+      if (!isMissingReceptionistPayColumnError(e)) throw e
+    }
   }
   clearIncomingRoutingCache()
   void syncInboundDialSnapshotForUser(userId).catch(() => {})
@@ -779,11 +1056,26 @@ export async function getAuthUserByEmail(email: string): Promise<(User & { passw
   try {
     const rows = await sql`
       SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, industry, telnyx_ai_assistant_id, password_hash, created_at,
-        credit_balance_cents, billing_plan, is_platform_admin
+        credit_balance_cents, billing_plan, is_platform_admin, account_role
       FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
     `
     return pack(rows[0])
   } catch (e) {
+    if (isMissingAccountRoleColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, industry, telnyx_ai_assistant_id, password_hash, created_at,
+            credit_balance_cents, billing_plan, is_platform_admin
+          FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+        `
+        return pack(rows[0])
+      } catch (e2) {
+        if (isMissingBillingColumnsError(e2)) {
+          return getAuthUserByEmailWithoutBillingColumns(email)
+        }
+        throw e2
+      }
+    }
     if (isMissingBillingColumnsError(e)) {
       return getAuthUserByEmailWithoutBillingColumns(email)
     }
@@ -841,34 +1133,62 @@ export async function createUser(params: {
   business_name: string
   industry?: string
   password_hash: string
+  account_role?: "owner" | "receptionist"
 }): Promise<User> {
   const sql = getSql()
   const id = crypto.randomUUID()
   const industry = defaultProfileFromUserIndustry(params.industry)
+  const accountRole = params.account_role === "receptionist" ? "receptionist" : "owner"
   try {
     await sql`
-      INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, created_at)
-      VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${industry}, ${params.password_hash}, now())
+      INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, account_role, created_at)
+      VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${industry}, ${params.password_hash}, ${accountRole}, now())
     `
   } catch (e) {
-    if (!isMissingIndustryColumnError(e)) throw e
-    await sql`
-      INSERT INTO users (id, email, name, phone, business_name, password_hash, created_at)
-      VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${params.password_hash}, now())
-    `
+    if (isMissingAccountRoleColumnError(e)) {
+      try {
+        await sql`
+          INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, created_at)
+          VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${industry}, ${params.password_hash}, now())
+        `
+      } catch (e2) {
+        if (!isMissingIndustryColumnError(e2)) throw e2
+        await sql`
+          INSERT INTO users (id, email, name, phone, business_name, password_hash, created_at)
+          VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${params.password_hash}, now())
+        `
+      }
+    } else if (isMissingIndustryColumnError(e)) {
+      try {
+        await sql`
+          INSERT INTO users (id, email, name, phone, business_name, password_hash, account_role, created_at)
+          VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${params.password_hash}, ${accountRole}, now())
+        `
+      } catch (e2) {
+        if (!isMissingAccountRoleColumnError(e2)) throw e2
+        await sql`
+          INSERT INTO users (id, email, name, phone, business_name, password_hash, created_at)
+          VALUES (${id}, ${params.email}, ${params.name}, ${params.phone}, ${params.business_name}, ${params.password_hash}, now())
+        `
+      }
+    } else {
+      throw e
+    }
   }
-  await sql`
-    INSERT INTO routing_config (id, user_id, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
-    VALUES (${crypto.randomUUID()}, ${id}, NULL, 'owner', '', 30, now())
-  `
-  try {
+  if (accountRole === "owner") {
     await sql`
-      INSERT INTO onboarding_profiles (user_id, updated_at)
-      VALUES (${id}, now())
-      ON CONFLICT (user_id) DO NOTHING
+      INSERT INTO routing_config (id, user_id, selected_receptionist_id, fallback_type, ai_greeting, ring_timeout_seconds, updated_at)
+      VALUES (${crypto.randomUUID()}, ${id}, NULL, 'owner', '', 30, now())
     `
-  } catch (e) {
-    if (!isMissingOnboardingProfilesTableError(e) && !isWrongLegacyProfilesTableError(e)) throw e
+    try {
+      await sql`
+        INSERT INTO onboarding_profiles (user_id, updated_at)
+        VALUES (${id}, now())
+        ON CONFLICT (user_id) DO NOTHING
+      `
+    } catch (e) {
+      if (!isMissingOnboardingProfilesTableError(e) && !isWrongLegacyProfilesTableError(e)) throw e
+    }
   }
   return {
     id,
@@ -876,6 +1196,7 @@ export async function createUser(params: {
     name: params.name,
     phone: params.phone,
     business_name: params.business_name,
+    account_role: accountRole,
     inbound_receptionist_whisper_enabled: true,
     industry,
     telnyx_ai_assistant_id: null,
@@ -883,6 +1204,7 @@ export async function createUser(params: {
     credit_balance_cents: 0,
     billing_plan: "trial",
     is_platform_admin: false,
+    answered_call_customer_popup_enabled: true,
   }
 }
 
@@ -977,6 +1299,7 @@ function parseUserRow(row: Record<string, unknown>): User {
       row.answered_call_customer_popup_enabled === null || row.answered_call_customer_popup_enabled === undefined
         ? true
         : pgBool(row.answered_call_customer_popup_enabled),
+    account_role: String(row.account_role ?? "owner") === "receptionist" ? "receptionist" : "owner",
   }
 }
 
@@ -1439,11 +1762,42 @@ export async function getUser(userId: string): Promise<User | null> {
     const rows = await sql`
       SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, industry, telnyx_ai_assistant_id, created_at,
         credit_balance_cents, billing_plan, is_platform_admin,
-        answered_call_customer_popup_enabled
+        answered_call_customer_popup_enabled, account_role
       FROM users WHERE id = ${userId} LIMIT 1
     `
     return rows[0] ? parseUserRow(rows[0]) : null
   } catch (e) {
+    if (isMissingAccountRoleColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, industry, telnyx_ai_assistant_id, created_at,
+            credit_balance_cents, billing_plan, is_platform_admin,
+            answered_call_customer_popup_enabled
+          FROM users WHERE id = ${userId} LIMIT 1
+        `
+        return rows[0] ? parseUserRow(rows[0]) : null
+      } catch (e2) {
+        if (pgErrorCode(e2) === "42703" && pgErrorMessage(e2).includes("answered_call_customer_popup_enabled")) {
+          try {
+            const rows = await sql`
+              SELECT id, email, name, phone, business_name, inbound_receptionist_whisper_enabled, industry, telnyx_ai_assistant_id, created_at,
+                credit_balance_cents, billing_plan, is_platform_admin
+              FROM users WHERE id = ${userId} LIMIT 1
+            `
+            return rows[0] ? parseUserRow(rows[0]) : null
+          } catch (e3) {
+            if (isMissingBillingColumnsError(e3)) {
+              return getUserWithoutBillingColumnsInSelect(userId)
+            }
+            throw e3
+          }
+        }
+        if (isMissingBillingColumnsError(e2)) {
+          return getUserWithoutBillingColumnsInSelect(userId)
+        }
+        throw e2
+      }
+    }
     if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("answered_call_customer_popup_enabled")) {
       try {
         const rows = await sql`
@@ -1776,7 +2130,15 @@ export async function recordCallStatusEvent(
     UPDATE call_logs
     SET
       status = ${callStatus},
-      duration_seconds = ${durationSeconds},
+      duration_seconds = CASE
+        WHEN ${callStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled')
+          AND answered_at IS NOT NULL THEN
+          GREATEST(
+            ${durationSeconds},
+            EXTRACT(EPOCH FROM (${occurredAt} - answered_at))::int
+          )
+        ELSE ${durationSeconds}
+      END,
       answered_at = CASE
         WHEN ${callStatus} IN ('answered', 'in-progress', 'completed') AND answered_at IS NULL THEN ${occurredAt}
         ELSE answered_at
@@ -2324,6 +2686,9 @@ function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {
     label: String(row.label ?? "Business Line"),
     type: (row.type as "local" | "toll-free") || "local",
     status: (row.status as PhoneNumber["status"]) || "active",
+    industry_tag:
+      row.industry_tag != null && String(row.industry_tag).trim() !== "" ? String(row.industry_tag).trim() : null,
+    routing_pool_mode: parseRoutingPoolMode(row.routing_pool_mode),
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
 }
@@ -2502,6 +2867,69 @@ export async function updatePhoneNumber(
   if (updates.status !== undefined) {
     await sql`UPDATE phone_numbers SET status = ${updates.status} WHERE id = ${phoneNumberId} AND user_id = ${userId}`
   }
+}
+
+/** Set skill-pool routing fields on an owned phone line (`042-skill-routing-pool.sql`). */
+export async function patchPhoneNumberPoolSettings(
+  phoneNumberId: string,
+  userId: string,
+  settings: { industry_tag: string; routing_pool_mode?: "sequential" | "simultaneous" }
+): Promise<boolean> {
+  const sql = getSql()
+  const tag = settings.industry_tag.trim()
+  const mode = settings.routing_pool_mode ?? "simultaneous"
+  try {
+    const rows = await sql`
+      UPDATE phone_numbers
+      SET industry_tag = ${tag}, routing_pool_mode = ${mode}
+      WHERE id = ${phoneNumberId} AND user_id = ${userId}
+      RETURNING id
+    `
+    if (rows.length > 0) clearIncomingRoutingCache()
+    return rows.length > 0
+  } catch (e) {
+    if (!isMissingIndustryTagColumnError(e)) throw e
+    return false
+  }
+}
+
+/** Default routing_config industry tag for skill-pool fallback. */
+export async function patchRoutingConfigIndustryTag(userId: string, industryTag: string): Promise<void> {
+  const sql = getSql()
+  const tag = industryTag.trim()
+  try {
+    await sql`
+      UPDATE routing_config
+      SET industry_tag = ${tag}, updated_at = now()
+      WHERE user_id = ${userId} AND business_number IS NULL
+    `
+    clearIncomingRoutingCache()
+  } catch (e) {
+    const msg = pgErrorMessage(e)
+    if (pgErrorCode(e) === "42703" && msg.includes("industry_tag")) return
+    throw e
+  }
+}
+
+/** Upsert a certification course row from static module JSON (dev sandbox + migrations). */
+export async function upsertCertificationModule(params: {
+  code_identifier: string
+  name: string
+  module_data: CertificationModuleData
+}): Promise<Certification> {
+  const sql = getSql()
+  const moduleJson = JSON.stringify(params.module_data)
+  const rows = await sql`
+    INSERT INTO certifications (name, code_identifier, module_data)
+    VALUES (${params.name}, ${params.code_identifier}, ${moduleJson}::jsonb)
+    ON CONFLICT (code_identifier) DO UPDATE SET
+      name = EXCLUDED.name,
+      module_data = EXCLUDED.module_data
+    RETURNING id, name, code_identifier, module_data, created_at
+  `
+  const row = rows[0]
+  if (!row) throw new Error("upsertCertificationModule: no row returned")
+  return parseCertificationRow(row as Record<string, unknown>)
 }
 
 /**
@@ -2748,6 +3176,63 @@ export async function insertAiLead(params: {
     )
   `
   return id
+}
+
+/** Update SMS delivery outcome on a saved ai_leads row. */
+export async function updateAiLeadSmsOutcome(
+  leadId: string,
+  outcome: { sms_sent: boolean; sms_error: string | null }
+): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE ai_leads
+      SET sms_sent = ${outcome.sms_sent}, sms_error = ${outcome.sms_error}
+      WHERE id = ${leadId}
+    `
+  } catch (e) {
+    if (isUndefinedRelationError(e, "ai_leads")) return
+    throw e
+  }
+}
+
+/** Persist instant SMS lead alert preferences on onboarding_profiles. */
+export async function updateNotificationPreferencesDb(params: {
+  userId: string
+  sms_leads_enabled: boolean
+  dispatch_sms_phone: string | null
+}): Promise<OnboardingProfile> {
+  await ensureOnboardingProfile(params.userId)
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      UPDATE onboarding_profiles
+      SET
+        sms_leads_enabled = ${params.sms_leads_enabled},
+        dispatch_sms_phone = ${params.dispatch_sms_phone},
+        updated_at = now()
+      WHERE user_id = ${params.userId}
+      RETURNING user_id, reserved_number, reserved_number_display, reserved_number_method,
+                port_carrier, fallback_type, trade_category, opening_line,
+                has_active_subscription,
+                subscription_tier, carrier_credit, low_balance_notified,
+                total_calls_routed, total_minutes_used, account_status, custom_routing_note,
+                sms_leads_enabled, notification_phone, dispatch_sms_phone,
+                billing_cycle_start, billing_cycle_end,
+                stripe_customer_id, stripe_subscription_id,
+                updated_at
+    `
+    const row = rows[0] as Record<string, unknown> | undefined
+    if (!row) throw new Error("Profile not found")
+    return mapOnboardingProfileRow(row)
+  } catch (e) {
+    if (isMissingOnboardingProfileColumnError(e)) {
+      throw new Error(
+        "SMS notification settings require migrations 044-sms-lead-notifications.sql and 045-dispatch-sms-phone.sql in Neon."
+      )
+    }
+    throw e
+  }
 }
 
 export async function listAiLeadsForUser(userId: string, limit = 50): Promise<
@@ -3146,6 +3631,10 @@ export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[
   const mapRow = (row: Record<string, unknown>) => ({
     user_id: String(row.user_id),
     email: String(row.email ?? ""),
+    account_role: (String(row.account_role ?? "owner") === "receptionist" ? "receptionist" : "owner") as
+      | "owner"
+      | "receptionist",
+    receptionist_skills: parseSkillsArray(row.receptionist_skills),
     has_active_subscription: pgBool(row.has_active_subscription),
     subscription_tier: String(row.subscription_tier ?? "free_trial"),
     phone_number: row.phone_number != null ? String(row.phone_number) : null,
@@ -3160,6 +3649,13 @@ export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[
       SELECT
         u.id AS user_id,
         u.email,
+        coalesce(u.account_role, 'owner') AS account_role,
+        (
+          SELECT r.skills
+          FROM receptionists r
+          WHERE r.portal_user_id = u.id
+          LIMIT 1
+        ) AS receptionist_skills,
         coalesce(op.has_active_subscription, false) AS has_active_subscription,
         coalesce(op.subscription_tier, 'free_trial') AS subscription_tier,
         coalesce(op.carrier_credit, 0)::numeric AS carrier_credit,
@@ -3187,11 +3683,13 @@ export async function listLyncrAdminDirectory(): Promise<LyncrAdminDirectoryRow[
     `
     return (rows as Record<string, unknown>[]).map(mapRow)
   } catch (e) {
-    if (isMissingOnboardingProfileColumnError(e)) {
+    if (isMissingOnboardingProfileColumnError(e) || isMissingAccountRoleColumnError(e) || isMissingReceptionistSkillsColumnError(e)) {
       const rows = await sql`
         SELECT
           u.id AS user_id,
           u.email,
+          'owner' AS account_role,
+          NULL::text[] AS receptionist_skills,
           coalesce(op.has_active_subscription, false) AS has_active_subscription,
           coalesce(op.subscription_tier, 'free_trial') AS subscription_tier,
           coalesce(op.carrier_credit, 0)::numeric AS carrier_credit,
@@ -3885,6 +4383,9 @@ function mapOnboardingProfileRow(row: Record<string, unknown>): OnboardingProfil
     total_minutes_used: row.total_minutes_used != null ? Number(row.total_minutes_used) : 0,
     account_status: row.account_status != null ? String(row.account_status) : "active",
     custom_routing_note: row.custom_routing_note != null ? String(row.custom_routing_note) : null,
+    sms_leads_enabled: row.sms_leads_enabled === true || row.sms_leads_enabled === "t",
+    notification_phone: row.notification_phone != null ? String(row.notification_phone) : null,
+    dispatch_sms_phone: row.dispatch_sms_phone != null ? String(row.dispatch_sms_phone) : null,
     updated_at: pgTimestamptzToIso(row.updated_at) ?? new Date().toISOString(),
   }
 }
@@ -3914,6 +4415,7 @@ export async function getOnboardingProfile(userId: string): Promise<OnboardingPr
              has_active_subscription,
              subscription_tier, carrier_credit,
              total_calls_routed, total_minutes_used, account_status, custom_routing_note,
+             sms_leads_enabled, notification_phone, dispatch_sms_phone,
              billing_cycle_start, billing_cycle_end,
              stripe_customer_id, stripe_subscription_id,
              updated_at
@@ -4392,7 +4894,7 @@ export async function completeOnboardingCheckout(
   return profile
 }
 
-// Get talk time analytics for a date range
+// Get talk time analytics for a date range (answered inbound legs routed to receptionists).
 export async function getAgentTalkTime(
   userId: string,
   startDate: string,
@@ -4402,10 +4904,740 @@ export async function getAgentTalkTime(
     receptionist_id: string
     receptionist_name: string
     rate_per_minute: number
+    pay_mode: "FLAT_RATE" | "PER_MINUTE"
+    flat_rate_usd: number
     total_seconds: number
     total_calls: number
-    daily: { date: string; seconds: number }[]
+    daily: { date: string; seconds: number; calls: number }[]
   }[]
 > {
-  throw new Error("Not implemented - connect your database")
+  const sql = getSql()
+
+  async function queryWithTimingColumns() {
+    const summaryRows = await sql`
+      WITH legs AS (
+        SELECT
+          cl.routed_to_receptionist_id AS receptionist_id,
+          GREATEST(0, COALESCE(
+            CASE
+              WHEN cl.answered_at IS NOT NULL AND cl.ended_at IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (cl.ended_at - cl.answered_at))::int
+            END,
+            cl.duration_seconds,
+            0
+          )) AS talk_seconds,
+          date_trunc('day', cl.created_at)::date AS day
+        FROM call_logs cl
+        WHERE cl.user_id = ${userId}
+          AND cl.routed_to_receptionist_id IS NOT NULL
+          AND cl.created_at >= ${startDate}::timestamptz
+          AND cl.created_at < ${endDate}::timestamptz
+          AND lower(cl.status) IN ('answered', 'completed', 'in-progress')
+      )
+      SELECT
+        r.id AS receptionist_id,
+        r.name AS receptionist_name,
+        r.rate_per_minute,
+        r.pay_mode,
+        r.flat_rate_usd,
+        COUNT(legs.receptionist_id)::int AS total_calls,
+        COALESCE(SUM(legs.talk_seconds), 0)::int AS total_seconds
+      FROM receptionists r
+      LEFT JOIN legs ON legs.receptionist_id = r.id
+      WHERE r.user_id = ${userId}
+      GROUP BY r.id, r.name, r.rate_per_minute, r.pay_mode, r.flat_rate_usd
+      ORDER BY r.name ASC
+    `
+
+    const dailyRows = await sql`
+      SELECT
+        cl.routed_to_receptionist_id AS receptionist_id,
+        date_trunc('day', cl.created_at)::date AS day,
+        COUNT(*)::int AS calls,
+        COALESCE(SUM(
+          GREATEST(0, COALESCE(
+            CASE
+              WHEN cl.answered_at IS NOT NULL AND cl.ended_at IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (cl.ended_at - cl.answered_at))::int
+            END,
+            cl.duration_seconds,
+            0
+          ))
+        ), 0)::int AS seconds
+      FROM call_logs cl
+      WHERE cl.user_id = ${userId}
+        AND cl.routed_to_receptionist_id IS NOT NULL
+        AND cl.created_at >= ${startDate}::timestamptz
+        AND cl.created_at < ${endDate}::timestamptz
+        AND lower(cl.status) IN ('answered', 'completed', 'in-progress')
+      GROUP BY cl.routed_to_receptionist_id, date_trunc('day', cl.created_at)::date
+      ORDER BY day ASC
+    `
+
+    return { summaryRows, dailyRows }
+  }
+
+  async function queryWithoutTimingColumns() {
+    const summaryRows = await sql`
+      WITH legs AS (
+        SELECT
+          cl.routed_to_receptionist_id AS receptionist_id,
+          GREATEST(0, COALESCE(cl.duration_seconds, 0)) AS talk_seconds,
+          date_trunc('day', cl.created_at)::date AS day
+        FROM call_logs cl
+        WHERE cl.user_id = ${userId}
+          AND cl.routed_to_receptionist_id IS NOT NULL
+          AND cl.created_at >= ${startDate}::timestamptz
+          AND cl.created_at < ${endDate}::timestamptz
+          AND lower(cl.status) IN ('answered', 'completed', 'in-progress')
+      )
+      SELECT
+        r.id AS receptionist_id,
+        r.name AS receptionist_name,
+        r.rate_per_minute,
+        COUNT(legs.receptionist_id)::int AS total_calls,
+        COALESCE(SUM(legs.talk_seconds), 0)::int AS total_seconds
+      FROM receptionists r
+      LEFT JOIN legs ON legs.receptionist_id = r.id
+      WHERE r.user_id = ${userId}
+      GROUP BY r.id, r.name, r.rate_per_minute
+      ORDER BY r.name ASC
+    `
+
+    const dailyRows = await sql`
+      SELECT
+        cl.routed_to_receptionist_id AS receptionist_id,
+        date_trunc('day', cl.created_at)::date AS day,
+        COUNT(*)::int AS calls,
+        COALESCE(SUM(GREATEST(0, COALESCE(cl.duration_seconds, 0))), 0)::int AS seconds
+      FROM call_logs cl
+      WHERE cl.user_id = ${userId}
+        AND cl.routed_to_receptionist_id IS NOT NULL
+        AND cl.created_at >= ${startDate}::timestamptz
+        AND cl.created_at < ${endDate}::timestamptz
+        AND lower(cl.status) IN ('answered', 'completed', 'in-progress')
+      GROUP BY cl.routed_to_receptionist_id, date_trunc('day', cl.created_at)::date
+      ORDER BY day ASC
+    `
+
+    return { summaryRows, dailyRows }
+  }
+
+  let summaryRows: Record<string, unknown>[]
+  let dailyRows: Record<string, unknown>[]
+  let hasPayColumns = true
+
+  try {
+    const result = await queryWithTimingColumns()
+    summaryRows = result.summaryRows as Record<string, unknown>[]
+    dailyRows = result.dailyRows as Record<string, unknown>[]
+  } catch (e) {
+    if (isMissingReceptionistPayColumnError(e)) {
+      hasPayColumns = false
+      const fallback = await queryWithoutTimingColumns()
+      summaryRows = fallback.summaryRows as Record<string, unknown>[]
+      dailyRows = fallback.dailyRows as Record<string, unknown>[]
+    } else if (isMissingCallQualityColumnsError(e) || pgErrorMessage(e).includes("answered_at")) {
+      const fallback = await queryWithoutTimingColumns()
+      summaryRows = fallback.summaryRows as Record<string, unknown>[]
+      dailyRows = fallback.dailyRows as Record<string, unknown>[]
+    } else {
+      throw e
+    }
+  }
+
+  const dailyByReceptionist = new Map<string, { date: string; seconds: number; calls: number }[]>()
+  for (const row of dailyRows) {
+    const receptionistId = String(row.receptionist_id)
+    const dayValue = row.day instanceof Date ? row.day.toISOString().slice(0, 10) : String(row.day).slice(0, 10)
+    const bucket = dailyByReceptionist.get(receptionistId) ?? []
+    bucket.push({
+      date: dayValue,
+      seconds: Number(row.seconds ?? 0),
+      calls: Number(row.calls ?? 0),
+    })
+    dailyByReceptionist.set(receptionistId, bucket)
+  }
+
+  return summaryRows.map((row) => {
+    const payModeRaw = hasPayColumns ? String(row.pay_mode ?? "PER_MINUTE").toUpperCase() : "PER_MINUTE"
+    const receptionistId = String(row.receptionist_id)
+    return {
+      receptionist_id: receptionistId,
+      receptionist_name: String(row.receptionist_name),
+      rate_per_minute: Number(row.rate_per_minute ?? 0.25),
+      pay_mode: payModeRaw === "FLAT_RATE" ? "FLAT_RATE" : "PER_MINUTE",
+      flat_rate_usd: hasPayColumns ? Number(row.flat_rate_usd ?? 2.5) : 2.5,
+      total_seconds: Number(row.total_seconds ?? 0),
+      total_calls: Number(row.total_calls ?? 0),
+      daily: dailyByReceptionist.get(receptionistId) ?? [],
+    }
+  })
 }
+
+/** Current billing cycle window — Stripe period when set, else calendar month UTC. */
+export async function getBillingCycleWindowForUser(userId: string): Promise<{ start: string; end: string }> {
+  const profile = await getOnboardingProfile(userId)
+  const startIso = profile?.billing_cycle_start?.trim()
+  const endIso = profile?.billing_cycle_end?.trim()
+  if (startIso && endIso) {
+    return { start: startIso, end: endIso }
+  }
+  const now = new Date()
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+/** Receptionist payout metrics for the active billing cycle. */
+export async function getReceptionistPayoutMetricsForBillingCycle(
+  userId: string
+): Promise<{ billing_cycle: { start: string; end: string }; agents: ReceptionistPayoutMetrics[] }> {
+  const { calculateReceptionistPayTotal } = await import("@/lib/receptionist-pay")
+  const billing_cycle = await getBillingCycleWindowForUser(userId)
+  const talkRows = await getAgentTalkTime(userId, billing_cycle.start, billing_cycle.end)
+
+  const agents = talkRows.map((row) => {
+    const total_earnings = calculateReceptionistPayTotal({
+      payMode: row.pay_mode,
+      ratePerMinute: row.rate_per_minute,
+      flatRateUsd: row.flat_rate_usd,
+      answeredCalls: row.total_calls,
+      totalTalkSeconds: row.total_seconds,
+    })
+    return {
+      receptionist_id: row.receptionist_id,
+      receptionist_name: row.receptionist_name,
+      pay_mode: row.pay_mode,
+      rate_per_minute: row.rate_per_minute,
+      flat_rate_usd: row.flat_rate_usd,
+      answered_calls: row.total_calls,
+      total_talk_seconds: row.total_seconds,
+      total_talk_minutes: Math.round((row.total_seconds / 60) * 10) / 10,
+      total_earnings,
+      daily_breakdown: row.daily.map((d) => ({
+        date: d.date,
+        answered_calls: d.calls,
+        talk_seconds: d.seconds,
+      })),
+    }
+  })
+
+  return { billing_cycle, agents }
+}
+
+/** Receptionist row linked to a portal login user (`receptionists.portal_user_id`). */
+export async function getReceptionistByPortalUserId(portalUserId: string): Promise<Receptionist | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT id, user_id, name, phone, initials, color, rate_per_minute, pay_mode, flat_rate_usd, is_active, portal_user_id, created_at
+      FROM receptionists
+      WHERE portal_user_id = ${portalUserId}
+      LIMIT 1
+    `
+    return rows[0] ? parseReceptionistRow(rows[0]) : null
+  } catch (e) {
+    if (!isMissingPortalUserColumnError(e) && !isMissingReceptionistPayColumnError(e)) throw e
+    try {
+      const rows = await sql`
+        SELECT id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at
+        FROM receptionists
+        WHERE portal_user_id = ${portalUserId}
+        LIMIT 1
+      `
+      return rows[0] ? parseReceptionistRow(rows[0]) : null
+    } catch (e2) {
+      if (isMissingPortalUserColumnError(e2)) return null
+      throw e2
+    }
+  }
+}
+
+/** Call logs routed to one receptionist (owner account scope). */
+export async function listCallLogsForReceptionist(
+  ownerUserId: string,
+  receptionistId: string,
+  options?: { limit?: number; offset?: number; start?: string; end?: string }
+): Promise<CallLog[]> {
+  const sql = getSql()
+  const limit = options?.limit ?? 50
+  const offset = options?.offset ?? 0
+  const start = options?.start
+  const end = options?.end
+
+  let rows: Record<string, unknown>[]
+  if (start && end) {
+    rows = await sql`
+      SELECT * FROM call_logs
+      WHERE user_id = ${ownerUserId}
+        AND routed_to_receptionist_id = ${receptionistId}
+        AND created_at >= ${start}::timestamptz
+        AND created_at < ${end}::timestamptz
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  } else {
+    rows = await sql`
+      SELECT * FROM call_logs
+      WHERE user_id = ${ownerUserId}
+        AND routed_to_receptionist_id = ${receptionistId}
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+  return rows.map((row) => parseCallLogRow(row))
+}
+
+/** In-flight call currently assigned to this receptionist (for live status / HUD panel). */
+export async function getActiveCallLogForReceptionist(receptionistId: string): Promise<CallLog | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT * FROM call_logs
+      WHERE routed_to_receptionist_id = ${receptionistId}
+        AND ended_at IS NULL
+        AND lower(status) IN ('answered', 'in-progress', 'ringing', 'completed')
+        AND created_at > (now() - interval '2 hours')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (!row) return null
+    const call = parseCallLogRow(row as Record<string, unknown>)
+    if (call.answered_at || /answered|in-progress/i.test(call.status)) return call
+    return null
+  } catch (e) {
+    if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("ended_at")) return null
+    throw e
+  }
+}
+
+/** Aggregate talk seconds + answered call count for one receptionist in a date range. */
+export async function getReceptionistTalkAggregate(
+  ownerUserId: string,
+  receptionistId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ answered_calls: number; total_seconds: number }> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT
+        COUNT(*)::int AS answered_calls,
+        COALESCE(SUM(
+          GREATEST(0, COALESCE(
+            CASE
+              WHEN cl.answered_at IS NOT NULL AND cl.ended_at IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (cl.ended_at - cl.answered_at))::int
+            END,
+            cl.duration_seconds,
+            0
+          ))
+        ), 0)::int AS total_seconds
+      FROM call_logs cl
+      WHERE cl.user_id = ${ownerUserId}
+        AND cl.routed_to_receptionist_id = ${receptionistId}
+        AND cl.created_at >= ${startDate}::timestamptz
+        AND cl.created_at < ${endDate}::timestamptz
+        AND lower(cl.status) IN ('answered', 'completed', 'in-progress')
+    `
+    const row = rows[0]
+    return {
+      answered_calls: Number(row?.answered_calls ?? 0),
+      total_seconds: Number(row?.total_seconds ?? 0),
+    }
+  } catch (e) {
+    if (isMissingCallQualityColumnsError(e) || pgErrorMessage(e).includes("answered_at")) {
+      const rows = await sql`
+        SELECT
+          COUNT(*)::int AS answered_calls,
+          COALESCE(SUM(GREATEST(0, COALESCE(cl.duration_seconds, 0))), 0)::int AS total_seconds
+        FROM call_logs cl
+        WHERE cl.user_id = ${ownerUserId}
+          AND cl.routed_to_receptionist_id = ${receptionistId}
+          AND cl.created_at >= ${startDate}::timestamptz
+          AND cl.created_at < ${endDate}::timestamptz
+          AND lower(cl.status) IN ('answered', 'completed', 'in-progress')
+      `
+      const row = rows[0]
+      return {
+        answered_calls: Number(row?.answered_calls ?? 0),
+        total_seconds: Number(row?.total_seconds ?? 0),
+      }
+    }
+    throw e
+  }
+}
+
+function isMissingTeamInvitesTableError(e: unknown): boolean {
+  return isUndefinedRelationError(e, "team_invites")
+}
+
+function parseTeamInviteRow(row: Record<string, unknown>): TeamInvite {
+  return {
+    id: String(row.id),
+    email: String(row.email),
+    first_name: String(row.first_name),
+    role: "receptionist",
+    token: String(row.token),
+    payout_rate_usd: Number(row.payout_rate_usd ?? 2.5),
+    invited_by_user_id: String(row.invited_by_user_id),
+    expires_at: pgTimestamptzToIso(row.expires_at) ?? new Date().toISOString(),
+    accepted_at: pgTimestamptzToIso(row.accepted_at),
+    accepted_user_id: row.accepted_user_id ? String(row.accepted_user_id) : null,
+    created_at: pgTimestamptzToIso(row.created_at) ?? new Date().toISOString(),
+  }
+}
+
+/** Admin-created pending invite for a platform receptionist. */
+export async function createTeamInvite(params: {
+  email: string
+  first_name: string
+  token: string
+  payout_rate_usd: number
+  invited_by_user_id: string
+  expires_at: string
+}): Promise<TeamInvite> {
+  const sql = getSql()
+  const email = params.email.trim().toLowerCase()
+  const rows = await sql`
+    INSERT INTO team_invites (
+      email, first_name, role, token, payout_rate_usd, invited_by_user_id, expires_at
+    )
+    VALUES (
+      ${email},
+      ${params.first_name.trim()},
+      'receptionist',
+      ${params.token},
+      ${params.payout_rate_usd},
+      ${params.invited_by_user_id},
+      ${params.expires_at}::timestamptz
+    )
+    RETURNING *
+  `
+  return parseTeamInviteRow(rows[0] as Record<string, unknown>)
+}
+
+/** Lookup invite by token for signup redemption. */
+export async function getTeamInviteByToken(token: string): Promise<TeamInvite | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT * FROM team_invites WHERE token = ${token.trim()} LIMIT 1
+    `
+    return rows[0] ? parseTeamInviteRow(rows[0] as Record<string, unknown>) : null
+  } catch (e) {
+    if (isMissingTeamInvitesTableError(e)) return null
+    throw e
+  }
+}
+
+/** Public-safe invite preview (valid + pending only). */
+export async function getTeamInvitePreview(token: string): Promise<TeamInvitePreview | null> {
+  const invite = await getTeamInviteByToken(token)
+  if (!invite) return null
+  if (invite.accepted_at) return null
+  if (Date.parse(invite.expires_at) < Date.now()) return null
+  return {
+    email: invite.email,
+    first_name: invite.first_name,
+    payout_rate_usd: invite.payout_rate_usd,
+    role: invite.role,
+    expires_at: invite.expires_at,
+  }
+}
+
+export async function insertReceptionistPortal(params: {
+  owner_user_id: string
+  portal_user_id: string
+  name: string
+  phone: string
+  flat_rate_usd: number
+}): Promise<Receptionist> {
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  const phone = normalizePhoneNumberE164(params.phone)
+  const nameParts = params.name.trim().split(/\s+/)
+  const initials =
+    nameParts.length >= 2
+      ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+      : params.name.slice(0, 2).toUpperCase()
+  const colors = ["bg-primary", "bg-chart-2", "bg-chart-5", "bg-chart-3", "bg-chart-4"]
+  const color = colors[Math.floor(Math.random() * colors.length)]
+
+  try {
+    await sql`
+      INSERT INTO receptionists (
+        id, user_id, name, phone, initials, color, rate_per_minute, pay_mode, flat_rate_usd,
+        is_active, portal_user_id, created_at
+      )
+      VALUES (
+        ${id}, ${params.owner_user_id}, ${params.name}, ${phone}, ${initials}, ${color},
+        0.25, 'FLAT_RATE', ${params.flat_rate_usd}, true, ${params.portal_user_id}, now()
+      )
+    `
+  } catch (e) {
+    if (isMissingPortalUserColumnError(e) || isMissingReceptionistPayColumnError(e)) {
+      await sql`
+        INSERT INTO receptionists (id, user_id, name, phone, initials, color, rate_per_minute, is_active, created_at)
+        VALUES (${id}, ${params.owner_user_id}, ${params.name}, ${phone}, ${initials}, ${color}, 0.25, true, now())
+      `
+    } else {
+      throw e
+    }
+  }
+
+  const created = await getReceptionist(id)
+  if (!created) {
+    throw new Error("Failed to load receptionist after invite accept")
+  }
+  if (created.portal_user_id !== params.portal_user_id) {
+    try {
+      await sql`
+        UPDATE receptionists SET portal_user_id = ${params.portal_user_id}
+        WHERE id = ${id} AND user_id = ${params.owner_user_id}
+      `
+    } catch {
+      /* column may be missing pre-migration */
+    }
+  }
+  return {
+    ...created,
+    portal_user_id: params.portal_user_id,
+    pay_mode: "FLAT_RATE",
+    flat_rate_usd: params.flat_rate_usd,
+  }
+}
+
+/** Redeem invite at signup — locks account_role receptionist + portal link. */
+export async function acceptTeamInviteSignup(params: {
+  token: string
+  email: string
+  password_hash: string
+  phone: string
+}): Promise<{ user: User; invite: TeamInvite }> {
+  const sql = getSql()
+  const invite = await getTeamInviteByToken(params.token)
+  if (!invite) {
+    throw new Error("Invite not found")
+  }
+  if (invite.accepted_at) {
+    throw new Error("Invite already used")
+  }
+  if (Date.parse(invite.expires_at) < Date.now()) {
+    throw new Error("Invite expired")
+  }
+  const email = params.email.trim().toLowerCase()
+  if (email !== invite.email.trim().toLowerCase()) {
+    throw new Error("Email must match the invitation")
+  }
+
+  const user = await createUser({
+    email,
+    name: invite.first_name,
+    phone: params.phone,
+    business_name: "Lyncr Receptionist",
+    industry: "generic",
+    password_hash: params.password_hash,
+    account_role: "receptionist",
+  })
+
+  await insertReceptionistPortal({
+    owner_user_id: invite.invited_by_user_id,
+    portal_user_id: user.id,
+    name: invite.first_name,
+    phone: params.phone,
+    flat_rate_usd: invite.payout_rate_usd,
+  })
+
+  await sql`
+    UPDATE team_invites
+    SET accepted_at = now(), accepted_user_id = ${user.id}
+    WHERE id = ${invite.id} AND accepted_at IS NULL
+  `
+
+  return { user: { ...user, account_role: "receptionist" }, invite }
+}
+
+function parseCertificationModuleData(raw: unknown): CertificationModuleData {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { lessons: [], quiz: [] }
+  }
+  const m = raw as Record<string, unknown>
+  const lessons: CertificationLesson[] = Array.isArray(m.lessons)
+    ? m.lessons.map((item) => {
+        const row = item as Record<string, unknown>
+        return {
+          id: String(row.id ?? ""),
+          title: String(row.title ?? ""),
+          body: String(row.body ?? ""),
+        }
+      })
+    : []
+  const quiz: CertificationQuizQuestion[] = Array.isArray(m.quiz)
+    ? m.quiz.map((item) => {
+        const row = item as Record<string, unknown>
+        return {
+          id: String(row.id ?? ""),
+          question: String(row.question ?? ""),
+          options: Array.isArray(row.options) ? row.options.map(String) : [],
+          correctAnswer: String(row.correctAnswer ?? ""),
+        }
+      })
+    : []
+  return {
+    ...(m.description != null ? { description: String(m.description) } : {}),
+    lessons,
+    quiz,
+  }
+}
+
+function parseCertificationRow(row: Record<string, unknown>): Certification {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    code_identifier: String(row.code_identifier),
+    module_data: parseCertificationModuleData(row.module_data),
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }
+}
+
+function parseReceptionistBadgeRow(row: Record<string, unknown>): ReceptionistBadge {
+  const statusRaw = String(row.status ?? "in_progress").toLowerCase()
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    certification_id: String(row.certification_id),
+    status: statusRaw === "certified" ? "certified" : "in_progress",
+    active_toggle: row.active_toggle !== false,
+    earned_at:
+      row.earned_at == null
+        ? null
+        : row.earned_at instanceof Date
+          ? row.earned_at.toISOString()
+          : String(row.earned_at),
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }
+}
+
+/** All platform certification courses. */
+export async function listCertifications(): Promise<Certification[]> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT id, name, code_identifier, module_data, created_at
+      FROM certifications
+      ORDER BY name ASC
+    `
+    return (rows as Record<string, unknown>[]).map(parseCertificationRow)
+  } catch (e) {
+    if (isMissingCertificationsTableError(e)) return []
+    throw e
+  }
+}
+
+/** Lookup one certification by stable code slug. */
+export async function getCertificationByCode(codeIdentifier: string): Promise<Certification | null> {
+  const sql = getSql()
+  const code = codeIdentifier.trim()
+  if (!code) return null
+  try {
+    const rows = await sql`
+      SELECT id, name, code_identifier, module_data, created_at
+      FROM certifications
+      WHERE code_identifier = ${code}
+      LIMIT 1
+    `
+    return rows[0] ? parseCertificationRow(rows[0] as Record<string, unknown>) : null
+  } catch (e) {
+    if (isMissingCertificationsTableError(e)) return null
+    throw e
+  }
+}
+
+/** Badges earned / in progress for one portal user. */
+export async function listReceptionistBadgesForUser(userId: string): Promise<ReceptionistBadge[]> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT id, user_id, certification_id, status, active_toggle, earned_at, created_at
+      FROM receptionist_badges
+      WHERE user_id = ${userId}
+      ORDER BY created_at ASC
+    `
+    return (rows as Record<string, unknown>[]).map(parseReceptionistBadgeRow)
+  } catch (e) {
+    if (isMissingCertificationsTableError(e)) return []
+    throw e
+  }
+}
+
+/** Upsert badge row when a user starts or completes a course. */
+export async function upsertReceptionistBadge(params: {
+  userId: string
+  certificationId: string
+  status: ReceptionistBadgeStatus
+  activeToggle?: boolean
+  earnedAt?: string | null
+}): Promise<ReceptionistBadge> {
+  const sql = getSql()
+  const activeToggle = params.activeToggle !== false
+  const earnedAt = params.status === "certified" ? (params.earnedAt ?? new Date().toISOString()) : null
+  const rows = await sql`
+    INSERT INTO receptionist_badges (user_id, certification_id, status, active_toggle, earned_at)
+    VALUES (${params.userId}, ${params.certificationId}, ${params.status}, ${activeToggle}, ${earnedAt})
+    ON CONFLICT (user_id, certification_id) DO UPDATE SET
+      status = EXCLUDED.status,
+      active_toggle = EXCLUDED.active_toggle,
+      earned_at = COALESCE(receptionist_badges.earned_at, EXCLUDED.earned_at)
+    RETURNING id, user_id, certification_id, status, active_toggle, earned_at, created_at
+  `
+  const row = rows[0]
+  if (!row) throw new Error("upsertReceptionistBadge: no row returned")
+  return parseReceptionistBadgeRow(row as Record<string, unknown>)
+}
+
+/** Toggle whether a certified specialty is included in live routing queues. */
+export async function setReceptionistBadgeActiveToggle(params: {
+  userId: string
+  certificationId: string
+  activeToggle: boolean
+}): Promise<ReceptionistBadge | null> {
+  const sql = getSql()
+  const rows = await sql`
+    UPDATE receptionist_badges
+    SET active_toggle = ${params.activeToggle}
+    WHERE user_id = ${params.userId}
+      AND certification_id = ${params.certificationId}
+      AND status = 'certified'
+    RETURNING id, user_id, certification_id, status, active_toggle, earned_at, created_at
+  `
+  return rows[0] ? parseReceptionistBadgeRow(rows[0] as Record<string, unknown>) : null
+}
+
+/** Append certification codes + routing skill tags onto the linked receptionist row. */
+export async function appendReceptionistCertificationSkills(params: {
+  portalUserId: string
+  codeIdentifier: string
+}): Promise<void> {
+  const sql = getSql()
+  const code = normalizeRoutingPoolSkillTag(params.codeIdentifier)
+  const routingTag = routingSkillTagFromCertCode(code)
+  const tags = [...new Set([code, routingTag].filter(Boolean))]
+  try {
+    await sql`
+      UPDATE receptionists
+      SET skills = (
+        SELECT coalesce(array_agg(DISTINCT slug), '{}'::text[])
+        FROM unnest(coalesce(receptionists.skills, '{}'::text[]) || ${tags}::text[]) AS slug
+        WHERE slug <> ''
+      )
+      WHERE portal_user_id = ${params.portalUserId}
+    `
+  } catch (e) {
+    if (isMissingReceptionistSkillsColumnError(e) || isMissingPortalUserColumnError(e)) return
+    throw e
+  }
+}
+

@@ -21,6 +21,7 @@ import {
   getIncomingRoutingByNumber,
   peekBlockedInboundStatusForNumber,
   peekIncomingRoutingCache,
+  getActivePhoneNumberByE164,
   getReceptionist,
   getRoutingConfigForNumber,
   getUser,
@@ -63,6 +64,7 @@ import {
   resolveInboundForwardDialTimeoutSeconds,
   resolveInboundFastDialTimeoutSeconds,
 } from "@/lib/telnyx-inbound-media-quality"
+import { buildRoutingPoolDialResponse, getAvailableReceptionistsForLine } from "@/lib/routing-pool"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -437,6 +439,86 @@ function tryFastInboundPstnDial(params: {
   return { kind: "raw", xml }
 }
 
+/** Skill-pool path: dial all matching platform receptionists when the line has an industry_tag. */
+async function tryRoutingPoolInboundDial(params: {
+  routing: IncomingRoutingRowNonNull
+  businessLineE164: string
+  calledNumber: string
+  callerNumber: string
+  callSid: string
+  callerName: string | null
+  appUrl: string
+}): Promise<IncomingCallResult | null> {
+  const { routing, businessLineE164, calledNumber, callerNumber, callSid, callerName, appUrl } = params
+  const line = await getActivePhoneNumberByE164(businessLineE164 || calledNumber)
+  if (!line) return null
+
+  const match = await getAvailableReceptionistsForLine(line.id)
+  if (!match) return null
+
+  const wantsAiAfterNoAnswer = String(routing.fallback_type ?? "").toLowerCase() === "ai"
+  const effectiveRingTimeout = Number(routing.ring_timeout_seconds ?? 30) || 30
+  const dialTimeoutSec = resolveInboundForwardDialTimeoutSeconds(effectiveRingTimeout, wantsAiAfterNoAnswer)
+
+  const didDigits = businessLineE164.replace(/\D/g, "")
+  const fallbackMode = wantsAiAfterNoAnswer ? "recv-ai" : "recv"
+  const fallbackPathBase =
+    didDigits.length >= 10
+      ? `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}/n/${didDigits}/${fallbackMode}`
+      : `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(routing.user_id)}`
+  const modeQuery = didDigits.length < 10 ? `&zingFbMode=${encodeURIComponent(fallbackMode)}` : ""
+  const fbQuery = wantsAiAfterNoAnswer ? "&fb=ai" : ""
+  const bnQuery = `&bn=${encodeURIComponent(businessLineE164)}`
+  const origFromQuery = origFromQuerySuffixFromRaw(callerNumber)
+  const outboundCallerId = resolveInboundOutboundCallerId(routing, businessLineE164)
+  const pstnDialCallerE164 = resolvePstnDialCallerIdForInboundForward({
+    inboundFromRaw: callerNumber,
+    businessOutboundE164: outboundCallerId,
+  })
+  const action = `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${modeQuery}&pool=1${origFromQuery}`
+
+  const xml = buildRoutingPoolDialResponse({
+    match,
+    ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
+    timeout: dialTimeoutSec,
+    action,
+  })
+
+  const firstRecv = match.receptionists[0]
+  after(() => {
+    void insertCallLog({
+      user_id: routing.user_id,
+      provider_call_sid: callSid,
+      from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
+      to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
+      caller_name: callerName,
+      call_type: "incoming",
+      status: "ringing",
+      duration_seconds: 0,
+      routed_to_receptionist_id: firstRecv?.id ?? null,
+      routed_to_name: firstRecv?.name ?? `Pool (${match.industry_tag})`,
+      has_recording: false,
+      recording_url: null,
+      recording_duration_seconds: null,
+    }).catch((logErr) => {
+      console.error("[Sigo] Call log insert failed (routing pool path):", logErr)
+    })
+  })
+
+  console.log(
+    JSON.stringify({
+      zing: "telnyx-incoming-routing-pool-dial",
+      userId: routing.user_id,
+      callSid,
+      industryTag: match.industry_tag,
+      poolMode: match.routing_pool_mode,
+      poolSize: match.dial_targets.length,
+      hotPath: "raw-texml",
+    })
+  )
+  return { kind: "raw", xml }
+}
+
 /** Fast path: AI fallback with no PSTN leg — silent Redirect to `/ai-bridge` → `<Connect><AIAssistant>`. */
 async function tryFastInboundDirectAiHandoff(params: {
   routing: IncomingRoutingRowNonNull
@@ -566,8 +648,8 @@ async function handleIncomingCall(
     const mightRepeatLeg = inboundWebhookLooksLikeDialRepeat(webhookFields)
     const overlayEnabled = readInboundRoutingCfgOverlayEnabled()
 
-    if (!mightRepeatLeg && !overlayEnabled && (routing.receptionist_phone?.trim() || routing.owner_phone?.trim())) {
-      const fast = tryFastInboundPstnDial({
+    if (!mightRepeatLeg && !overlayEnabled) {
+      const poolDial = await tryRoutingPoolInboundDial({
         routing,
         businessLineE164,
         calledNumber,
@@ -576,7 +658,20 @@ async function handleIncomingCall(
         callerName,
         appUrl,
       })
-      if (fast) return fast
+      if (poolDial) return poolDial
+
+      if (routing.receptionist_phone?.trim() || routing.owner_phone?.trim()) {
+        const fast = tryFastInboundPstnDial({
+          routing,
+          businessLineE164,
+          calledNumber,
+          callerNumber,
+          callSid,
+          callerName,
+          appUrl,
+        })
+        if (fast) return fast
+      }
     }
 
     const cfgDid = businessLineE164 || normalizePhoneNumberE164(calledNumber) || calledNumber.trim()
@@ -1137,7 +1232,36 @@ async function tryFastInboundReceptionistResponse(fields: Record<string, string>
   }
 
   if (!resolveReceptionistDialE164(routing.receptionist_phone || routing.owner_phone || "")) {
+    const poolDial = await tryRoutingPoolInboundDial({
+      routing,
+      businessLineE164,
+      calledNumber: calledNumberRaw,
+      callerNumber,
+      callSid,
+      callerName,
+      appUrl: VOICE_WEBHOOK_APP_URL,
+    })
+    if (poolDial) {
+      return new NextResponse(texmlResponseBody(poolDial), {
+        headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+      })
+    }
     return null
+  }
+
+  const poolDial = await tryRoutingPoolInboundDial({
+    routing,
+    businessLineE164,
+    calledNumber: calledNumberRaw,
+    callerNumber,
+    callSid,
+    callerName,
+    appUrl: VOICE_WEBHOOK_APP_URL,
+  })
+  if (poolDial) {
+    return new NextResponse(texmlResponseBody(poolDial), {
+      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+    })
   }
 
   const fast = tryFastInboundPstnDial({

@@ -23,11 +23,20 @@ export async function PATCH(
   }
   try {
     const body = await req.json()
-    const updates: Partial<{ name: string; phone: string; is_active: boolean; rate_per_minute: number }> = {}
+    const updates: Partial<{
+      name: string
+      phone: string
+      is_active: boolean
+      rate_per_minute: number
+      pay_mode: "FLAT_RATE" | "PER_MINUTE"
+      flat_rate_usd: number
+    }> = {}
     if (typeof body?.name === "string") updates.name = body.name.trim()
     if (typeof body?.phone === "string") updates.phone = body.phone.trim()
     if (typeof body?.is_active === "boolean") updates.is_active = body.is_active
     if (typeof body?.rate_per_minute === "number") updates.rate_per_minute = body.rate_per_minute
+    if (body?.pay_mode === "FLAT_RATE" || body?.pay_mode === "PER_MINUTE") updates.pay_mode = body.pay_mode
+    if (typeof body?.flat_rate_usd === "number") updates.flat_rate_usd = body.flat_rate_usd
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ data: existing })
     }

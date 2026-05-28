@@ -5,7 +5,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { insertAiLead, listAiLeadsForUser } from "@/lib/db"
+import { listAiLeadsForUser } from "@/lib/db"
+import { saveCallIntake } from "@/lib/intake-engine"
 
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const callerRaw = String(body.caller_e164 || body.from || "").trim()
   try {
-    const id = await insertAiLead({
+    const result = await saveCallIntake({
       user_id: userId,
       caller_e164: callerRaw || null,
       intent_slug: typeof body.intent_slug === "string" ? body.intent_slug : null,
@@ -48,11 +49,9 @@ export async function POST(req: NextRequest) {
           ? (body.collected as Record<string, unknown>)
           : {},
       summary: typeof body.summary === "string" ? body.summary : null,
-      sms_sent: false,
-      sms_error: null,
       vapi_call_id: typeof body.vapi_call_id === "string" ? body.vapi_call_id : null,
     })
-    return NextResponse.json({ data: { id } })
+    return NextResponse.json({ data: { id: result.id, sms_sent: result.sms_sent } })
   } catch (e) {
     console.error("[POST /api/ai-leads] failed:", e)
     return NextResponse.json({ error: "Could not save lead" }, { status: 500 })

@@ -23,7 +23,8 @@ export function middleware(request: NextRequest) {
   const needsSession =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/onboarding")
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/receptionist")
   if (!needsSession) {
     return NextResponse.next({
       request: { headers: requestHeaders },
@@ -42,5 +43,5 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   // Voice webhooks (/api/voice/*) are intentionally excluded — Telnyx needs raw TeXML with zero cookie/session work.
-  matcher: ["/dashboard", "/dashboard/:path*", "/admin", "/admin/:path*", "/onboarding", "/onboarding/:path*"],
+  matcher: ["/dashboard", "/dashboard/:path*", "/admin", "/admin/:path*", "/onboarding", "/onboarding/:path*", "/receptionist", "/receptionist/:path*"],
 }

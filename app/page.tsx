@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { verifySessionCookie, getSessionCookieName } from "@/lib/auth"
 import { getSessionUser } from "@/lib/server-session-user"
 import { isPlatformAdminUser } from "@/lib/platform-admin"
+import { resolvePostAuthPath } from "@/lib/post-auth-redirect"
 import { HomeClient } from "@/components/home-client"
 
 export const dynamic = "force-dynamic"
@@ -18,8 +19,8 @@ export default async function Home() {
     return <HomeClient />
   }
   const user = await getSessionUser()
-  if (user && isPlatformAdminUser(user)) {
-    redirect("/admin")
+  if (user) {
+    redirect(resolvePostAuthPath({ user, operator_access: isPlatformAdminUser(user) }))
   }
-  redirect("/dashboard")
+  return <HomeClient />
 }

@@ -41,6 +41,14 @@ Zing cannot update your Neon database from Git or Vercel automatically. After pu
 | 36 | `036-inbound-dial-snapshot.sql` | **Precomputed dial columns on `phone_numbers`** — one-row inbound routing (fastest path); open Routing tab once after running to backfill |
 | 37 | `037-backfill-inbound-dial-snapshot.sql` | **Fill `inbound_dial_e164`** when timestamp is set but receptionist phone column is empty |
 | 38 | `038-phone-numbers-released-status.sql` | **`phone_numbers.status`** may be **`released`** — return a bought line to Telnyx from **Manage existing lines** |
+| 39 | `039-receptionist-pay-mode.sql` | **`receptionists.pay_mode`** + **`flat_rate_usd`** — FLAT_RATE vs PER_MINUTE receptionist payout tracking |
+| 40 | `040-receptionist-portal-role.sql` | **`users.account_role`** + **`receptionists.portal_user_id`** — receptionist payout portal at `/receptionist` |
+| 41 | `041-team-invites.sql` | **`team_invites`** — admin-issued receptionist signup tokens |
+| 42 | `042-skill-routing-pool.sql` | **`receptionists.skills`**, **`routing_config.industry_tag`**, **`phone_numbers.industry_tag`** + **`routing_pool_mode`** — skill-tagged managed receptionist routing pool |
+| 43 | `043-certifications-training.sql` | **`certifications`**, **`receptionist_badges`** — training courses, quiz completion, and live routing toggles |
+| 44 | `044-sms-lead-notifications.sql` | **`onboarding_profiles.sms_leads_enabled`** + **`notification_phone`** — instant SMS lead alerts |
+| 45 | `045-dispatch-sms-phone.sql` | **`onboarding_profiles.dispatch_sms_phone`** — dedicated dispatch SMS target (falls back to profile phone) |
+| 46 | `046-automotive-core-locksmith-quiz.sql` | **Updates `automotive_core`** certification — AKL, proximity, YMM, and structural key quiz matrix |
 
 ## Platform admin (`admin@lyncr.app`)
 

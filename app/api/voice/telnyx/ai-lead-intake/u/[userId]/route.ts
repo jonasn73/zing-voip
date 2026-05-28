@@ -4,7 +4,8 @@
 // Telnyx Voice AI tool / webhook target — stores captured lead rows in ai_leads.
 
 import { NextRequest, NextResponse } from "next/server"
-import { insertAiLead, normalizePhoneNumberE164 } from "@/lib/db"
+import { normalizePhoneNumberE164 } from "@/lib/db"
+import { saveCallIntake } from "@/lib/intake-engine"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -62,17 +63,15 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
         : null
 
   try {
-    const id = await insertAiLead({
+    const result = await saveCallIntake({
       user_id: userId.trim(),
       caller_e164,
       intent_slug,
       collected,
       summary,
-      sms_sent: false,
-      sms_error: null,
       vapi_call_id,
     })
-    return NextResponse.json({ data: { id } })
+    return NextResponse.json({ data: { id: result.id, sms_sent: result.sms_sent } })
   } catch (e) {
     console.error("[POST /api/voice/telnyx/ai-lead-intake] failed:", e)
     return NextResponse.json({ error: "Could not save lead" }, { status: 500 })

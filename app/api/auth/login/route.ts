@@ -12,6 +12,7 @@ import {
   getSessionCookieOptions,
 } from "@/lib/auth"
 import { isPlatformAdminUser } from "@/lib/platform-admin"
+import { postAuthPayload } from "@/lib/post-auth-redirect"
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
         credit_balance_cents: 0,
         billing_plan: "trial",
         is_platform_admin: false,
+        account_role: "owner" as const,
       }
       const cookieValue = createSessionCookie(devUser.id)
       const res = NextResponse.json({
@@ -70,8 +72,9 @@ export async function POST(req: NextRequest) {
 
     const { password_hash: _, ...user } = authUser
     const cookieValue = createSessionCookie(user.id)
+    const authMeta = postAuthPayload(user)
     const res = NextResponse.json({
-      data: { user, operator_access: isPlatformAdminUser(user) },
+      data: { user, ...authMeta },
     })
     res.cookies.set(getSessionCookieName(), cookieValue, getSessionCookieOptions())
     return res

@@ -1,0 +1,37 @@
+import { redirect } from "next/navigation"
+import { ReceptionistPortalChrome } from "@/components/receptionist-portal-chrome"
+import { ReceptionistPortalView } from "@/components/receptionist-portal-view"
+import { getReceptionistPortalContext } from "@/lib/receptionist-portal-auth"
+import { getSessionUser } from "@/lib/server-session-user"
+import { isLyncrAdminUser } from "@/lib/lyncr-admin"
+
+export const dynamic = "force-dynamic"
+
+export default async function ReceptionistPortalLayout({ children }: { children: React.ReactNode }) {
+  const user = await getSessionUser()
+  if (!user) redirect("/login?next=/receptionist")
+  if (isLyncrAdminUser(user)) redirect("/admin")
+
+  const ctx = await getReceptionistPortalContext(user.id)
+  const displayName = user.name?.trim() || user.email
+
+  if (!ctx) {
+    if (user.account_role === "receptionist") {
+      return (
+        <ReceptionistPortalChrome userName={displayName}>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-6 text-sm text-amber-100">
+            <p className="font-semibold text-amber-50">Receptionist profile not linked yet</p>
+            <p className="mt-2 text-amber-100/90">
+              Your login has the receptionist role, but no team record is connected. Ask the business owner to link
+              your account in Neon (<code className="text-xs">receptionists.portal_user_id</code>).
+            </p>
+          </div>
+        </ReceptionistPortalChrome>
+      )
+    }
+    redirect("/dashboard")
+  }
+
+  const portalName = ctx.receptionist.name?.trim() || displayName
+  return <ReceptionistPortalChrome userName={portalName}>{children}</ReceptionistPortalChrome>
+}

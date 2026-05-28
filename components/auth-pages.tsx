@@ -6,16 +6,22 @@ import { cn } from "@/lib/utils"
 import { BrandMark } from "@/components/brand-mark"
 import { BrandWordmark } from "@/components/brand-wordmark"
 import { SIGNUP_INDUSTRY_OPTIONS } from "@/lib/business-industries"
+import type { TeamInvitePreview } from "@/lib/types"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 
 interface AuthPageProps {
   mode: "login" | "signup"
   onNavigate: (page: string) => void
-  /** Called after successful login or signup; `operator_access` means redirect to `/admin` instead of dashboard. */
-  onAuth: (ctx?: { operator_access: boolean }) => void
+  /** Called after successful login or signup. */
+  onAuth: (ctx?: { operator_access: boolean; account_role?: string; redirect?: string }) => void
+  /** When set, signup redeems a receptionist invite token. */
+  invite?: TeamInvitePreview | null
+  inviteToken?: string | null
+  inviteLoading?: boolean
+  inviteError?: string | null
 }
 
-export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
+export function AuthPage({ mode, onNavigate, onAuth, invite, inviteToken, inviteLoading, inviteError }: AuthPageProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [businessName, setBusinessName] = useState("")
@@ -27,6 +33,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
   const [error, setError] = useState("")
 
   const isSignup = mode === "signup"
+  const isInviteSignup = isSignup && Boolean(inviteToken && invite)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -37,14 +44,23 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
         const res = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            password,
-            name: ownerName,
-            phone: ownerPhone,
-            business_name: businessName || "My Business",
-            industry,
-          }),
+          body: JSON.stringify(
+            isInviteSignup
+              ? {
+                  email: invite?.email ?? email,
+                  password,
+                  phone: ownerPhone,
+                  invite_token: inviteToken,
+                }
+              : {
+                  email,
+                  password,
+                  name: ownerName,
+                  phone: ownerPhone,
+                  business_name: businessName || "My Business",
+                  industry,
+                }
+          ),
         })
         const data = await res.json()
         if (!res.ok) {
@@ -52,7 +68,11 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
           setLoading(false)
           return
         }
-        onAuth({ operator_access: Boolean(data?.data?.operator_access) })
+        onAuth({
+          operator_access: Boolean(data?.data?.operator_access),
+          account_role: data?.data?.account_role ?? data?.data?.user?.account_role,
+          redirect: data?.data?.redirect,
+        })
       } else {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -65,7 +85,11 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
           setLoading(false)
           return
         }
-        onAuth({ operator_access: Boolean(data?.data?.operator_access) })
+        onAuth({
+          operator_access: Boolean(data?.data?.operator_access),
+          account_role: data?.data?.user?.account_role,
+          redirect: data?.data?.redirect,
+        })
       }
     } catch {
       setError("Something went wrong. Try again.")
@@ -91,17 +115,27 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
         <div key={mode} className="w-full max-w-sm animate-sigo-page-enter">
           <div className="mb-8 text-center">
             <h1 className="text-2xl font-bold text-foreground">
-              {isSignup ? "Create your account" : "Welcome back"}
+              {isInviteSignup ? "Join as a receptionist" : isSignup ? "Create your account" : "Welcome back"}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {isSignup
-                ? "First you will add a business number (buy or port). Your cell is the line we ring you on until you add teammates."
-                : "Log in to manage your calls"}
+              {isInviteSignup
+                ? `You've been invited to the Lyncr receptionist portal. Payout rate: $${invite?.payout_rate_usd.toFixed(2)} per answered call.`
+                : isSignup
+                  ? "First you will add a business number (buy or port). Your cell is the line we ring you on until you add teammates."
+                  : "Log in to manage your calls"}
             </p>
           </div>
 
+          {inviteLoading ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Validating invitation…
+            </div>
+          ) : inviteError ? (
+            <p className="rounded-lg bg-destructive/10 px-3 py-3 text-sm text-destructive">{inviteError}</p>
+          ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {isSignup && (
+            {isSignup && !isInviteSignup && (
               <>
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="businessName" className="text-xs font-semibold text-muted-foreground">
@@ -172,6 +206,40 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
               </>
             )}
 
+            {isInviteSignup && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="ownerName" className="text-xs font-semibold text-muted-foreground">
+                    First name
+                  </label>
+                  <input
+                    id="ownerName"
+                    type="text"
+                    value={invite?.first_name ?? ""}
+                    readOnly
+                    className="rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-foreground"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="ownerPhone" className="text-xs font-semibold text-muted-foreground">
+                    Your cell phone
+                  </label>
+                  <input
+                    id="ownerPhone"
+                    type="tel"
+                    placeholder="(555) 123-4567"
+                    value={ownerPhone}
+                    onChange={(e) => setOwnerPhone(e.target.value)}
+                    required
+                    className="rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    This is the number we dial when routing calls to you.
+                  </p>
+                </div>
+              </>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <label htmlFor="email" className="text-xs font-semibold text-muted-foreground">
                 Email
@@ -180,11 +248,15 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
                 id="email"
                 type="email"
                 placeholder="you@business.com"
-                value={email}
+                value={isInviteSignup ? invite?.email ?? email : email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                readOnly={isInviteSignup}
                 autoComplete="email"
-                className="rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+                className={cn(
+                  "rounded-lg border border-border px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none",
+                  isInviteSignup ? "bg-muted/40" : "bg-card"
+                )}
               />
             </div>
 
@@ -237,6 +309,8 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : isInviteSignup ? (
+                "Activate receptionist account"
               ) : isSignup ? (
                 "Create Account"
               ) : (
@@ -244,7 +318,9 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
               )}
             </button>
           </form>
+          )}
 
+          {!inviteLoading && !inviteError ? (
           <p className="mt-6 text-center text-sm text-muted-foreground">
             {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
             <button
@@ -254,6 +330,7 @@ export function AuthPage({ mode, onNavigate, onAuth }: AuthPageProps) {
               {isSignup ? "Log in" : "Sign up"}
             </button>
           </p>
+          ) : null}
         </div>
       </main>
     </div>

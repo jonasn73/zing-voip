@@ -1,7 +1,8 @@
 "use client"
 
 import { memo, useEffect, useState } from "react"
-import { Bell, Clock, CreditCard, Loader2, LogOut, MessageSquare, Shield, Volume2 } from "lucide-react"
+import { Bell, Clock, CreditCard, Loader2, LogOut, MessageSquare, Shield, Smartphone, Volume2, Zap } from "lucide-react"
+import { updateNotificationPreferences } from "@/app/actions/notification-preferences"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -108,6 +109,12 @@ const SettingsWorkspaceBody = memo(function SettingsWorkspaceBody({
   whisperEnabled,
   whisperSaving,
   onSaveWhisper,
+  smsLeadsEnabled,
+  setSmsLeadsEnabled,
+  dispatchSmsPhone,
+  setDispatchSmsPhone,
+  notificationSaving,
+  onSaveNotificationPreferences,
   billingCycleEnd,
   subscriptionActive,
   signingOut,
@@ -127,6 +134,12 @@ const SettingsWorkspaceBody = memo(function SettingsWorkspaceBody({
   whisperEnabled: boolean
   whisperSaving: boolean
   onSaveWhisper: (v: boolean) => void
+  smsLeadsEnabled: boolean
+  setSmsLeadsEnabled: (v: boolean) => void
+  dispatchSmsPhone: string
+  setDispatchSmsPhone: (v: string) => void
+  notificationSaving: boolean
+  onSaveNotificationPreferences: () => void
   billingCycleEnd: string | null
   subscriptionActive: boolean
   signingOut: boolean
@@ -221,6 +234,67 @@ const SettingsWorkspaceBody = memo(function SettingsWorkspaceBody({
         </div>
       </WorkspacePanel>
 
+      <WorkspacePanel className="p-6 sm:p-8">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10">
+            <Zap className="h-5 w-5 text-violet-300" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1 space-y-5">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Notification channels</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Get a text the moment Voice AI captures a new lead from an after-hours call.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <Smartphone className="mt-0.5 h-4 w-4 text-primary" aria-hidden />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Instant SMS lead alerts</p>
+                  <p className="text-xs text-zinc-500">Texts include caller, service type, and intake notes.</p>
+                </div>
+              </div>
+              <Switch
+                checked={smsLeadsEnabled}
+                onCheckedChange={setSmsLeadsEnabled}
+                disabled={notificationSaving}
+                aria-label="Instant SMS lead alerts"
+              />
+            </div>
+
+            <label className="block">
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                Dedicated dispatch SMS number
+              </span>
+              <input
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(555) 123-4567"
+                className={workspaceFieldClass}
+                value={dispatchSmsPhone}
+                onChange={(e) => setDispatchSmsPhone(e.target.value)}
+                disabled={notificationSaving}
+              />
+              <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+                Leads will be texted here for dispatching. If left blank, notifications will default to your primary
+                profile phone number.
+              </p>
+            </label>
+
+            <button
+              type="button"
+              disabled={notificationSaving}
+              onClick={() => onSaveNotificationPreferences()}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {notificationSaving ? "Saving…" : "Save notification settings"}
+            </button>
+          </div>
+        </div>
+      </WorkspacePanel>
+
       <section className="space-y-3">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">System</p>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -278,6 +352,10 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
   const [smsEnabled, setSmsEnabled] = useState(true)
   const [whisperEnabled, setWhisperEnabled] = useState(true)
   const [whisperSaving, setWhisperSaving] = useState(false)
+  const [companyUserId, setCompanyUserId] = useState("")
+  const [smsLeadsEnabled, setSmsLeadsEnabled] = useState(false)
+  const [dispatchSmsPhone, setDispatchSmsPhone] = useState("")
+  const [notificationSaving, setNotificationSaving] = useState(false)
   const [billingCycleEnd, setBillingCycleEnd] = useState<string | null>(null)
   const [subscriptionActive, setSubscriptionActive] = useState(false)
 
@@ -289,6 +367,7 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
         if (!u) return
         setName(String(u.name ?? ""))
         setEmail(String(u.email ?? ""))
+        setCompanyUserId(String(u.id ?? ""))
         setBusinessName(String(u.business_name ?? "").trim() || "My Business")
         setWhisperEnabled(u.inbound_receptionist_whisper_enabled !== false)
       })
@@ -298,6 +377,8 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
       .then(({ profile, carrierLive }) => {
         setSubscriptionActive(isVerifiedActiveSubscription(profile, carrierLive))
         setBillingCycleEnd(profile?.billing_cycle_end?.trim() || null)
+        setSmsLeadsEnabled(profile?.sms_leads_enabled === true)
+        setDispatchSmsPhone(profile?.dispatch_sms_phone?.trim() || "")
       })
       .catch(() => {
         /* optional until migration 027 */
@@ -342,6 +423,33 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
     }
   }
 
+  async function saveNotificationPreferences() {
+    if (!companyUserId) {
+      toast({ title: "Could not save", description: "Session not loaded yet.", variant: "destructive" })
+      return
+    }
+    setNotificationSaving(true)
+    try {
+      const result = await updateNotificationPreferences(
+        companyUserId,
+        smsLeadsEnabled,
+        dispatchSmsPhone
+      )
+      if (!result.ok) throw new Error(result.error)
+      setSmsLeadsEnabled(result.sms_leads_enabled)
+      setDispatchSmsPhone(result.dispatch_sms_phone ?? dispatchSmsPhone)
+      toast({ title: "Notification settings saved" })
+    } catch (e) {
+      toast({
+        title: "Could not save notifications",
+        description: e instanceof Error ? e.message : "Try again",
+        variant: "destructive",
+      })
+    } finally {
+      setNotificationSaving(false)
+    }
+  }
+
   return (
     <WorkspaceRightSheetGate<typeof HOURS_SHEET_KEY>
       render={() => <SettingsHoursSheet />}
@@ -361,6 +469,12 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
         whisperEnabled={whisperEnabled}
         whisperSaving={whisperSaving}
         onSaveWhisper={(v) => void saveWhisper(v)}
+        smsLeadsEnabled={smsLeadsEnabled}
+        setSmsLeadsEnabled={setSmsLeadsEnabled}
+        dispatchSmsPhone={dispatchSmsPhone}
+        setDispatchSmsPhone={setDispatchSmsPhone}
+        notificationSaving={notificationSaving}
+        onSaveNotificationPreferences={() => void saveNotificationPreferences()}
         billingCycleEnd={billingCycleEnd}
         subscriptionActive={subscriptionActive}
         signingOut={signingOut}

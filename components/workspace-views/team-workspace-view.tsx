@@ -5,7 +5,7 @@ import { Loader2, Plus } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
-import type { Receptionist } from "@/lib/types"
+import type { Receptionist, ReceptionistPayoutMetrics } from "@/lib/types"
 import {
   WorkspacePage,
   WorkspacePageHeader,
@@ -58,8 +58,19 @@ function AddTeamMemberCard({ onClick }: { onClick: () => void }) {
   )
 }
 
+function formatUsd(amount: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount)
+}
+
+function formatTalkMinutes(seconds: number): string {
+  const minutes = Math.round((seconds / 60) * 10) / 10
+  return `${minutes} min`
+}
+
 export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
   const [members, setMembers] = useState<Receptionist[]>([])
+  const [payoutsById, setPayoutsById] = useState<Record<string, ReceptionistPayoutMetrics>>({})
+  const [billingCycleLabel, setBillingCycleLabel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -68,15 +79,39 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
 
   const load = useCallback(() => {
     setLoading(true)
-    fetch("/api/receptionists", { credentials: "include" })
-      .then(async (res) => {
+    Promise.all([
+      fetch("/api/receptionists", { credentials: "include" }).then(async (res) => {
         if (!res.ok) throw new Error("Could not load team")
         const json = (await res.json()) as { data?: Receptionist[] }
-        const rows = Array.isArray(json.data) ? json.data : []
+        return Array.isArray(json.data) ? json.data : []
+      }),
+      fetch("/api/receptionists/payouts", { credentials: "include" }).then(async (res) => {
+        if (!res.ok) return null
+        const json = (await res.json()) as {
+          data?: {
+            billing_cycle?: { start?: string; end?: string }
+            agents?: ReceptionistPayoutMetrics[]
+          }
+        }
+        return json.data ?? null
+      }),
+    ])
+      .then(([rows, payoutData]) => {
         setMembers(rows)
-        setAvailability(
-          Object.fromEntries(rows.map((m) => [m.id, m.is_active]))
-        )
+        setAvailability(Object.fromEntries(rows.map((m) => [m.id, m.is_active])))
+        const byId = Object.fromEntries((payoutData?.agents ?? []).map((agent) => [agent.receptionist_id, agent]))
+        setPayoutsById(byId)
+        const start = payoutData?.billing_cycle?.start
+        const end = payoutData?.billing_cycle?.end
+        if (start && end) {
+          const startDate = new Date(start)
+          const endDate = new Date(end)
+          setBillingCycleLabel(
+            `${startDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${endDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+          )
+        } else {
+          setBillingCycleLabel(null)
+        }
         setError(null)
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Error"))
@@ -120,6 +155,12 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
     <WorkspacePage>
       <WorkspacePageHeader eyebrow="Routing" title="Team" />
 
+      {billingCycleLabel ? (
+        <p className="mb-4 text-xs text-zinc-500">
+          Payout totals for billing cycle {billingCycleLabel}.
+        </p>
+      ) : null}
+
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-zinc-500">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -139,6 +180,7 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
           {members.map((member, i) => {
             const color = AVATAR_COLORS[i % AVATAR_COLORS.length]
             const online = isMemberOnline(member)
+            const payout = payoutsById[member.id]
             return (
               <WorkspacePanel key={member.id} className="min-h-[148px] p-5">
                 <div className="flex items-start justify-between gap-3">
@@ -177,6 +219,27 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
                 >
                   {online ? "Available for calls" : "Off duty"}
                 </p>
+                {payout ? (
+                  <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-400">
+                    <p>
+                      {payout.answered_calls} answered call{payout.answered_calls === 1 ? "" : "s"} this cycle
+                    </p>
+                    <p className="mt-1 font-medium text-zinc-200">
+                      {formatUsd(payout.total_earnings)} earned
+                      {payout.pay_mode === "PER_MINUTE" ? (
+                        <span className="font-normal text-zinc-500">
+                          {" "}
+                          · {formatTalkMinutes(payout.total_talk_seconds)} @ {formatUsd(payout.rate_per_minute)}/min
+                        </span>
+                      ) : (
+                        <span className="font-normal text-zinc-500">
+                          {" "}
+                          · {formatUsd(payout.flat_rate_usd)} flat / call
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                ) : null}
               </WorkspacePanel>
             )
           })}

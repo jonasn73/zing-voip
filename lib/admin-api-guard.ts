@@ -32,6 +32,7 @@ export async function requireSessionUser(req: NextRequest): Promise<SessionUserC
       credit_balance_cents: 0,
       billing_plan: "trial",
       is_platform_admin: false,
+      account_role: "owner" as const,
     }
   }
   if (!user) {

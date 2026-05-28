@@ -3,12 +3,16 @@
 // ============================================
 
 // --- Users (Business Owners) ---
+export type AccountRole = "owner" | "receptionist"
+
 export interface User {
   id: string
   email: string
   name: string
   phone: string // owner's personal cell
   business_name: string
+  /** owner = business dashboard; receptionist = /receptionist portal */
+  account_role: AccountRole
   /** When false, skip the short callee-only whisper on forwarded inbound calls (TeXML Number url). */
   inbound_receptionist_whisper_enabled: boolean
   /** Signup industry — default AI fallback playbook when intake has no profileId override */
@@ -55,6 +59,12 @@ export interface OnboardingProfile {
   account_status: string
   /** Internal operator notes (scripts/034). */
   custom_routing_note: string | null
+  /** Instant SMS when AI intake saves a lead (`044-sms-lead-notifications.sql`). */
+  sms_leads_enabled: boolean
+  /** Primary profile alert number (`044`). */
+  notification_phone: string | null
+  /** Dedicated dispatch SMS target — overrides notification_phone for lead texts (`045`). */
+  dispatch_sms_phone: string | null
   updated_at: string
 }
 
@@ -78,6 +88,9 @@ export type UpdateOnboardingProfileRequest = {
   total_minutes_used?: number
   account_status?: string
   custom_routing_note?: string | null
+  sms_leads_enabled?: boolean
+  notification_phone?: string | null
+  dispatch_sms_phone?: string | null
 }
 
 export type FeedbackCategory = "issue" | "feature" | "billing" | "other"
@@ -134,6 +147,10 @@ export interface AdminUserDetail {
 export interface LyncrAdminDirectoryRow {
   user_id: string
   email: string
+  /** owner | receptionist — from users.account_role (040). */
+  account_role: "owner" | "receptionist"
+  /** Specialty tags for platform receptionists (receptionists.skills via portal_user_id). */
+  receptionist_skills: string[]
   has_active_subscription: boolean
   subscription_tier: string
   phone_number: string | null
@@ -173,6 +190,8 @@ export interface LyncrAdminMetrics {
 }
 
 // --- Receptionists / Agents ---
+export type ReceptionistPayMode = "FLAT_RATE" | "PER_MINUTE"
+
 export interface Receptionist {
   id: string
   user_id: string
@@ -181,8 +200,142 @@ export interface Receptionist {
   initials: string
   color: string
   rate_per_minute: number // e.g. 0.25
+  pay_mode: ReceptionistPayMode
+  flat_rate_usd: number // e.g. 2.50 when pay_mode is FLAT_RATE
   is_active: boolean
+  /** Login user for the receptionist portal (`040-receptionist-portal-role.sql`). */
+  portal_user_id?: string | null
+  /** Industry/specialty tags for skill-pool routing (`042-skill-routing-pool.sql`). */
+  skills: string[]
   created_at: string
+}
+
+/** Payout rollup for one receptionist in the current billing cycle. */
+export interface ReceptionistPayoutMetrics {
+  receptionist_id: string
+  receptionist_name: string
+  pay_mode: ReceptionistPayMode
+  rate_per_minute: number
+  flat_rate_usd: number
+  answered_calls: number
+  total_talk_seconds: number
+  total_talk_minutes: number
+  total_earnings: number
+  daily_breakdown: { date: string; answered_calls: number; talk_seconds: number }[]
+}
+
+/** One row in the receptionist portal earnings ledger. */
+export interface ReceptionistLedgerRow {
+  id: string
+  created_at: string
+  from_number: string
+  caller_name: string | null
+  status: string
+  duration_seconds: number
+  payout_usd: number
+  business_name: string
+}
+
+/** Live availability + active call context for the receptionist header panel. */
+export type ReceptionistLiveStatus =
+  | { mode: "ready"; business_name: string }
+  | {
+      mode: "on_call"
+      business_name: string
+      caller_number: string
+      caller_name: string | null
+      started_at: string | null
+    }
+
+/** GET /api/receptionist/dashboard payload. */
+export interface ReceptionistPortalDashboard {
+  receptionist: Pick<Receptionist, "id" | "name" | "is_active" | "pay_mode" | "rate_per_minute" | "flat_rate_usd">
+  business_name: string
+  live_status: ReceptionistLiveStatus
+  metrics: {
+    today_earnings: number
+    pay_period_earnings: number
+    total_active_talk_seconds: number
+    total_active_talk_minutes: number
+  }
+  billing_cycle: { start: string; end: string }
+  ledger: ReceptionistLedgerRow[]
+}
+
+/** Pending team invite (`041-team-invites.sql`). */
+export interface TeamInvite {
+  id: string
+  email: string
+  first_name: string
+  role: "receptionist"
+  token: string
+  payout_rate_usd: number
+  invited_by_user_id: string
+  expires_at: string
+  accepted_at: string | null
+  accepted_user_id: string | null
+  created_at: string
+}
+
+/** Public invite preview for signup page (no raw token echoed back). */
+export interface TeamInvitePreview {
+  email: string
+  first_name: string
+  payout_rate_usd: number
+  role: "receptionist"
+  expires_at: string
+}
+
+/** One lesson inside a certification course module. */
+export interface CertificationLesson {
+  id: string
+  title: string
+  body: string
+}
+
+/** One quiz question — correctAnswer is compared server-side only. */
+export interface CertificationQuizQuestion {
+  id: string
+  question: string
+  options: string[]
+  correctAnswer: string
+}
+
+/** JSON stored on certifications.module_data (`043-certifications-training.sql`). */
+export interface CertificationModuleData {
+  description?: string
+  lessons: CertificationLesson[]
+  quiz: CertificationQuizQuestion[]
+}
+
+/** Platform training course definition. */
+export interface Certification {
+  id: string
+  name: string
+  code_identifier: string
+  module_data: CertificationModuleData
+  created_at: string
+}
+
+export type ReceptionistBadgeStatus = "in_progress" | "certified"
+
+/** Per-user certification progress + live routing toggle. */
+export interface ReceptionistBadge {
+  id: string
+  user_id: string
+  certification_id: string
+  status: ReceptionistBadgeStatus
+  active_toggle: boolean
+  earned_at: string | null
+  created_at: string
+}
+
+/** Certification card shown in the receptionist training portal. */
+export interface TrainingCertificationCard {
+  certification: Certification
+  badge: ReceptionistBadge | null
+  locked: boolean
+  certified: boolean
 }
 
 /** Saved caller profile per account (`022-customers.sql`) — searchable on Customers. */
@@ -217,6 +370,8 @@ export interface RoutingConfig {
   ring_timeout_seconds: number // how long to ring before fallback
   /** When AI fallback + no receptionist: ring owner's cell first, then Voice AI on no-answer. */
   ai_ring_owner_first: boolean
+  /** Skill-pool tag — when set, route to platform receptionists with matching skills (`042`). */
+  industry_tag: string | null
   updated_at: string
 }
 
@@ -230,6 +385,10 @@ export interface PhoneNumber {
   label: string // e.g. "Main Line"
   type: "local" | "toll-free"
   status: "active" | "pending" | "porting" | "released"
+  /** Per-line industry tag for skill-pool routing (`042`). */
+  industry_tag: string | null
+  /** How matched receptionists are dialed — sequential or simultaneous (`042`). */
+  routing_pool_mode: "sequential" | "simultaneous"
   created_at: string
 }
 
@@ -304,6 +463,8 @@ export interface AgentPaySummary {
   total_calls: number
   total_minutes: number
   rate_per_minute: number
+  pay_mode: ReceptionistPayMode
+  flat_rate_usd: number
   total_earnings: number
   daily_breakdown: {
     day: string // e.g. "Mon", "Tue"

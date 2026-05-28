@@ -1,6 +1,7 @@
 import { describe, expect, it, afterEach, vi } from "vitest"
 import {
   buildFastReceptionistDialTexml,
+  buildRoutingPoolDialTexml,
   buildInboundDialRingbackAttributes,
   readInboundFastDialAnswerOnBridge,
   resolveInboundFastDialTimeoutSeconds,
@@ -79,5 +80,31 @@ describe("buildFastReceptionistDialTexml", () => {
     expect(xml).toContain('timeout="20"')
     expect(xml).not.toContain('sequential="true"')
     expect(xml).toContain("+15022802716")
+  })
+})
+
+describe("buildRoutingPoolDialTexml", () => {
+  it("rings multiple receptionists simultaneously", () => {
+    const xml = buildRoutingPoolDialTexml({
+      answerOnBridge: true,
+      timeout: 25,
+      action: "https://lyncr.app/api/voice/telnyx/fallback/u/u1?pool=1",
+      receptionistE164List: ["+15021111111", "+15022222222"],
+      mode: "simultaneous",
+    })
+    expect(xml).toContain("+15021111111")
+    expect(xml).toContain("+15022222222")
+    expect(xml).not.toContain('sequential="true"')
+  })
+
+  it("sets sequential when pool mode is sequential", () => {
+    const xml = buildRoutingPoolDialTexml({
+      answerOnBridge: true,
+      timeout: 25,
+      action: "https://lyncr.app/api/voice/telnyx/fallback/u/u1?pool=1",
+      receptionistE164List: ["+15021111111", "+15022222222"],
+      mode: "sequential",
+    })
+    expect(xml).toContain('sequential="true"')
   })
 })

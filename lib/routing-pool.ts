@@ -15,6 +15,8 @@ import {
   finalizeInboundTexmlXml,
   readInboundFastDialAnswerOnBridge,
 } from "@/lib/telnyx-inbound-media-quality"
+import { resolveBusinessType } from "@/lib/business-type"
+import { buildReceptionistAnswerUrl } from "@/lib/receptionist-answer-url"
 
 export type RoutingPoolMatchResult = {
   line: PhoneNumber
@@ -57,7 +59,33 @@ export function buildRoutingPoolDialResponse(params: {
   callerId?: string
   timeout: number
   action: string
+  /** When provided, each `<Number>` gets a per-receptionist answer `url` for the realtime HUD. */
+  answer?: {
+    appUrl: string
+    callSid: string
+    callerNumber?: string | null
+    callerName?: string | null
+    businessName?: string | null
+  }
 }): string {
+  let answerUrlByE164: Record<string, string> | undefined
+  if (params.answer) {
+    const businessType = resolveBusinessType(params.match.industry_tag)
+    answerUrlByE164 = {}
+    for (const r of params.match.receptionists) {
+      const e164 = normalizePhoneNumberE164(r.phone)
+      if (!isReasonablePstnDialString(e164)) continue
+      answerUrlByE164[e164] = buildReceptionistAnswerUrl({
+        appUrl: params.answer.appUrl,
+        receptionistId: r.id,
+        callSid: params.answer.callSid,
+        businessType,
+        callerNumber: params.answer.callerNumber,
+        callerName: params.answer.callerName,
+        businessName: params.answer.businessName ?? params.match.line.label ?? null,
+      })
+    }
+  }
   const xml = buildRoutingPoolDialTexml({
     ...(params.callerId && isReasonablePstnDialString(params.callerId) ? { callerId: params.callerId } : {}),
     answerOnBridge: readInboundFastDialAnswerOnBridge(),
@@ -65,6 +93,7 @@ export function buildRoutingPoolDialResponse(params: {
     action: params.action,
     receptionistE164List: params.match.dial_targets,
     mode: params.match.routing_pool_mode,
+    ...(answerUrlByE164 ? { answerUrlByE164 } : {}),
   })
   return finalizeInboundTexmlXml(xml)
 }

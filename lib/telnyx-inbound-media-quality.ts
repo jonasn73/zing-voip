@@ -245,6 +245,8 @@ export function buildFastReceptionistDialTexml(opts: {
   timeout: number
   action: string
   receptionistE164: string
+  /** Telnyx fetches this on the callee leg the instant they answer (whisper + realtime HUD trigger). */
+  answerUrl?: string
 }): string {
   const dialAttrs = buildInboundPstnDialAttributes({
     ...(opts.callerId ? { callerId: opts.callerId } : {}),
@@ -253,7 +255,10 @@ export function buildFastReceptionistDialTexml(opts: {
     action: opts.action,
     method: "POST",
   })
-  const numberAttrs = buildInboundPstnNumberAttributes()
+  const numberAttrs = {
+    ...buildInboundPstnNumberAttributes(),
+    ...(opts.answerUrl ? { url: opts.answerUrl } : {}),
+  }
   const dialAttrStr = serializeTexmlAttrs(dialAttrs)
   const numberAttrStr = serializeTexmlAttrs(numberAttrs)
   const phone = opts.receptionistE164.trim()
@@ -275,6 +280,8 @@ export function buildRoutingPoolDialTexml(opts: {
   action: string
   receptionistE164List: string[]
   mode: "sequential" | "simultaneous"
+  /** Optional per-number `url` (whisper + realtime HUD trigger), keyed by E.164. */
+  answerUrlByE164?: Record<string, string>
 }): string {
   const phones = opts.receptionistE164List.map((p) => p.trim()).filter((p) => p.length > 0)
   if (phones.length === 0) {
@@ -288,10 +295,15 @@ export function buildRoutingPoolDialTexml(opts: {
     method: "POST",
     ...(opts.mode === "sequential" ? { sequential: true } : {}),
   })
-  const numberAttrs = buildInboundPstnNumberAttributes()
+  const baseNumberAttrs = buildInboundPstnNumberAttributes()
   const dialAttrStr = serializeTexmlAttrs(dialAttrs)
-  const numberAttrStr = serializeTexmlAttrs(numberAttrs)
-  const numberTags = phones.map((phone) => `    <Number ${numberAttrStr}>${phone}</Number>`).join("\n")
+  const numberTags = phones
+    .map((phone) => {
+      const answerUrl = opts.answerUrlByE164?.[phone]
+      const attrs = answerUrl ? { ...baseNumberAttrs, url: answerUrl } : baseNumberAttrs
+      return `    <Number ${serializeTexmlAttrs(attrs)}>${phone}</Number>`
+    })
+    .join("\n")
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial ${dialAttrStr}>

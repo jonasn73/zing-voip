@@ -28,6 +28,8 @@ import {
 import { saveCallIntake } from "@/lib/intake-engine"
 import { isLyncrAdminUser } from "@/lib/lyncr-admin"
 import { getAvailableReceptionistsForLine } from "@/lib/routing-pool"
+import { resolveBusinessType } from "@/lib/business-type"
+import { handleCallConnected } from "@/app/actions/call-events"
 import { ensureProviderNumbersMessagingReady } from "@/lib/telnyx-messaging-config"
 import type { CertificationModuleData } from "@/lib/types"
 
@@ -571,6 +573,16 @@ export async function triggerMockCall(businessLineId: string): Promise<TriggerMo
         ended_at: endedAt.toISOString(),
         duration_seconds: durationSeconds,
         routed_to_name: `${receptionist.name} · ${businessName}`,
+      })
+
+      // Pop the live intake form on the receptionist's HUD in real time (no 15s wait).
+      await handleCallConnected({
+        receptionistId: receptionist.id,
+        callLogId: sid,
+        businessType: resolveBusinessType(match.industry_tag),
+        callerNumber,
+        callerName,
+        businessName,
       })
 
       notified.push({ id: receptionist.id, name: receptionist.name })

@@ -2,10 +2,12 @@
 
 // Receptionist workspace — live status, payout metrics, and personal call ledger.
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2, PhoneCall, PhoneIncoming, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ReceptionistPortalDashboard } from "@/lib/types"
+import { getPusherClient } from "@/lib/realtime/pusher-client"
+import { ReceptionistLiveIntake, type LiveCallSession } from "@/components/receptionist-live-intake"
 import {
   WorkspacePage,
   WorkspacePageHeader,
@@ -113,9 +115,11 @@ export function ReceptionistPortalView() {
   const [dashboard, setDashboard] = useState<ReceptionistPortalDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // The live call that should take over the HUD with the intake form (real-time).
+  const [activeCall, setActiveCall] = useState<LiveCallSession | null>(null)
 
-  const load = useCallback(() => {
-    setLoading(true)
+  const load = useCallback((opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     fetch("/api/receptionist/dashboard", { credentials: "include", cache: "no-store" })
       .then(async (res) => {
         const json = (await res.json()) as { error?: string; data?: ReceptionistPortalDashboard }
@@ -129,9 +133,46 @@ export function ReceptionistPortalView() {
 
   useEffect(() => {
     load()
-    const timer = window.setInterval(load, 15_000)
+    const timer = window.setInterval(() => load({ silent: true }), 15_000)
     return () => window.clearInterval(timer)
   }, [load])
+
+  // Real-time: subscribe to receptionist-{id} so the intake form pops instantly on answer,
+  // bypassing the 15s poll. Falls back silently to polling when Pusher isn't configured.
+  const receptionistId = dashboard?.receptionist.id ?? null
+  const dashboardRef = useRef<ReceptionistPortalDashboard | null>(null)
+  dashboardRef.current = dashboard
+  useEffect(() => {
+    if (!receptionistId) return
+    const pusher = getPusherClient()
+    if (!pusher) return
+    const channelName = `receptionist-${receptionistId}`
+    const channel = pusher.subscribe(channelName)
+
+    const onConnected = (payload: LiveCallSession) => {
+      setActiveCall({
+        callLogId: payload.callLogId,
+        businessType: payload.businessType ?? "generic",
+        callerNumber: payload.callerNumber ?? null,
+        callerName: payload.callerName ?? null,
+        businessName: payload.businessName ?? dashboardRef.current?.business_name ?? null,
+        startedAt: payload.startedAt ?? new Date().toISOString(),
+      })
+      load({ silent: true })
+    }
+    const onEnded = () => {
+      setActiveCall(null)
+      load({ silent: true })
+    }
+
+    channel.bind("call-connected", onConnected)
+    channel.bind("call-ended", onEnded)
+    return () => {
+      channel.unbind("call-connected", onConnected)
+      channel.unbind("call-ended", onEnded)
+      pusher.unsubscribe(channelName)
+    }
+  }, [receptionistId, load])
 
   if (loading && !dashboard) {
     return (
@@ -169,7 +210,18 @@ export function ReceptionistPortalView() {
         }
       />
 
-      <LiveStatusPanel dashboard={dashboard} />
+      {activeCall ? (
+        <ReceptionistLiveIntake
+          session={activeCall}
+          callerNameFallback={dashboard.live_status.mode === "on_call" ? dashboard.live_status.caller_name : null}
+          onDismiss={() => {
+            setActiveCall(null)
+            load({ silent: true })
+          }}
+        />
+      ) : (
+        <LiveStatusPanel dashboard={dashboard} />
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <WorkspaceStatCard

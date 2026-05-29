@@ -65,6 +65,7 @@ import {
   resolveInboundFastDialTimeoutSeconds,
 } from "@/lib/telnyx-inbound-media-quality"
 import { buildRoutingPoolDialResponse, getAvailableReceptionistsForLine } from "@/lib/routing-pool"
+import { buildReceptionistAnswerUrl } from "@/lib/receptionist-answer-url"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -397,12 +398,27 @@ function tryFastInboundPstnDial(params: {
   const ownerLegQuery = hasReceptionist ? "" : "&primary=owner&leg=owner-first"
   const action = `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${modeQuery}${ownerLegQuery}${origFromQuery}`
 
+  // When dialing a known platform receptionist, hand Telnyx a per-leg answer URL so
+  // their HUD pops the live intake form the instant their cell phone connects.
+  const answerUrl =
+    hasReceptionist && routing.selected_receptionist_id
+      ? buildReceptionistAnswerUrl({
+          appUrl,
+          receptionistId: routing.selected_receptionist_id,
+          callSid,
+          businessType: "generic",
+          callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
+          callerName,
+        })
+      : undefined
+
   const xml = buildFastReceptionistDialTexml({
     ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
     answerOnBridge,
     timeout: dialTimeoutSec,
     action,
     receptionistE164: dialE164,
+    ...(answerUrl ? { answerUrl } : {}),
   })
 
   after(() => {
@@ -482,6 +498,13 @@ async function tryRoutingPoolInboundDial(params: {
     ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
     timeout: dialTimeoutSec,
     action,
+    answer: {
+      appUrl,
+      callSid,
+      callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
+      callerName,
+      businessName: line.label ?? null,
+    },
   })
 
   const firstRecv = match.receptionists[0]

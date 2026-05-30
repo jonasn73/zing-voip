@@ -20,6 +20,10 @@ import {
   normalizePhoneNumberE164,
   isReasonablePstnDialString,
   markTelnyxInboundDialCallerLegDone,
+  getActivePhoneNumberByE164,
+  getLineHybridRoutingStrategy,
+  listAvailableNetworkReceptionistsForIndustryTag,
+  resolveIndustryTagForLine,
   type IncomingRoutingRow,
 } from "@/lib/db"
 import { normalizeTelnyxAssistantIdForTexml } from "@/lib/telnyx-ai-texml"
@@ -356,9 +360,17 @@ async function receptionistOutboundE164FromIncomingRow(
 }
 
 /** Dial `action` URL path segment — survives Telnyx stripping long query strings. */
-export type TelnyxFallbackPathMode = "recv" | "recv-ai" | "owner" | "owner-ai"
+export type TelnyxFallbackPathMode = "recv" | "recv-ai" | "owner" | "owner-ai" | "network" | "network-ai"
 
-const TELNYX_FALLBACK_PATH_MODES = new Set<string>(["recv", "recv-ai", "owner", "owner-ai"])
+const TELNYX_FALLBACK_PATH_MODES = new Set<string>([
+  "recv",
+  "recv-ai",
+  "owner",
+  "owner-ai",
+  // `network` = the shared Lyncr pool leg is/was ringing between private staff and the owner cell.
+  "network",
+  "network-ai",
+])
 
 export type TelnyxFallbackPathOpts = {
   /** Digits-only DID from `/fallback/u/{userId}/n/{did}/…` when query `bn` is missing or stripped. */
@@ -577,7 +589,12 @@ export async function handleTelnyxFallbackDialEnded(
     const receptionistLegEndedAfterBridge =
       !allowAiHandoffAfterHumanLeg &&
       !primaryWasOwner &&
-      (pathFallbackMode === "recv" || pathFallbackMode === "recv-ai" || receptionistCalleeMatches) &&
+      (pathFallbackMode === "recv" ||
+        pathFallbackMode === "recv-ai" ||
+        // A shared Lyncr network agent picked up — end the caller leg, don't then ring the owner cell.
+        pathFallbackMode === "network" ||
+        pathFallbackMode === "network-ai" ||
+        receptionistCalleeMatches) &&
       dialStatus === "completed" &&
       (pstnBridgeEvidence || shortCompletedLooksAnswered)
     if (receptionistLegEndedAfterBridge) {
@@ -896,7 +913,111 @@ export async function handleTelnyxFallbackDialEnded(
       })
     }
 
+    /**
+     * Hybrid network insertion: the private staff leg just failed and we're about to ring the owner cell.
+     * If this line opted into the shared Lyncr network pool (`allow_lyncr_network_fallback` or the
+     * `hybrid_fallback` strategy), divert into `case "network"` to ring global agents FIRST. The network
+     * leg's own action returns here as `network` mode (→ `networkAlreadyTried`), so the next bounce falls
+     * straight through to the owner cell. We only read the strategy on this private-fail → owner transition.
+     */
+    const networkAlreadyTried =
+      pathFallbackMode === "network" || pathFallbackMode === "network-ai" || legHint === "network"
+    if (fallbackType === "owner" && !primaryWasOwner && !networkAlreadyTried) {
+      try {
+        const hybrid = await getLineHybridRoutingStrategy(userId, effectiveBusinessLine || businessLineE164)
+        const networkFallbackAllowed =
+          hybrid.allow_lyncr_network_fallback === true || hybrid.routing_strategy === "hybrid_fallback"
+        if (networkFallbackAllowed) {
+          fallbackType = "network"
+          console.log(
+            JSON.stringify({
+              zing: "telnyx-fallback-network-divert",
+              userId,
+              callSid,
+              routingStrategy: hybrid.routing_strategy,
+              allowLyncrNetworkFallback: hybrid.allow_lyncr_network_fallback,
+            })
+          )
+        }
+      } catch (e) {
+        // Pre-048 schema or read error → behave exactly as before (ring the owner cell).
+        console.warn("[telnyx-fallback] hybrid strategy read failed; skipping network leg:", e)
+      }
+    }
+
     switch (fallbackType) {
+      // Shared Lyncr network pool — rung between private staff failure and the owner cell backup.
+      case "network": {
+        const networkLine = await getActivePhoneNumberByE164(effectiveBusinessLine || businessLineE164 || "")
+        const networkIndustryTag = networkLine ? await resolveIndustryTagForLine(networkLine) : null
+        const networkAgents = networkIndustryTag
+          ? await listAvailableNetworkReceptionistsForIndustryTag(networkIndustryTag)
+          : []
+        const networkTargets = Array.from(
+          new Set(
+            networkAgents
+              .map((a) => normalizePhoneNumberE164(a.phone))
+              .filter((e) => isReasonablePstnDialString(e))
+          )
+        )
+
+        if (networkTargets.length > 0 && user) {
+          const bnForAction =
+            (bnFromQuery || "").trim() ||
+            effectiveBusinessLine ||
+            businessLineE164 ||
+            (await getPrimaryActiveBusinessNumberE164(userId)) ||
+            ""
+          const bizNorm = bnForAction.trim() ? normalizePhoneNumberE164(bnForAction) : ""
+          const pstnDialCallerE164 = resolvePstnDialCallerIdForInboundForward({
+            inboundFromRaw: inboundCallerRawForPstnId,
+            businessOutboundE164: bizNorm,
+          })
+          const fromDisplayName = buildTelnyxDialFromDisplayName(user?.business_name || "Business")
+          const didPath = bnForAction.replace(/\D/g, "")
+          // After the network leg ends with no answer, bounce back as `network` mode (so we don't loop)
+          // with `leg=owner` marking the owner cell as the final destination.
+          const networkLegBase =
+            didPath.length >= 10
+              ? `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}/n/${didPath}/network`
+              : `${appUrl}/api/voice/telnyx/fallback/u/${encodeURIComponent(userId)}`
+          const networkModeQuery = didPath.length < 10 ? `&zingFbMode=network` : ""
+          const networkRingSec = Math.min(Math.max(lr?.ring_timeout_seconds ?? 20, 10), 45)
+          const dial = texml.dial({
+            ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
+            ...(fromDisplayName ? { fromDisplayName } : {}),
+            answerOnBridge,
+            timeout: networkRingSec,
+            action: `${networkLegBase}?callSid=${encodeURIComponent(callSid)}&leg=owner&bn=${encodeURIComponent(bnForAction)}${networkModeQuery}${origFromSuffix}`,
+            method: "POST",
+          } as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0])
+          // Ring every online global agent simultaneously; first to answer bridges.
+          for (const e164 of networkTargets) dial.number(e164)
+          console.log(
+            JSON.stringify({
+              zing: "telnyx-fallback-network-pool-dial",
+              userId,
+              callSid,
+              industryTag: networkIndustryTag,
+              networkTargets: networkTargets.length,
+            })
+          )
+          break
+        }
+
+        // Zero global agents online (or no owner row) → drop straight through to the owner cell, no extra hop.
+        console.log(
+          JSON.stringify({
+            zing: "telnyx-fallback-network-pool-empty",
+            userId,
+            callSid,
+            industryTag: networkIndustryTag,
+            reason: networkTargets.length === 0 ? "no-online-network-agents" : "no-user",
+          })
+        )
+        // falls through to case "owner"
+      }
+      // eslint-disable-next-line no-fallthrough
       case "owner": {
         if (primaryWasOwner) {
           // After your cell leg: offer Voice AI only when routing explicitly asks for AI (not merely because an assistant id exists — that broke “ring phone then voicemail” lines).

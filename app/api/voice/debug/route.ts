@@ -14,6 +14,7 @@ import {
   getPhoneNumbers,
 } from "@/lib/db"
 import { requireLyncrAdmin } from "@/lib/admin-api-guard"
+import { isLyncrAdminUser } from "@/lib/lyncr-admin"
 import { telnyxHeaders, TEXML_ROUTER_NAMES } from "@/lib/telnyx-config"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
   const ctx = await requireLyncrAdmin(req)
   if (ctx instanceof NextResponse) return ctx
   const userId = ctx.userId
+  // Platform admins get cross-tenant clearance below (debugging any tenant's routing on purpose).
+  // Regular users never reach this code — requireLyncrAdmin already 403s them.
+  const isPlatformAdmin = isLyncrAdminUser(ctx.user)
 
   const url = new URL(req.url)
   const number = url.searchParams.get("number") || "+15025199741"
@@ -156,9 +160,9 @@ export async function GET(req: NextRequest) {
 
   // (3) TENANT OWNERSHIP VALIDATION — before showing ANY PII (owner name/phone,
   // receptionist name/phone, routing config), the looked-up number must belong to the
-  // requesting admin. A found user whose id doesn't match the session is a hard 403,
-  // which blocks cross-tenant PII scanning entirely.
-  if (user && String(user.id) !== String(userId)) {
+  // requesting user. Platform admins are cleared to debug any tenant on purpose; everyone
+  // else gets a hard 403, which blocks cross-tenant PII scanning entirely.
+  if (!isPlatformAdmin && user && String(user.id) !== String(userId)) {
     return NextResponse.json(
       { error: "Forbidden: this phone number belongs to another account." },
       { status: 403 }
@@ -181,8 +185,9 @@ export async function GET(req: NextRequest) {
 
       if (config?.selected_receptionist_id) {
         const rec = await getReceptionist(config.selected_receptionist_id)
-        // Defense-in-depth: only reveal receptionist PII when it belongs to the requester.
-        if (rec && String(rec.user_id) !== String(userId)) {
+        // Defense-in-depth: only reveal receptionist PII when it belongs to the requester
+        // (platform admins are cleared for cross-tenant debugging).
+        if (!isPlatformAdmin && rec && String(rec.user_id) !== String(userId)) {
           return NextResponse.json(
             { error: "Forbidden: receptionist belongs to another account." },
             { status: 403 }

@@ -271,6 +271,63 @@ export function buildFastReceptionistDialTexml(opts: {
 }
 
 /**
+ * SIP domain receptionist browsers register to (a Telnyx Credential Connection's SIP domain).
+ * Defaults to Telnyx's shared `sip.telnyx.com`; override per-account/connection via env.
+ */
+export function readTelnyxWebRtcSipDomain(): string {
+  const raw = (process.env.TELNYX_WEBRTC_SIP_DOMAIN || "").trim()
+  return raw || "sip.telnyx.com"
+}
+
+/**
+ * Build the `sip:` URI for a receptionist's registered browser.
+ * Returns null when no `sip_username` is provisioned — the caller must then fall back to PSTN
+ * so a WEB receptionist without a live SIP endpoint never results in a dropped call.
+ */
+export function resolveReceptionistSipUri(sipUsername: string | null | undefined): string | null {
+  const user = String(sipUsername ?? "").trim()
+  if (!user) return null
+  // Allow a fully-qualified URI to pass through; otherwise assemble sip:<user>@<domain>.
+  if (/^sips?:/i.test(user)) return user
+  return `sip:${user}@${readTelnyxWebRtcSipDomain()}`
+}
+
+/**
+ * Fast inbound `<Dial><Sip>` TeXML — rings the receptionist's registered browser over Telnyx WebRTC.
+ * Mirrors the PSTN builder's Dial attributes + `action`, so a no-answer still falls through to the
+ * existing owner / AI / voicemail fallback chain exactly like a cell forward does.
+ */
+export function buildFastReceptionistDialWebRtcTexml(opts: {
+  callerId?: string
+  answerOnBridge: boolean
+  timeout: number
+  action: string
+  sipUri: string
+  /** Telnyx fetches this on the callee leg the instant they answer (whisper + realtime HUD trigger). */
+  answerUrl?: string
+}): string {
+  // Same Dial-level attributes as a cell forward: ringback, bridge timing, and the fallback action URL.
+  const dialAttrs = buildInboundPstnDialAttributes({
+    ...(opts.callerId ? { callerId: opts.callerId } : {}),
+    answerOnBridge: opts.answerOnBridge,
+    timeout: opts.timeout,
+    action: opts.action,
+    method: "POST",
+  })
+  const sipAttrs = opts.answerUrl ? { url: opts.answerUrl } : {}
+  const dialAttrStr = serializeTexmlAttrs(dialAttrs)
+  const sipAttrStr = serializeTexmlAttrs(sipAttrs)
+  const uri = escapeXmlAttr(opts.sipUri.trim())
+  const sipOpen = sipAttrStr ? `<Sip ${sipAttrStr}>` : "<Sip>"
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial ${dialAttrStr}>
+    ${sipOpen}${uri}</Sip>
+  </Dial>
+</Response>`
+}
+
+/**
  * Skill-pool inbound TeXML — dials one or many receptionist PSTN legs sequentially or simultaneously.
  */
 export function buildRoutingPoolDialTexml(opts: {

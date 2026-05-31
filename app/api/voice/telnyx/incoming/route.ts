@@ -54,6 +54,8 @@ import {
   buildInboundPstnDialAttributes,
   buildInboundPstnNumberAttributes,
   buildFastReceptionistDialTexml,
+  buildFastReceptionistDialWebRtcTexml,
+  resolveReceptionistSipUri,
   finalizeInboundTexmlXml,
   readInboundFastDialAnswerOnBridge,
   readInboundRoutingCfgOverlayEnabled,
@@ -385,14 +387,34 @@ function tryFastInboundPstnDial(params: {
         })
       : undefined
 
-  const xml = buildFastReceptionistDialTexml({
-    ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
-    answerOnBridge,
-    timeout: dialTimeoutSec,
-    action,
-    receptionistE164: dialE164,
-    ...(answerUrl ? { answerUrl } : {}),
-  })
+  // Endpoint multiplexing (050): a receptionist set to 'WEB' rings their registered browser over
+  // Telnyx WebRTC/SIP. We only take the SIP path when a sip_username actually resolves to a URI;
+  // otherwise we fall straight back to the PSTN <Number> below so a WEB receptionist without a
+  // provisioned/registered endpoint never causes a dropped call. (A no-answer on either path still
+  // flows through the same `action` fallback chain → owner / AI / voicemail.)
+  const webSipUri =
+    hasReceptionist && routing.receptionist_routing_endpoint === "WEB"
+      ? resolveReceptionistSipUri(routing.receptionist_sip_username)
+      : null
+  const dialEndpoint: "web-sip" | "cell-pstn" = webSipUri ? "web-sip" : "cell-pstn"
+
+  const xml = webSipUri
+    ? buildFastReceptionistDialWebRtcTexml({
+        ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
+        answerOnBridge,
+        timeout: dialTimeoutSec,
+        action,
+        sipUri: webSipUri,
+        ...(answerUrl ? { answerUrl } : {}),
+      })
+    : buildFastReceptionistDialTexml({
+        ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
+        answerOnBridge,
+        timeout: dialTimeoutSec,
+        action,
+        receptionistE164: dialE164,
+        ...(answerUrl ? { answerUrl } : {}),
+      })
 
   after(() => {
     void insertCallLog({
@@ -424,6 +446,7 @@ function tryFastInboundPstnDial(params: {
       answerOnBridge,
       dialTimeoutSec,
       wantsAiAfterNoAnswer,
+      dialEndpoint,
       hotPath: "raw-texml",
     })
   )

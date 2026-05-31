@@ -240,6 +240,10 @@ export type IncomingRoutingRow = {
   ai_ring_owner_first: boolean
   receptionist_name: string | null
   receptionist_phone: string | null
+  /** Where the selected receptionist answers: 'WEB' (Telnyx WebRTC/SIP) or 'CELL' (PSTN). Defaults 'CELL'. */
+  receptionist_routing_endpoint: "WEB" | "CELL"
+  /** SIP username for WEB routing (built into `sip:<user>@<domain>`). NULL = not provisioned → PSTN fallback. */
+  receptionist_sip_username: string | null
   /** `phone_numbers.label` — shown to receptionist in whisper / UI (e.g. "Key Squad 502"). */
   phone_line_label: string
   /** `phone_numbers.friendly_name` — display form of the DID. */
@@ -352,7 +356,10 @@ async function fetchInboundDialSnapshotSql(normalized: string): Promise<Incoming
         COALESCE(pn.inbound_fallback_type, 'owner') AS fallback_type,
         COALESCE(pn.inbound_ring_timeout_seconds, 30) AS ring_timeout_seconds,
         COALESCE(pn.inbound_ai_ring_owner_first, false) AS ai_ring_owner_first,
-        COALESCE(pn.inbound_account_status, 'active') AS account_status
+        COALESCE(pn.inbound_account_status, 'active') AS account_status,
+        -- to_jsonb(pn)->>'col' reads a column that may not exist yet (pre-050) without erroring.
+        to_jsonb(pn) ->> 'inbound_routing_endpoint' AS inbound_routing_endpoint,
+        to_jsonb(pn) ->> 'inbound_sip_username' AS inbound_sip_username
       FROM phone_numbers pn
       WHERE pn.status = 'active'
         AND pn.number = ${normalized}
@@ -376,6 +383,10 @@ async function fetchInboundDialSnapshotSql(normalized: string): Promise<Incoming
       ai_ring_owner_first: row.ai_ring_owner_first === true || row.ai_ring_owner_first === "t",
       receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
       receptionist_phone: recvId ? dialE164 : dialE164,
+      // Endpoint mirror from the snapshot; unknown/missing → safe 'CELL' (PSTN) default.
+      receptionist_routing_endpoint:
+        String(row.inbound_routing_endpoint ?? "").toUpperCase() === "WEB" ? "WEB" : "CELL",
+      receptionist_sip_username: row.inbound_sip_username ? String(row.inbound_sip_username) : null,
       phone_line_label: "Main Line",
       phone_line_friendly_name: "",
       account_status: row.account_status != null ? String(row.account_status) : "active",
@@ -1792,6 +1803,10 @@ function mapIncomingRoutingRowFromDb(row: Record<string, unknown>): IncomingRout
     ai_ring_owner_first: pgBool(row.ai_ring_owner_first),
     receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
     receptionist_phone: row.receptionist_phone ? String(row.receptionist_phone) : null,
+    // Normalize to the two valid values; anything missing/unknown is treated as the safe 'CELL' (PSTN) default.
+    receptionist_routing_endpoint:
+      String(row.receptionist_routing_endpoint ?? "").toUpperCase() === "WEB" ? "WEB" : "CELL",
+    receptionist_sip_username: row.receptionist_sip_username ? String(row.receptionist_sip_username) : null,
     phone_line_label: row.phone_line_label != null ? String(row.phone_line_label) : "Main Line",
     phone_line_friendly_name: row.phone_line_friendly_name != null ? String(row.phone_line_friendly_name) : "",
     account_status: row.account_status != null ? String(row.account_status) : "active",
@@ -1838,6 +1853,8 @@ async function writeInboundRoutingSnapshot(
             OR regexp_replace(number, '\\D', '', 'g') = ${digitKey}
           )
       `
+      // Clear the endpoint mirror too (guarded so a missing column never blocks the clear).
+      await writeInboundEndpointSnapshot(normalized, digitKey, null, null)
       return
     }
     await sql`
@@ -1857,9 +1874,43 @@ async function writeInboundRoutingSnapshot(
           OR regexp_replace(number, '\\D', '', 'g') = ${digitKey}
         )
     `
+    // Endpoint mirror (050). Separate guarded write so a pre-migration missing column
+    // can never block the core snapshot above. 42703 = "undefined_column" → ignore.
+    await writeInboundEndpointSnapshot(
+      normalized,
+      digitKey,
+      row.receptionist_routing_endpoint,
+      row.receptionist_sip_username
+    )
   } catch (e) {
     if (isMissingInboundDialSnapshotColumnError(e)) return
     throw e
+  }
+}
+
+/** Guarded snapshot write for the 050 endpoint columns — tolerates the column not existing yet. */
+async function writeInboundEndpointSnapshot(
+  normalized: string,
+  digitKey: string,
+  endpoint: "WEB" | "CELL" | null,
+  sipUsername: string | null
+): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE phone_numbers
+      SET
+        inbound_routing_endpoint = ${endpoint},
+        inbound_sip_username = ${sipUsername}
+      WHERE status = 'active'
+        AND (
+          number = ${normalized}
+          OR regexp_replace(number, '\\D', '', 'g') = ${digitKey}
+        )
+    `
+  } catch (e) {
+    // 42703 = undefined_column (migration 050 not applied yet). Anything else is a real error.
+    if (pgErrorCode(e) !== "42703") throw e
   }
 }
 
@@ -1933,6 +1984,8 @@ async function fetchIncomingRoutingFullFromDb(
       COALESCE(rc_def.ai_ring_owner_first, false) AS ai_ring_owner_first,
       reff.name AS receptionist_name,
       reff.phone AS receptionist_phone,
+      to_jsonb(reff) ->> 'routing_endpoint' AS receptionist_routing_endpoint,
+      to_jsonb(reff) ->> 'sip_username' AS receptionist_sip_username,
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
@@ -2004,6 +2057,8 @@ async function fetchIncomingRoutingFullFromDb(
       COALESCE(rc_def.ai_ring_owner_first, false) AS ai_ring_owner_first,
       reff.name AS receptionist_name,
       reff.phone AS receptionist_phone,
+      to_jsonb(reff) ->> 'routing_endpoint' AS receptionist_routing_endpoint,
+      to_jsonb(reff) ->> 'sip_username' AS receptionist_sip_username,
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,

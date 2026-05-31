@@ -10,8 +10,10 @@ import {
   Hourglass,
   AudioWaveform,
   Settings2,
+  Network,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import type { RoutingStrategy } from "@/lib/types"
 import { SheetInfoTrigger } from "@/components/sheet-info-trigger"
 import {
   businessNumbersMatch,
@@ -58,6 +60,7 @@ function FlowStepCard({
   detail,
   onOpen,
   loading,
+  accent = "primary",
 }: {
   step: string
   title: string
@@ -66,31 +69,58 @@ function FlowStepCard({
   detail?: string
   onOpen: () => void
   loading?: boolean
+  // "network" paints the shared Lyncr pool card violet to set it apart from the primary flow.
+  accent?: "primary" | "network"
 }) {
+  const isNetwork = accent === "network"
   return (
     <button
       type="button"
       onClick={onOpen}
       disabled={loading}
       className={cn(
-        "group relative flex min-h-[12.5rem] min-w-0 flex-1 flex-col rounded-2xl border border-border/70 bg-gradient-to-b from-card to-background/80 p-5 text-left shadow-sm",
+        "group relative flex min-h-[12.5rem] min-w-0 flex-1 flex-col rounded-2xl border p-5 text-left shadow-sm",
         "transform-gpu will-change-[opacity,transform] backface-hidden transition-[border-color,box-shadow,opacity] duration-200",
-        "hover:border-primary/45 hover:shadow-[0_0_32px_-12px_var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+        "focus-visible:outline-none focus-visible:ring-2",
+        isNetwork
+          ? "border-violet-500/40 bg-gradient-to-b from-violet-500/10 to-background/80 hover:border-violet-500/60 hover:shadow-[0_0_32px_-12px_rgb(139_92_246)] focus-visible:ring-violet-500/50"
+          : "border-border/70 bg-gradient-to-b from-card to-background/80 hover:border-primary/45 hover:shadow-[0_0_32px_-12px_var(--primary)] focus-visible:ring-primary/50",
         loading && "pointer-events-none opacity-50"
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/30 bg-primary/15 shadow-[0_0_20px_-6px_var(--primary)]">
-          <Icon className="h-5 w-5 text-primary" aria-hidden />
+        <div
+          className={cn(
+            "flex h-11 w-11 items-center justify-center rounded-xl border",
+            isNetwork
+              ? "border-violet-500/30 bg-violet-500/15 shadow-[0_0_20px_-6px_rgb(139_92_246)]"
+              : "border-primary/30 bg-primary/15 shadow-[0_0_20px_-6px_var(--primary)]"
+          )}
+        >
+          <Icon className={cn("h-5 w-5", isNetwork ? "text-violet-300" : "text-primary")} aria-hidden />
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-primary/80">Step {step}</span>
+        <span
+          className={cn(
+            "text-[10px] font-bold uppercase tracking-wider",
+            isNetwork ? "text-violet-300/80" : "text-primary/80"
+          )}
+        >
+          Step {step}
+        </span>
       </div>
       <div className="mt-4 flex flex-1 flex-col gap-1">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
         <p className="text-lg font-semibold leading-tight text-foreground sm:text-xl">{value}</p>
-        {detail ? <p className="text-xs tabular-nums text-zinc-500">{detail}</p> : null}
+        {detail ? <p className="text-xs text-zinc-500">{detail}</p> : null}
       </div>
-      <span className="mt-5 inline-flex w-full items-center justify-center rounded-lg border border-border/70 bg-transparent px-4 py-2.5 text-xs font-semibold text-muted-foreground transition-[border-color,background-color,color] duration-200 group-hover:border-primary/50 group-hover:bg-primary/10 group-hover:text-primary">
+      <span
+        className={cn(
+          "mt-5 inline-flex w-full items-center justify-center rounded-lg border border-border/70 bg-transparent px-4 py-2.5 text-xs font-semibold text-muted-foreground transition-[border-color,background-color,color] duration-200",
+          isNetwork
+            ? "group-hover:border-violet-500/50 group-hover:bg-violet-500/10 group-hover:text-violet-200"
+            : "group-hover:border-primary/50 group-hover:bg-primary/10 group-hover:text-primary"
+        )}
+      >
         Configure
       </span>
     </button>
@@ -108,10 +138,27 @@ export type DashboardCallFlowProps = {
   ownerPhoneDisplay: string
   ringTimeoutSec: number
   activeFallbackLabel: string
+  // Hybrid-network state (migrations 048/049) — drives the inline "Lyncr Network Pool" step.
+  routingStrategy: RoutingStrategy
+  allowLyncrNetworkFallback: boolean
+  // Opens the routing-strategy dialog (private_only / lyncr_only / hybrid_fallback).
+  onConfigureStrategy: () => void
   setDashboardStoryKey: (key: string | null) => void
   setWhoAnswersOpen: (v: boolean) => void
   setRingBackupOpen: (v: boolean) => void
   setShowFallbackSettings: (v: boolean) => void
+}
+
+/** True when the shared Lyncr network participates in this line's call flow. */
+export function isLyncrNetworkStepActive(
+  routingStrategy: RoutingStrategy,
+  allowLyncrNetworkFallback: boolean
+): boolean {
+  return (
+    routingStrategy === "hybrid_fallback" ||
+    routingStrategy === "lyncr_only" ||
+    (routingStrategy === "private_only" && allowLyncrNetworkFallback)
+  )
 }
 
 export const DashboardCallFlow = memo(function DashboardCallFlow({
@@ -125,6 +172,9 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
   ownerPhoneDisplay,
   ringTimeoutSec,
   activeFallbackLabel,
+  routingStrategy,
+  allowLyncrNetworkFallback,
+  onConfigureStrategy,
   setDashboardStoryKey,
   setWhoAnswersOpen,
   setRingBackupOpen,
@@ -138,6 +188,7 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
     routingBusinessNumber && businessNumbers.some((b) => businessNumbersMatch(b.number, routingBusinessNumber))
       ? routingBusinessNumber
       : businessNumbers[0]?.number ?? ""
+  const networkStepActive = isLyncrNetworkStepActive(routingStrategy, allowLyncrNetworkFallback)
 
   return (
     <section
@@ -220,9 +271,25 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
               onOpen={() => setWhoAnswersOpen(true)}
               loading={routingLineDetailLoading}
             />
+            {/* Intermediary shared-pool step — only when the Lyncr network is in this line's flow. */}
+            {networkStepActive ? (
+              <>
+                <FlowConnector />
+                <FlowStepCard
+                  step="3"
+                  title="Lyncr Network Pool"
+                  icon={Network}
+                  value="Lyncr Network Pool"
+                  detail="Shared fallback network active"
+                  onOpen={onConfigureStrategy}
+                  loading={routingLineDetailLoading}
+                  accent="network"
+                />
+              </>
+            ) : null}
             <FlowConnector />
             <FlowStepCard
-              step="3"
+              step={networkStepActive ? "4" : "3"}
               title="Ring & backup"
               icon={Hourglass}
               value={`${ringTimeoutSec}s`}
@@ -232,7 +299,7 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
             />
             <FlowConnector />
             <FlowStepCard
-              step="4"
+              step={networkStepActive ? "5" : "4"}
               title="Voice & AI"
               icon={AudioWaveform}
               value="Greetings"

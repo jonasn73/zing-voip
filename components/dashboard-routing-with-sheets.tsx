@@ -4,10 +4,16 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { DashboardRoutingSurface, type DashboardRoutingSurfaceProps } from "@/components/dashboard-routing-surface"
 import { DashboardRoutingSheets, type DashboardRoutingSheetsProps } from "@/components/dashboard-routing-sheets"
+import { RoutingStrategyDialog } from "@/components/routing-strategy-dialog"
+import type { RoutingStrategy } from "@/lib/types"
 
 type Props = Omit<
   DashboardRoutingSurfaceProps,
-  "setWhoAnswersOpen" | "setRingBackupOpen" | "setShowFallbackSettings" | "setDashboardStoryKey"
+  | "setWhoAnswersOpen"
+  | "setRingBackupOpen"
+  | "setShowFallbackSettings"
+  | "setDashboardStoryKey"
+  | "onConfigureStrategy"
 > &
   Omit<
     DashboardRoutingSheetsProps,
@@ -19,7 +25,11 @@ type Props = Omit<
     | "setShowFallbackSettings"
     | "dashboardStoryKey"
     | "setDashboardStoryKey"
-  >
+  > & {
+    // Setters so the strategy dialog can push fresh values back into the dashboard canvas.
+    setRoutingStrategy: (s: RoutingStrategy) => void
+    setAllowLyncrNetworkFallback: (v: boolean) => void
+  }
 
 /** Owns drawer open state so toggling sheets does not re-render the call-flow surface. */
 export function DashboardRoutingWithSheets(props: Props) {
@@ -28,6 +38,7 @@ export function DashboardRoutingWithSheets(props: Props) {
   const [whoAnswersOpen, setWhoAnswersOpen] = useState(false)
   const [ringBackupOpen, setRingBackupOpen] = useState(false)
   const [showFallbackSettings, setShowFallbackSettings] = useState(false)
+  const [strategyDialogOpen, setStrategyDialogOpen] = useState(false)
   const [dashboardStoryKey, setDashboardStoryKey] = useState<string | null>(null)
 
   useEffect(() => {
@@ -50,6 +61,9 @@ export function DashboardRoutingWithSheets(props: Props) {
     ownerPhoneDisplay: props.ownerPhoneDisplay,
     ringTimeoutSec: props.ringTimeoutSec,
     activeFallbackLabel: props.activeFallbackLabel,
+    routingStrategy: props.routingStrategy,
+    allowLyncrNetworkFallback: props.allowLyncrNetworkFallback,
+    onConfigureStrategy: () => setStrategyDialogOpen(true),
     setDashboardStoryKey,
     setWhoAnswersOpen,
     setRingBackupOpen,
@@ -59,6 +73,17 @@ export function DashboardRoutingWithSheets(props: Props) {
   return (
   <>
       <DashboardRoutingSurface {...surfaceProps} />
+      <RoutingStrategyDialog
+        open={strategyDialogOpen}
+        onOpenChange={setStrategyDialogOpen}
+        businessNumber={props.routingBusinessNumber}
+        initialStrategy={props.routingStrategy}
+        initialAllowFallback={props.allowLyncrNetworkFallback}
+        onSaved={(data) => {
+          props.setRoutingStrategy(data.routing_strategy)
+          props.setAllowLyncrNetworkFallback(data.allow_lyncr_network_fallback)
+        }}
+      />
       <DashboardRoutingSheets
         whoAnswersOpen={whoAnswersOpen}
         setWhoAnswersOpen={setWhoAnswersOpen}

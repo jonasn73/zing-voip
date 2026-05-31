@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useToast } from "@/hooks/use-toast"
-import type { PhoneNumberRoutingSummary } from "@/lib/types"
+import type { PhoneNumberRoutingSummary, RoutingStrategy } from "@/lib/types"
 import { DashboardRoutingWithSheets } from "@/components/dashboard-routing-with-sheets"
 import { Sms10DlcNudgeBanner } from "@/components/sms-10dlc-nudge-banner"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
@@ -29,6 +29,9 @@ export function DashboardPage() {
   const [aiRingOwnerFirst, setAiRingOwnerFirst] = useState(false)
   /** Ring duration for the first leg before no-answer fallback (from GET /api/routing). */
   const [ringTimeoutSec, setRingTimeoutSec] = useState(30)
+  /** Hybrid-network routing (migrations 048/049) — drives the Call flow "Lyncr Network Pool" step. */
+  const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>("private_only")
+  const [allowLyncrNetworkFallback, setAllowLyncrNetworkFallback] = useState(false)
 
   // AI assistant state
   const [hasTelnyxAiAssistant, setHasTelnyxAiAssistant] = useState(false)
@@ -159,6 +162,14 @@ export function DashboardPage() {
           if (typeof rt === "number" && Number.isFinite(rt)) {
             setRingTimeoutSec(snapDashboardRingTimeoutSec(rt))
           }
+          // Hybrid-network fields read defensively (default to private_only on un-migrated rows).
+          const strat = rData.config.routing_strategy
+          if (strat === "private_only" || strat === "lyncr_only" || strat === "hybrid_fallback") {
+            setRoutingStrategy(strat)
+          } else {
+            setRoutingStrategy("private_only")
+          }
+          setAllowLyncrNetworkFallback(Boolean(rData.config.allow_lyncr_network_fallback))
         }
       })
       .catch(() => {})
@@ -367,6 +378,10 @@ export function DashboardPage() {
         ownerPhoneDisplay={ownerPhoneDisplay}
         ringTimeoutSec={ringTimeoutSec}
         activeFallbackLabel={activeFallbackMeta?.label ?? "Backup"}
+        routingStrategy={routingStrategy}
+        allowLyncrNetworkFallback={allowLyncrNetworkFallback}
+        setRoutingStrategy={setRoutingStrategy}
+        setAllowLyncrNetworkFallback={setAllowLyncrNetworkFallback}
         receptionists={receptionists}
         selectedReceptionistId={selectedReceptionistId}
         clearReceptionist={clearReceptionist}

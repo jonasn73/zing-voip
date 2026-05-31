@@ -9,6 +9,7 @@ import { DashboardCallFlow } from "@/components/dashboard-call-flow"
 import { DashboardRoutingSidebar } from "@/components/dashboard-routing-sidebar"
 import { useDashboardNumbersModal } from "@/components/dashboard-numbers-modal-context"
 import type { Contact, DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
+import type { RoutingStrategy } from "@/lib/types"
 
 export type DashboardRoutingSurfaceProps = {
   quickSetupDecided: boolean
@@ -24,6 +25,9 @@ export type DashboardRoutingSurfaceProps = {
   ownerPhoneDisplay: string
   ringTimeoutSec: number
   activeFallbackLabel: string
+  routingStrategy: RoutingStrategy
+  allowLyncrNetworkFallback: boolean
+  onConfigureStrategy: () => void
   setDashboardStoryKey: (key: string | null) => void
   setWhoAnswersOpen: (open: boolean) => void
   setRingBackupOpen: (open: boolean) => void
@@ -45,6 +49,9 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
   ownerPhoneDisplay,
   ringTimeoutSec,
   activeFallbackLabel,
+  routingStrategy,
+  allowLyncrNetworkFallback,
+  onConfigureStrategy,
   setDashboardStoryKey,
   setWhoAnswersOpen,
   setRingBackupOpen,
@@ -162,6 +169,9 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
         ownerPhoneDisplay={ownerPhoneDisplay}
         ringTimeoutSec={ringTimeoutSec}
         activeFallbackLabel={activeFallbackLabel}
+        routingStrategy={routingStrategy}
+        allowLyncrNetworkFallback={allowLyncrNetworkFallback}
+        onConfigureStrategy={onConfigureStrategy}
         setDashboardStoryKey={setDashboardStoryKey}
         setWhoAnswersOpen={setWhoAnswersOpen}
         setRingBackupOpen={setRingBackupOpen}

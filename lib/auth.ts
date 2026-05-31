@@ -6,12 +6,13 @@
 // Set SESSION_SECRET in .env.local (e.g. openssl rand -base64 32).
 
 import { createHmac, timingSafeEqual } from "crypto"
+import { env } from "@/lib/env" // Type-safe, validated env manager (replaces raw process.env).
 
 const COOKIE_NAME = "zing_session"
 const MAX_AGE_SEC = 60 * 60 * 24 * 30 // 30 days so session survives refreshes and long gaps
 
 function getSecret(): string {
-  const secret = process.env.SESSION_SECRET
+  const secret = env.SESSION_SECRET // Validated by lib/env.ts (required, min 16 chars).
   if (!secret || secret.length < 16) {
     throw new Error("SESSION_SECRET must be set and at least 16 characters")
   }

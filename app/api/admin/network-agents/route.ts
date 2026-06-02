@@ -15,6 +15,7 @@ import {
   listGlobalNetworkReceptionists,
   normalizePhoneNumberE164,
 } from "@/lib/db"
+import { normalizeRoutingPoolSkillTag } from "@/lib/routing-pool-skills"
 
 export async function GET(req: NextRequest) {
   const ctx = await requireLyncrAdmin(req)
@@ -48,14 +49,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "A valid phone number is required." }, { status: 400 })
     }
 
-    // skills can arrive as an array or a comma-separated string.
+    // skills can arrive as an array (possibly with comma-joined entries) or a comma-separated string.
+    // Split every entry on commas and slugify so custom tags ("Auto Detailing") become canonical
+    // slugs ("auto_detailing") that match a line's normalized industry_tag.
     const rawSkills = Array.isArray(body.skills)
       ? body.skills
       : typeof body.skills === "string"
-        ? body.skills.split(",")
+        ? [body.skills]
         : []
     const skills = Array.from(
-      new Set(rawSkills.map((s) => String(s).trim().toLowerCase()).filter(Boolean))
+      new Set(
+        rawSkills
+          .flatMap((s) => String(s).split(","))
+          .map((s) => normalizeRoutingPoolSkillTag(s))
+          .filter(Boolean)
+      )
     )
 
     const agent = await insertGlobalNetworkReceptionist({ name, phone, skills })

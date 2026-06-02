@@ -11,7 +11,7 @@ import {
   type PlatformRoutingPoolReceptionist,
 } from "@/lib/db"
 import type { PhoneNumber, RoutingStrategy } from "@/lib/types"
-import type { RoutingPoolMode } from "@/lib/routing-pool-skills"
+import { normalizeRoutingPoolSkillTag, type RoutingPoolMode } from "@/lib/routing-pool-skills"
 import {
   buildRoutingPoolDialTexml,
   finalizeInboundTexmlXml,
@@ -19,6 +19,23 @@ import {
 } from "@/lib/telnyx-inbound-media-quality"
 import { resolveBusinessType } from "@/lib/business-type"
 import { buildReceptionistAnswerUrl } from "@/lib/receptionist-answer-url"
+
+/**
+ * Relevance rank of an agent's skills against the line tag (lower = better, rings first).
+ *   0 → the agent carries the exact tag as a skill (e.g. line "detailing_core" / agent "detailing_core")
+ *   1 → the line tag is one of a skill's underscore tokens (line "detailing" / agent "auto_detailing")
+ *   2 → only the base family lines up (line "auto_wash" / agent "auto_detailing")
+ *   3 → matched some other way (defensive; keeps a stable order)
+ * This mirrors the SQL match so the dial order prioritizes the most specifically-skilled agents.
+ */
+function skillMatchRank(skills: string[], tag: string): number {
+  const slugs = skills.map((s) => normalizeRoutingPoolSkillTag(s)).filter(Boolean)
+  if (slugs.includes(tag)) return 0
+  if (slugs.some((s) => s.split("_").includes(tag))) return 1
+  const tagBase = tag.split("_")[0]
+  if (slugs.some((s) => s.split("_")[0] === tagBase)) return 2
+  return 3
+}
 
 export type RoutingPoolMatchResult = {
   line: PhoneNumber
@@ -75,6 +92,15 @@ export async function getAvailableReceptionistsForLine(lineId: string): Promise<
       matched_scope = "network"
     }
   }
+
+  // Prioritize the most specifically-skilled agents so they ring first (esp. for sequential dialing).
+  receptionists = receptionists
+    .slice()
+    .sort(
+      (a, b) =>
+        skillMatchRank(a.skills, industryTag) - skillMatchRank(b.skills, industryTag) ||
+        a.name.localeCompare(b.name)
+    )
 
   const dial_targets = receptionists
     .map((r) => normalizePhoneNumberE164(r.phone))

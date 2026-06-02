@@ -1011,8 +1011,17 @@ export async function listAvailablePlatformReceptionistsForIndustryTag(
         AND (
           ${tag} = ANY(r.skills)
           OR EXISTS (
-            SELECT 1 FROM unnest(r.skills) AS skill_slug
-            WHERE split_part(replace(skill_slug, '-', '_'), '_', 1) = ${tag}
+            -- Symmetric, token-aware skill match. Normalize each stored skill to a slug, then match when:
+            --   * the slug equals the tag exactly ("detailing_core" = "detailing_core"), OR
+            --   * the line tag is one of the skill's underscore tokens ("detailing" ∈ "auto_detailing"), OR
+            --   * the base families line up ("auto_detailing" ↔ "auto_wash" both start "auto").
+            SELECT 1 FROM unnest(r.skills) AS raw_skill
+            CROSS JOIN LATERAL (
+              SELECT lower(replace(replace(raw_skill, '-', '_'), ' ', '_')) AS slug
+            ) sk
+            WHERE sk.slug = ${tag}
+              OR ${tag} = ANY(string_to_array(sk.slug, '_'))
+              OR split_part(sk.slug, '_', 1) = split_part(${tag}, '_', 1)
           )
         )
         AND (
@@ -1255,9 +1264,16 @@ export async function insertGlobalNetworkReceptionist(params: {
       : params.name.slice(0, 2).toUpperCase()
   const colors = ["bg-primary", "bg-chart-2", "bg-chart-5", "bg-chart-3", "bg-chart-4"]
   const color = colors[Math.floor(Math.random() * colors.length)]
-  // Dedupe + drop blanks so the skill tags stored are clean.
+  // Slugify every tag to the canonical form the line side uses (lowercase, spaces/dashes -> underscores),
+  // splitting any comma-joined entries, then dedupe + drop blanks. This keeps stored skills like
+  // "auto_detailing" matchable against a line's normalized industry_tag.
   const skills = Array.from(
-    new Set((params.skills ?? []).map((s) => String(s).trim().toLowerCase()).filter(Boolean))
+    new Set(
+      (params.skills ?? [])
+        .flatMap((s) => String(s).split(","))
+        .map((s) => normalizeRoutingPoolSkillTag(s))
+        .filter(Boolean)
+    )
   )
 
   // user_id NULL requires the 048 ALTER (DROP NOT NULL). If it hasn't run this INSERT throws (23502).
@@ -1343,8 +1359,17 @@ export async function listAvailableNetworkReceptionistsForIndustryTag(
         AND (
           ${tag} = ANY(r.skills)
           OR EXISTS (
-            SELECT 1 FROM unnest(r.skills) AS skill_slug
-            WHERE split_part(replace(skill_slug, '-', '_'), '_', 1) = ${tag}
+            -- Symmetric, token-aware skill match. Normalize each stored skill to a slug, then match when:
+            --   * the slug equals the tag exactly ("detailing_core" = "detailing_core"), OR
+            --   * the line tag is one of the skill's underscore tokens ("detailing" ∈ "auto_detailing"), OR
+            --   * the base families line up ("auto_detailing" ↔ "auto_wash" both start "auto").
+            SELECT 1 FROM unnest(r.skills) AS raw_skill
+            CROSS JOIN LATERAL (
+              SELECT lower(replace(replace(raw_skill, '-', '_'), ' ', '_')) AS slug
+            ) sk
+            WHERE sk.slug = ${tag}
+              OR ${tag} = ANY(string_to_array(sk.slug, '_'))
+              OR split_part(sk.slug, '_', 1) = split_part(${tag}, '_', 1)
           )
         )
         AND NOT EXISTS (

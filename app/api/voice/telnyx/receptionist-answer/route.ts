@@ -39,7 +39,7 @@ function whisperPhrase(req: NextRequest): string | null {
 }
 
 function normalizeBusinessType(raw: string | null): ReceptionistBusinessType {
-  if (raw === "locksmith" || raw === "detailing" || raw === "generic") return raw
+  if (raw === "locksmith" || raw === "detailing" || raw === "auto_repair" || raw === "generic") return raw
   return "generic"
 }
 

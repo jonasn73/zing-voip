@@ -10,7 +10,7 @@ import { WorkspacePanel } from "@/components/dashboard-workspace-ui"
 
 export type LiveCallSession = {
   callLogId: string
-  businessType: "locksmith" | "detailing" | "generic"
+  businessType: "locksmith" | "detailing" | "auto_repair" | "generic"
   callerNumber?: string | null
   callerName?: string | null
   businessName?: string | null
@@ -66,6 +66,23 @@ const FIELD_SETS: Record<LiveCallSession["businessType"], { title: string; field
       { name: "service_address", label: "Service address", type: "text", placeholder: "123 Main St", full: true },
       { name: "preferred_time", label: "Preferred date / time", type: "text", placeholder: "Sat morning" },
       { name: "notes", label: "Notes", type: "textarea", placeholder: "Pet hair, stains, etc.", full: true },
+    ],
+  },
+  auto_repair: {
+    title: "Auto repair call intake",
+    fields: [
+      { name: "vehicle", label: "Vehicle (year / make / model)", type: "text", placeholder: "2018 Honda Accord", required: true, full: true },
+      { name: "mileage", label: "Mileage (optional)", type: "text", placeholder: "84,000" },
+      {
+        name: "service_type",
+        label: "Service needed",
+        type: "select",
+        options: ["Diagnostic / check engine", "Brakes", "Oil change", "Tires / alignment", "Engine / transmission", "Other"],
+      },
+      { name: "symptoms", label: "Symptoms / issue", type: "text", placeholder: "Grinding noise when braking", full: true },
+      { name: "drivable", label: "Is the vehicle drivable?", type: "toggle" },
+      { name: "preferred_time", label: "Preferred drop-off date / time", type: "text", placeholder: "Mon morning" },
+      { name: "notes", label: "Notes", type: "textarea", placeholder: "Anything else the shop should know…", full: true },
     ],
   },
   generic: {

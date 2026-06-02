@@ -33,7 +33,13 @@ export async function POST(req: NextRequest) {
     const fields = body.fields && typeof body.fields === "object" ? body.fields : {}
 
     const intentSlug =
-      businessType === "locksmith" ? "automotive_akl" : businessType === "detailing" ? "auto_detailing" : "general_intake"
+      businessType === "locksmith"
+        ? "automotive_akl"
+        : businessType === "detailing"
+          ? "auto_detailing"
+          : businessType === "auto_repair"
+            ? "auto_repair"
+            : "general_intake"
 
     const result = await saveCallIntake({
       user_id: ctx.owner_user_id,

@@ -1,19 +1,20 @@
 "use client"
 
 // /register?token=… — invited receptionist completes their profile.
-// Validates the token against /api/auth/validate-token, then collects Full Name, Cell Phone
-// (pre-filled for SMS invites), Password (+ Email for SMS invites), and POSTs to /api/auth/register.
+// 1. Reads the token from the URL and validates it against /api/auth/validate-token.
+// 2. If valid, shows Full Name, Cell Phone (pre-filled + locked for SMS invites), and Password.
+// 3. POSTs to /api/auth/register-invited, then redirects to /receptionist.
 
 import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 
-type Channel = "EMAIL" | "SMS"
-type Preview = { channel: Channel; email: string; phone: string | null; expires_at: string }
+type InviteType = "EMAIL" | "SMS"
+type ValidResult = { valid: true; target: string; type: InviteType }
 type ValidationState =
   | { status: "loading" }
   | { status: "invalid"; message: string }
-  | { status: "valid"; preview: Preview }
+  | { status: "valid"; invite: ValidResult }
 
 function RegisterForm() {
   const params = useSearchParams()
@@ -22,13 +23,12 @@ function RegisterForm() {
   const [validation, setValidation] = useState<ValidationState>({ status: "loading" })
   const [fullName, setFullName] = useState("")
   const [phone, setPhone] = useState("")
-  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  // Validate the invite token on load.
+  // Validate the invite token on mount.
   useEffect(() => {
     if (!token) {
       setValidation({ status: "invalid", message: "No invitation token in the link." })
@@ -38,15 +38,15 @@ function RegisterForm() {
     ;(async () => {
       try {
         const res = await fetch(`/api/auth/validate-token?token=${encodeURIComponent(token)}`, { cache: "no-store" })
-        const json = (await res.json().catch(() => ({}))) as { data?: Preview; error?: string }
+        const json = (await res.json().catch(() => ({}))) as { valid?: boolean; target?: string; type?: InviteType; error?: string }
         if (cancelled) return
-        if (!res.ok || !json.data) {
+        if (!res.ok || !json.valid || !json.target || !json.type) {
           setValidation({ status: "invalid", message: json.error ?? "This invitation is invalid or expired." })
           return
         }
-        setValidation({ status: "valid", preview: json.data })
-        // Pre-fill the SMS cell number the invite was sent to.
-        if (json.data.channel === "SMS" && json.data.phone) setPhone(json.data.phone)
+        setValidation({ status: "valid", invite: { valid: true, target: json.target, type: json.type } })
+        // Pre-fill (and lock) the cell number that an SMS invite was sent to.
+        if (json.type === "SMS") setPhone(json.target)
       } catch {
         if (!cancelled) setValidation({ status: "invalid", message: "Could not reach the server. Try again." })
       }
@@ -56,28 +56,28 @@ function RegisterForm() {
     }
   }, [token])
 
+  const isSms = validation.status === "valid" && validation.invite.type === "SMS"
+
   async function submit() {
     setError(null)
     if (fullName.trim().length < 2) return setError("Enter your full name.")
-    if (phone.trim().replace(/\D/g, "").length < 10) return setError("Enter a valid cell phone number.")
+    if (phone.replace(/\D/g, "").length < 10) return setError("Enter a valid cell phone number.")
     if (password.length < 8) return setError("Password must be at least 8 characters.")
-    const isSms = validation.status === "valid" && validation.preview.channel === "SMS"
-    if (isSms && !email.includes("@")) return setError("Enter a valid email for your login.")
 
     setSubmitting(true)
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/auth/register-invited", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, full_name: fullName, phone, password, email: isSms ? email : undefined }),
+        body: JSON.stringify({ token, name: fullName, password, phone }),
       })
-      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      const json = (await res.json().catch(() => ({}))) as { data?: { redirect?: string }; error?: string }
       if (!res.ok) {
         setError(json.error ?? "Could not complete registration.")
         return
       }
       setDone(true)
-      setTimeout(() => window.location.assign("/receptionist"), 900)
+      setTimeout(() => window.location.assign(json.data?.redirect ?? "/receptionist"), 900)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error — please try again.")
     } finally {
@@ -109,25 +109,11 @@ function RegisterForm() {
 
         {validation.status === "valid" && !done && (
           <div className="mt-6 space-y-4">
-            {validation.preview.channel === "EMAIL" && validation.preview.email && (
+            {validation.invite.type === "EMAIL" && (
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-300">Email</label>
-                <input value={validation.preview.email} readOnly className={`${inputClass} opacity-70`} />
-              </div>
-            )}
-
-            {validation.preview.channel === "SMS" && (
-              <div>
-                <label htmlFor="reg-email" className="mb-1 block text-sm font-medium text-slate-300">Email Address</label>
-                <input
-                  id="reg-email"
-                  type="email"
-                  inputMode="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className={inputClass}
-                />
+                <input value={validation.invite.target} readOnly className={`${inputClass} cursor-not-allowed opacity-70`} />
+                <p className="mt-1 text-xs text-slate-500">You'll sign in with this email.</p>
               </div>
             )}
 
@@ -151,9 +137,11 @@ function RegisterForm() {
                 inputMode="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                readOnly={isSms}
                 placeholder="(555) 123-4567"
-                className={inputClass}
+                className={`${inputClass} ${isSms ? "cursor-not-allowed opacity-70" : ""}`}
               />
+              {isSms && <p className="mt-1 text-xs text-slate-500">This is the number your invite was sent to.</p>}
             </div>
 
             <div>

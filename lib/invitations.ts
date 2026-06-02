@@ -182,3 +182,69 @@ export async function acceptInvitation(params: {
 
   return { user: { ...user, account_role: "receptionist" } }
 }
+
+/** sip_username every invited receptionist is seeded with until their own credential is provisioned. */
+const DEFAULT_SIP_USERNAME = "admin9150"
+
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : name.slice(0, 2)).toUpperCase()
+}
+
+/**
+ * Redeem an invite from /register in a single atomic SQL transaction (all three writes commit or
+ * roll back together):
+ *   a. INSERT users   (email from the invite target for EMAIL invites; synthesized for SMS)
+ *   b. INSERT receptionists (linked to the new user, sip_username placeholder)
+ *   c. UPDATE invitations → status = 'ACCEPTED'
+ *
+ * The user id is generated in app code (crypto.randomUUID) — the same pattern createUser() uses —
+ * so the two inserts can be linked inside Neon's non-interactive HTTP transaction.
+ */
+export async function registerInvitedReceptionist(params: {
+  token: string
+  name: string
+  phone: string
+  passwordHash: string
+}): Promise<{ userId: string; email: string }> {
+  // Re-validate against the DB right before writing to guard against double-redeem / expiry races.
+  const invite = await getRedeemableInvitation(params.token)
+  if (!invite) throw new Error("Invite invalid, expired, or already used")
+
+  const name = params.name.trim()
+  if (name.length < 2) throw new Error("Full name is required")
+
+  const phone = normalizePhoneNumberE164(params.phone)
+  const digits = phone.replace(/\D/g, "")
+
+  // EMAIL invites log in with the invited address; SMS invites get a stable synthesized login email
+  // (no email is collected for SMS), which also enforces one-account-per-number via UNIQUE(email).
+  const email =
+    invite.type === "EMAIL" ? invite.target.trim().toLowerCase() : `sms_${digits}@sms.lyncr.app`
+
+  const userId = crypto.randomUUID()
+  const receptionistId = crypto.randomUUID()
+  const initials = initialsFor(name)
+  const token = params.token.trim()
+
+  const sql = getSql()
+  await sql.transaction([
+    sql`
+      INSERT INTO users (id, email, name, phone, business_name, industry, password_hash, account_role, created_at)
+      VALUES (${userId}, ${email}, ${name}, ${phone}, 'Lyncr Receptionist', 'generic', ${params.passwordHash}, 'receptionist', now())
+    `,
+    sql`
+      INSERT INTO receptionists (
+        id, user_id, name, phone, initials, color, rate_per_minute, pay_mode, flat_rate_usd,
+        is_active, portal_user_id, sip_username, created_at
+      )
+      VALUES (
+        ${receptionistId}, ${userId}, ${name}, ${phone}, ${initials}, 'bg-primary', 0.25, 'FLAT_RATE',
+        ${DEFAULT_PAYOUT_USD}, true, ${userId}, ${DEFAULT_SIP_USERNAME}, now()
+      )
+    `,
+    sql`UPDATE invitations SET status = 'ACCEPTED' WHERE token = ${token} AND status = 'PENDING'`,
+  ])
+
+  return { userId, email }
+}

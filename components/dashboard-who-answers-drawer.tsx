@@ -13,8 +13,10 @@ import {
   DrawerStickyFooter,
 } from "@/components/dashboard-routing-drawer-shared"
 import { formatPhoneDisplay, type Contact } from "@/lib/dashboard-routing-utils"
+import type { RoutingStrategy } from "@/lib/types"
 
-type ReceiverId = "owner" | string
+// "pool" = route this line to the shared Lyncr Live Operator Pool (routing_strategy = 'lyncr_only').
+type ReceiverId = "owner" | "pool" | string
 
 type TeamRow = {
   id: ReceiverId
@@ -58,6 +60,10 @@ export type DashboardWhoAnswersDrawerProps = {
   routingLineDetailLoading?: boolean
   // Opens the routing-strategy dialog on top of this drawer (private vs Lyncr network).
   onChangeRoutingStrategy?: () => void
+  // Current hybrid-network strategy for this line; "lyncr_only" means the operator pool is active.
+  routingStrategy: RoutingStrategy
+  // Pushes the new strategy back to the dashboard canvas after a save.
+  setRoutingStrategy: (s: RoutingStrategy) => void
 }
 
 export function DashboardWhoAnswersDrawer({
@@ -70,18 +76,21 @@ export function DashboardWhoAnswersDrawer({
   routingBusinessNumber,
   routingLineDetailLoading,
   onChangeRoutingStrategy,
+  routingStrategy,
+  setRoutingStrategy,
 }: DashboardWhoAnswersDrawerProps) {
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
-  const initialReceiver: ReceiverId = selectedReceptionistId ?? "owner"
+  // Pool wins the initial selection when the line is set to "lyncr_only".
+  const initialReceiver: ReceiverId = routingStrategy === "lyncr_only" ? "pool" : selectedReceptionistId ?? "owner"
   const [primaryId, setPrimaryId] = useState<ReceiverId>(initialReceiver)
   const baselineRef = useRef(initialReceiver)
 
   useEffect(() => {
-    const next = selectedReceptionistId ?? "owner"
+    const next = routingStrategy === "lyncr_only" ? "pool" : selectedReceptionistId ?? "owner"
     setPrimaryId(next)
     baselineRef.current = next
-  }, [selectedReceptionistId])
+  }, [selectedReceptionistId, routingStrategy])
 
   const dirty = primaryId !== baselineRef.current
 
@@ -91,7 +100,14 @@ export function DashboardWhoAnswersDrawer({
       name: "Your Phone",
       phone: ownerPhoneDisplay,
       initials: "YO",
-      status: primaryId === "owner" ? "active" : receptionists.length > 0 ? "offline" : "forwarding",
+      status: primaryId === "owner" ? "active" : "offline",
+    }
+    const poolRow: TeamRow = {
+      id: "pool",
+      name: "Lyncr Live Operator Pool",
+      phone: "Certified shared agents answer in-browser",
+      initials: "LP",
+      status: primaryId === "pool" ? "active" : "offline",
     }
     const teamRows: TeamRow[] = receptionists.map((c) => ({
       id: c.id,
@@ -99,9 +115,9 @@ export function DashboardWhoAnswersDrawer({
       phone: formatPhoneDisplay(c.phone),
       initials: c.initials,
       color: c.color,
-      status: primaryId === c.id ? "active" : primaryId === "owner" ? "forwarding" : "offline",
+      status: primaryId === c.id ? "active" : "offline",
     }))
-    return [ownerRow, ...teamRows]
+    return [ownerRow, poolRow, ...teamRows]
   }, [receptionists, ownerPhoneDisplay, primaryId])
 
   const lineLabel = routingBusinessNumber ? `Line ${formatPhoneDisplay(routingBusinessNumber)}` : null
@@ -119,21 +135,57 @@ export function DashboardWhoAnswersDrawer({
     onClose()
   }, [discardEdits, onClose])
 
+  // Persist the per-line hybrid-network strategy via the parameterized /api/routing/strategy patch.
+  const persistStrategy = useCallback(
+    async (next: RoutingStrategy) => {
+      const res = await fetch("/api/routing/strategy", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routing_strategy: next, business_number: routingBusinessNumber || null }),
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error ?? "Failed to save routing strategy")
+      }
+    },
+    [routingBusinessNumber]
+  )
+
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      await saveRouting({
-        selected_receptionist_id: primaryId === "owner" ? null : primaryId,
-      })
+      if (primaryId === "pool") {
+        // Flip this line onto the shared Lyncr Live Operator Pool (routing_strategy = 'lyncr_only').
+        await persistStrategy("lyncr_only")
+        setRoutingStrategy("lyncr_only")
+      } else {
+        // Owner / private receptionist: pick the ring target, and step off the pool if we were on it.
+        await saveRouting({ selected_receptionist_id: primaryId === "owner" ? null : primaryId })
+        if (routingStrategy === "lyncr_only") {
+          await persistStrategy("private_only")
+          setRoutingStrategy("private_only")
+        }
+      }
       baselineRef.current = primaryId
-      toast({ title: "Saved", description: "Call destination updated for this line." })
+      toast({
+        title: "Saved",
+        description:
+          primaryId === "pool"
+            ? "Calls on this line now route to the Lyncr Live Operator Pool."
+            : "Call destination updated for this line.",
+      })
       onClose()
-    } catch {
-      toast({ title: "Could not save", description: "Try again in a moment.", variant: "destructive" })
+    } catch (e) {
+      toast({
+        title: "Could not save",
+        description: e instanceof Error ? e.message : "Try again in a moment.",
+        variant: "destructive",
+      })
     } finally {
       setSaving(false)
     }
-  }, [primaryId, saveRouting, onClose, toast])
+  }, [primaryId, routingStrategy, saveRouting, persistStrategy, setRoutingStrategy, onClose, toast])
 
   return (
     <form
@@ -171,6 +223,10 @@ export function DashboardWhoAnswersDrawer({
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800/80">
                     <User className="h-5 w-5 text-zinc-300" aria-hidden />
                   </div>
+                ) : row.id === "pool" ? (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/10">
+                    <Network className="h-5 w-5 text-emerald-300" aria-hidden />
+                  </div>
                 ) : (
                   <Avatar className="h-11 w-11 shrink-0">
                     <AvatarFallback className={cn(row.color, "text-xs font-semibold text-primary-foreground")}>
@@ -181,7 +237,14 @@ export function DashboardWhoAnswersDrawer({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-semibold text-foreground">{row.name}</p>
-                    {statusBadge(row.status)}
+                    {row.id === "pool" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" aria-hidden />
+                        Agents Available
+                      </span>
+                    ) : (
+                      statusBadge(row.status)
+                    )}
                   </div>
                   <p className="mt-0.5 text-xs text-zinc-500">{row.phone}</p>
                 </div>

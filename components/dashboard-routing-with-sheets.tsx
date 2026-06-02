@@ -114,6 +114,8 @@ export function DashboardRoutingWithSheets(props: Props) {
         businessNumbers={props.businessNumbers}
         routingBusinessNumber={props.routingBusinessNumber}
         onChangeRoutingStrategy={() => setStrategyDialogOpen(true)}
+        routingStrategy={props.routingStrategy}
+        setRoutingStrategy={props.setRoutingStrategy}
       />
     </>
   )

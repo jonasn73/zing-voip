@@ -13,6 +13,7 @@ import { DashboardVoiceAiDrawer } from "@/components/dashboard-voice-ai-drawer"
 import { DashboardWhoAnswersDrawer } from "@/components/dashboard-who-answers-drawer"
 import { DashboardRingBackupDrawer } from "@/components/dashboard-ring-backup-drawer"
 import type { Contact, DashboardBusinessNumber, FallbackOption } from "@/lib/dashboard-routing-utils"
+import type { RoutingStrategy } from "@/lib/types"
 
 export type DashboardRoutingSheetsProps = {
   whoAnswersOpen: boolean
@@ -44,6 +45,9 @@ export type DashboardRoutingSheetsProps = {
   routingBusinessNumber: string | null
   // Opens the hybrid routing-strategy dialog from inside the Who answers drawer.
   onChangeRoutingStrategy: () => void
+  // Current hybrid-network strategy + setter so the Who answers drawer can offer the operator pool.
+  routingStrategy: RoutingStrategy
+  setRoutingStrategy: (s: RoutingStrategy) => void
 }
 
 export const DashboardRoutingSheets = memo(function DashboardRoutingSheets({
@@ -75,6 +79,8 @@ export const DashboardRoutingSheets = memo(function DashboardRoutingSheets({
   businessNumbers,
   routingBusinessNumber,
   onChangeRoutingStrategy,
+  routingStrategy,
+  setRoutingStrategy,
 }: DashboardRoutingSheetsProps) {
   const whoAnswersDiscardRef = useRef<() => void>(() => {})
   const ringBackupDiscardRef = useRef<() => void>(() => {})
@@ -133,6 +139,8 @@ export const DashboardRoutingSheets = memo(function DashboardRoutingSheets({
               routingBusinessNumber={routingBusinessNumber}
               routingLineDetailLoading={routingLineDetailLoading}
               onChangeRoutingStrategy={onChangeRoutingStrategy}
+              routingStrategy={routingStrategy}
+              setRoutingStrategy={setRoutingStrategy}
             />
           </div>
         </SheetContent>

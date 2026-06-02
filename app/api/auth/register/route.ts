@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
-import { acceptReceptionistInviteRegistration } from "@/lib/db"
+import { acceptInvitation } from "@/lib/invitations"
 import {
   createSessionCookie,
   getSessionCookieName,
@@ -33,11 +33,11 @@ export async function POST(req: NextRequest) {
 
     const password_hash = await bcrypt.hash(password, 10)
 
-    const { user } = await acceptReceptionistInviteRegistration({
+    const { user } = await acceptInvitation({
       token,
-      full_name: fullName,
+      fullName,
       phone,
-      password_hash,
+      passwordHash: password_hash,
       email: email || null,
     })
 

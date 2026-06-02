@@ -3,7 +3,7 @@
 // or 404 when it's invalid / expired / already used.
 
 import { NextRequest, NextResponse } from "next/server"
-import { getTeamInvitePreview } from "@/lib/db"
+import { getRedeemableInvitation } from "@/lib/invitations"
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token")?.trim()
@@ -12,18 +12,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const preview = await getTeamInvitePreview(token)
-    if (!preview) {
+    const invite = await getRedeemableInvitation(token)
+    if (!invite) {
       return NextResponse.json({ error: "This invitation is invalid, expired, or already used." }, { status: 404 })
     }
     return NextResponse.json({
       data: {
         valid: true,
-        channel: preview.channel,
-        // Only surface the contact target relevant to the channel (pre-fills the form).
-        email: preview.channel === "EMAIL" ? preview.email : "",
-        phone: preview.channel === "SMS" ? preview.phone : null,
-        expires_at: preview.expires_at,
+        channel: invite.type,
+        // Surface only the target relevant to the channel (pre-fills the registration form).
+        email: invite.type === "EMAIL" ? invite.target : "",
+        phone: invite.type === "SMS" ? invite.target : null,
+        expires_at: invite.expires_at,
       },
     })
   } catch (e) {

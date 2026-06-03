@@ -70,7 +70,12 @@ export async function publishTechnicianEvent(
   }
 }
 
-export type OwnerChannelEvent = "job-booked" | "lead-salvageable" | "disposition-updated" | "job-status-updated"
+export type OwnerChannelEvent =
+  | "job-booked"
+  | "lead-salvageable"
+  | "disposition-updated"
+  | "job-status-updated"
+  | "tech-location-updated"
 
 /** Publish an event to a business owner's channel (e.g. live booking alerts). Safe no-op when unconfigured. */
 export async function publishOwnerEvent(

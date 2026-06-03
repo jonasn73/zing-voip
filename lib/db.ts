@@ -4171,6 +4171,111 @@ export async function setJobStatusForTech(
   return rows.length > 0
 }
 
+/**
+ * Pick the best available on-duty technician for an owner to auto-dispatch a fresh booking to.
+ * Prefers an idle tech, then any active tech without a live status, then busy ones. Null when the
+ * owner has no active technician with a login (so we just leave the job for manual assignment).
+ */
+export async function resolveDispatchTechForOwner(ownerUserId: string): Promise<string | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT ft.portal_user_id
+      FROM field_technicians ft
+      JOIN users u ON u.id = ft.portal_user_id
+      WHERE ft.user_id = ${ownerUserId} AND ft.is_active = true AND ft.portal_user_id IS NOT NULL
+      ORDER BY CASE COALESCE(u.tech_status, 'idle')
+                 WHEN 'idle' THEN 0
+                 WHEN 'en_route' THEN 2
+                 WHEN 'on_site' THEN 3
+                 ELSE 1
+               END,
+               ft.created_at ASC
+      LIMIT 1
+    `
+    return rows[0]?.portal_user_id != null ? String(rows[0].portal_user_id) : null
+  } catch (e) {
+    if (isMissingFieldTechTableError(e)) return null
+    // tech_status column missing (pre-062) → fall back to oldest active tech.
+    if (pgErrorCode(e) === "42703") {
+      try {
+        const rows = await sql`
+          SELECT portal_user_id FROM field_technicians
+          WHERE user_id = ${ownerUserId} AND is_active = true AND portal_user_id IS NOT NULL
+          ORDER BY created_at ASC LIMIT 1
+        `
+        return rows[0]?.portal_user_id != null ? String(rows[0].portal_user_id) : null
+      } catch (e2) {
+        if (isMissingFieldTechTableError(e2)) return null
+        throw e2
+      }
+    }
+    throw e
+  }
+}
+
+/** Stamp a lead's dispatch_status on both the indexed column and the collected JSONB mirror. */
+export async function setLeadDispatchStatus(leadId: string, dispatchStatus: string): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`UPDATE ai_leads SET dispatch_status = ${dispatchStatus} WHERE id = ${leadId}`
+  } catch (e) {
+    if (pgErrorCode(e) !== "42703" && !isUndefinedRelationError(e, "ai_leads")) throw e
+  }
+  try {
+    await sql`
+      UPDATE ai_leads
+      SET collected = jsonb_set(coalesce(collected, '{}'::jsonb), '{dispatch_status}', to_jsonb(${dispatchStatus}::text), true)
+      WHERE id = ${leadId}
+    `
+  } catch (e) {
+    if (!isUndefinedRelationError(e, "ai_leads")) throw e
+  }
+}
+
+export interface TechActiveJobGeo {
+  leadId: string
+  job_status: string | null
+  customer_lat: number
+  customer_lng: number
+}
+
+function firstNumericField(collected: Record<string, unknown>, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = collected[k]
+    if (typeof v === "number" && Number.isFinite(v)) return v
+    if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v)
+  }
+  return null
+}
+
+/**
+ * The tech's most-recent active job that carries customer coordinates (so we can geofence "arrived").
+ * Returns null when no active job has logged lat/lng — auto-arrive simply no-ops in that case.
+ */
+export async function getActiveJobGeoForTech(techUserId: string): Promise<TechActiveJobGeo | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT id, collected, job_status FROM ai_leads
+      WHERE assigned_tech_id = ${techUserId} AND job_status IN ('assigned', 'en_route', 'arrived')
+      ORDER BY created_at DESC LIMIT 5
+    `
+    for (const r of rows) {
+      const c = (r.collected as Record<string, unknown>) || {}
+      const lat = firstNumericField(c, ["customer_lat", "lat", "latitude", "geo_lat", "location_lat", "service_lat"])
+      const lng = firstNumericField(c, ["customer_lng", "lng", "longitude", "geo_lng", "location_lng", "service_lng", "lon"])
+      if (lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+        return { leadId: String(r.id), job_status: r.job_status != null ? String(r.job_status) : null, customer_lat: lat, customer_lng: lng }
+      }
+    }
+    return null
+  } catch (e) {
+    if (isMissingAssignedTechColumnError(e) || isUndefinedRelationError(e, "ai_leads")) return null
+    throw e
+  }
+}
+
 /** Owner id for a job (used to broadcast owner events when a tech updates a job). */
 export async function getOwnerIdForLead(leadId: string): Promise<string | null> {
   const sql = getSql()

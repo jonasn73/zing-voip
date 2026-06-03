@@ -136,6 +136,35 @@ export async function runSmsPipeline(params: {
 }
 
 /**
+ * Centralized job-state → customer-SMS subscriber. Maps a job lifecycle event to its SMS phase and
+ * runs the toggle-gated pipeline:
+ *   BOOKED    → booking confirmation (immediate)
+ *   EN_ROUTE  → "technician on the way" (immediate)
+ *   COMPLETED → post-job review request (scheduled ~15 min out)
+ */
+export type JobStateEvent = "BOOKED" | "EN_ROUTE" | "COMPLETED"
+
+const PHASE_BY_EVENT: Record<JobStateEvent, SmsPhase> = {
+  BOOKED: "booking",
+  EN_ROUTE: "route",
+  COMPLETED: "review",
+}
+
+export async function onJobStateChange(
+  event: JobStateEvent,
+  params: { leadId: string; techName?: string | null; expectedOwnerUserId?: string }
+): Promise<PipelineResult> {
+  const phase = PHASE_BY_EVENT[event]
+  if (!phase) return { ok: false, skipped: true, reason: "unknown-event" }
+  return runSmsPipeline({
+    leadId: params.leadId,
+    phase,
+    techName: params.techName,
+    expectedOwnerUserId: params.expectedOwnerUserId,
+  })
+}
+
+/**
  * Send any scheduled texts that are now due. Called by the cron flush endpoint AND opportunistically
  * from frequently-polled dashboards, so review texts go out within minutes even without a cron.
  */

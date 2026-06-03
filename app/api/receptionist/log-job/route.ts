@@ -15,9 +15,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getReceptionistPortalContext } from "@/lib/receptionist-portal-auth"
 import { saveCallIntake } from "@/lib/intake-engine"
-import { applyLeadDisposition, type LeadDisposition } from "@/lib/db"
+import {
+  applyLeadDisposition,
+  assignJobToTech,
+  resolveDispatchTechForOwner,
+  setLeadDispatchStatus,
+  type LeadDisposition,
+} from "@/lib/db"
 import { dispatchStateFor } from "@/lib/call-disposition"
-import { publishOwnerEvent } from "@/lib/realtime/pusher-server"
+import { publishOwnerEvent, publishTechnicianEvent } from "@/lib/realtime/pusher-server"
+import { onJobStateChange } from "@/lib/sms-pipeline"
 
 type LogJobBody = {
   callLogId?: string
@@ -96,12 +103,34 @@ export async function POST(req: NextRequest) {
     // Fill indexed columns when scripts/058 is applied (no-op otherwise).
     await applyLeadDisposition(result.id, { disposition: status, dispatch_status, is_salvageable })
 
-    // Broadcast to the owner without delaying the operator's response.
+    // Auto-dispatch: if this is a booking and the owner has an available on-duty tech, assign it now
+    // and flip dispatch_status to DISPATCHED so it lands straight on that tech's mobile HUD.
+    let assignedTechId: string | null = null
+    let finalDispatchStatus = dispatch_status
+    if (isBooked) {
+      try {
+        const techUserId = await resolveDispatchTechForOwner(ctx.owner_user_id)
+        if (techUserId) {
+          const ok = await assignJobToTech(ctx.owner_user_id, result.id, techUserId)
+          if (ok) {
+            await setLeadDispatchStatus(result.id, "DISPATCHED")
+            assignedTechId = techUserId
+            finalDispatchStatus = "DISPATCHED"
+          }
+        }
+      } catch (e) {
+        console.error("[receptionist/log-job] auto-dispatch failed:", e)
+      }
+    }
+
+    // Broadcast + customer SMS without delaying the operator's response.
     after(async () => {
       try {
         await publishOwnerEvent(ctx.owner_user_id, isBooked ? "job-booked" : "lead-salvageable", {
           leadId: result.id,
           disposition: status,
+          dispatchStatus: finalDispatchStatus,
+          assignedTechId,
           businessName: ctx.business_name,
           callerNumber: body.callerNumber ?? null,
           callerName: body.callerName ?? null,
@@ -111,13 +140,28 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         console.error("[receptionist/log-job] owner broadcast failed:", e)
       }
+
+      // Push the new job onto the tech's device the instant it's auto-dispatched.
+      if (assignedTechId) {
+        await publishTechnicianEvent(assignedTechId, "job-assigned", { leadId: result.id }).catch((e) =>
+          console.error("[receptionist/log-job] tech broadcast failed:", e)
+        )
+      }
+
+      // Booking confirmation text to the customer (gated on the owner's sms_booking_enabled toggle).
+      if (isBooked) {
+        await onJobStateChange("BOOKED", { leadId: result.id, expectedOwnerUserId: ctx.owner_user_id }).catch((e) =>
+          console.error("[receptionist/log-job] booking SMS failed:", e)
+        )
+      }
     })
 
     return NextResponse.json({
       data: {
         lead_id: result.id,
         disposition: status,
-        dispatch_status,
+        dispatch_status: finalDispatchStatus,
+        assigned_tech_id: assignedTechId,
         is_salvageable,
         sms_sent: result.sms_sent,
       },

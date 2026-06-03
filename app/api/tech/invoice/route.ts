@@ -18,7 +18,7 @@ import {
   setJobStatusForTech,
 } from "@/lib/db"
 import { publishOwnerEvent } from "@/lib/realtime/pusher-server"
-import { runSmsPipeline } from "@/lib/sms-pipeline"
+import { onJobStateChange } from "@/lib/sms-pipeline"
 import type { InvoiceLineItem, JobInvoice } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -110,9 +110,9 @@ export async function POST(req: NextRequest) {
     // Finishing the job schedules the post-job review request (drops ~15 min later if enabled).
     after(async () => {
       try {
-        await runSmsPipeline({ leadId, phase: "review", expectedOwnerUserId: tech.owner_user_id })
+        await onJobStateChange("COMPLETED", { leadId, expectedOwnerUserId: tech.owner_user_id })
       } catch (e) {
-        console.warn("[invoice] review SMS pipeline failed:", e)
+        console.warn("[invoice] COMPLETED review SMS pipeline failed:", e)
       }
     })
 

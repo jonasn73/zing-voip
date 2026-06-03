@@ -12,9 +12,6 @@ import {
   WorkspacePage,
   WorkspacePageHeader,
   WorkspacePanel,
-  WorkspaceTableWrap,
-  WorkspaceTh,
-  WorkspaceTd,
   LeadIntentPill,
   type LeadIntentVariant,
 } from "@/components/dashboard-workspace-ui"
@@ -39,7 +36,19 @@ type DisplayLead = {
   dateLabel: string
   intentLabel: string
   intentVariant: LeadIntentVariant
+  isUrgent: boolean
+  actionLabel: string
   raw?: LeadRow
+}
+
+/** First non-empty string value across the given keys in a collected blob. */
+function readCollected(collected: Record<string, unknown> | null | undefined, keys: string[]): string {
+  if (!collected || typeof collected !== "object") return ""
+  for (const key of keys) {
+    const v = (collected as Record<string, unknown>)[key]
+    if (typeof v === "string" && v.trim()) return v.trim()
+  }
+  return ""
 }
 
 function formatCaller(num: string | null): string {
@@ -51,12 +60,50 @@ function formatCaller(num: string | null): string {
 }
 
 function leadName(lead: LeadRow): string {
-  const c = lead.collected
-  if (c && typeof c === "object") {
-    const n = (c as Record<string, unknown>).name ?? (c as Record<string, unknown>).caller_name
-    if (typeof n === "string" && n.trim()) return n.trim()
+  const n = readCollected(lead.collected, ["name", "caller_name", "customer_name"])
+  return n || "Unknown lead"
+}
+
+/** Best available callback number for the lead. */
+function leadContact(lead: LeadRow): string {
+  const fromCollected = readCollected(lead.collected, ["callback_number", "caller_number", "phone", "callback"])
+  if (fromCollected) return formatCaller(fromCollected)
+  return formatCaller(lead.caller_e164)
+}
+
+const URGENT_INTENTS = new Set(["emergency", "pest_active", "lockout", "urgent"])
+
+/** True/False urgent priority flag derived from the captured intent + status keywords. */
+function isUrgentLead(lead: LeadRow): boolean {
+  if (lead.intent_slug && URGENT_INTENTS.has(lead.intent_slug)) return true
+  const status = readCollected(lead.collected, ["status", "urgency", "priority", "key_status"]).toLowerCase()
+  if (/urgent|emergency|asap|now|immediately|high|lockout|locked out/.test(status)) return true
+  const flag = lead.collected?.urgent ?? lead.collected?.is_urgent ?? lead.collected?.emergency
+  return flag === true || flag === "true" || flag === "yes"
+}
+
+/** Human "Action Required" label, e.g. "Needs Locksmith Dispatch", "Pricing Inbound Call". */
+function actionRequiredLabel(lead: LeadRow): string {
+  const slug = lead.intent_slug
+  const service = readCollected(lead.collected, ["service_type", "issue_type", "request_type", "intent_label"])
+  switch (slug) {
+    case "emergency":
+    case "pest_active":
+    case "lockout":
+      return service ? `Emergency ${service} Dispatch` : "Emergency Dispatch"
+    case "quote":
+      return "Pricing Inbound Call"
+    case "scheduling":
+    case "appointment":
+      return "Schedule Appointment"
+    case "billing":
+      return "Billing Follow-up"
+    default:
+      break
   }
-  return "Unknown lead"
+  if (service) return `Needs ${service}`
+  if (slug) return `${slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Follow-up`
+  return "Follow-up Required"
 }
 
 const INTENT_TAGS: Record<string, string> = {
@@ -97,10 +144,12 @@ function apiLeadToDisplay(lead: LeadRow): DisplayLead {
   return {
     id: lead.id,
     name: leadName(lead),
-    contact: formatCaller(lead.caller_e164),
+    contact: leadContact(lead),
     dateLabel: formatCapturedDate(lead.created_at),
     intentLabel: intentLabel(lead.intent_slug),
     intentVariant: intentVariantForSlug(lead.intent_slug),
+    isUrgent: isUrgentLead(lead),
+    actionLabel: actionRequiredLabel(lead),
     raw: lead,
   }
 }
@@ -118,7 +167,14 @@ function LeadDetailSheet({
     <>
       <DrawerStepHeader step="Lead" title={selected.name} subtitle={selected.contact} />
       <DrawerScrollBody>
-        <LeadIntentPill label={selected.intentLabel} variant={selected.intentVariant} />
+        <div className="flex flex-wrap items-center gap-2">
+          <LeadIntentPill label={selected.intentLabel} variant={selected.intentVariant} />
+          <UrgentFlag urgent={selected.isUrgent} />
+        </div>
+        <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Action required</p>
+          <p className="mt-1 text-sm font-medium text-foreground">{selected.actionLabel}</p>
+        </div>
         {selected.raw?.summary ? (
           <p className="mt-4 text-sm text-zinc-300">{selected.raw.summary}</p>
         ) : usingDemo ? (
@@ -151,7 +207,23 @@ function LeadDetailSheet({
   )
 }
 
-const LeadsTable = memo(function LeadsTable({
+function UrgentFlag({ urgent }: { urgent: boolean }) {
+  if (urgent) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-rose-300">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400" aria-hidden />
+        Urgent · True
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700/70 bg-zinc-800/40 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+      Urgent · False
+    </span>
+  )
+}
+
+const LeadsGrid = memo(function LeadsGrid({
   rows,
   selectedLead,
   onSelectLead,
@@ -165,55 +237,57 @@ const LeadsTable = memo(function LeadsTable({
   if (rows.length === 0) {
     return (
       <WorkspacePanel className="flex min-h-[280px] flex-col items-center justify-center px-6 py-16 text-center">
-        <p className="text-sm font-medium text-zinc-200">No AI leads yet</p>
+        <p className="text-sm font-medium text-zinc-200">No operator leads yet</p>
         <p className="mt-2 max-w-sm text-sm text-zinc-500">
-          When callers interact with your AI receptionist, captured intents and contact details will appear here.
+          When your Lyncr operators capture a caller&apos;s details, each profile appears here with their
+          contact info, urgency, and the action they need from you.
         </p>
       </WorkspacePanel>
     )
   }
 
   return (
-    <WorkspacePanel className="min-h-[280px]">
-      <WorkspaceTableWrap>
-        <colgroup>
-          <col className="w-[24%]" />
-          <col className="w-[24%]" />
-          <col className="w-[26%]" />
-          <col className="w-[26%]" />
-        </colgroup>
-        <thead>
-          <tr>
-            <WorkspaceTh>Lead name</WorkspaceTh>
-            <WorkspaceTh>Contact info</WorkspaceTh>
-            <WorkspaceTh>Date captured</WorkspaceTh>
-            <WorkspaceTh>AI intent target</WorkspaceTh>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.id}
-              className={cn(
-                "cursor-pointer transition-colors hover:bg-zinc-900/50",
-                selectedLead?.id === row.id && "bg-primary/5 ring-1 ring-inset ring-primary/30"
-              )}
-              onClick={() => {
-                onSelectLead(row)
-                openLead(row)
-              }}
-            >
-              <WorkspaceTd className="font-medium">{row.name}</WorkspaceTd>
-              <WorkspaceTd className="text-zinc-400">{row.contact}</WorkspaceTd>
-              <WorkspaceTd className="text-zinc-400">{row.dateLabel}</WorkspaceTd>
-              <WorkspaceTd>
-                <LeadIntentPill label={row.intentLabel} variant={row.intentVariant} />
-              </WorkspaceTd>
-            </tr>
-          ))}
-        </tbody>
-      </WorkspaceTableWrap>
-    </WorkspacePanel>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {rows.map((row) => {
+        const isSelected = selectedLead?.id === row.id
+        return (
+          <button
+            key={row.id}
+            type="button"
+            onClick={() => {
+              onSelectLead(row)
+              openLead(row)
+            }}
+            className={cn(
+              "flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 text-left transition-colors",
+              "hover:border-zinc-600 hover:bg-zinc-900/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+              row.isUrgent && "border-rose-500/30",
+              isSelected && "border-primary/40 ring-1 ring-inset ring-primary/30"
+            )}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-foreground">{row.name}</p>
+                <p className="mt-0.5 truncate text-sm tabular-nums text-zinc-400">{row.contact}</p>
+              </div>
+              <UrgentFlag urgent={row.isUrgent} />
+            </div>
+
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Action required</p>
+              <p className="mt-0.5 truncate text-sm font-medium text-foreground" title={row.actionLabel}>
+                {row.actionLabel}
+              </p>
+            </div>
+
+            <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+              <LeadIntentPill label={row.intentLabel} variant={row.intentVariant} />
+              <span className="shrink-0 text-[11px] text-zinc-600">{row.dateLabel}</span>
+            </div>
+          </button>
+        )
+      })}
+    </div>
   )
 })
 
@@ -243,7 +317,7 @@ const LeadsWorkspaceBody = memo(function LeadsWorkspaceBody({
       ) : error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : (
-        <LeadsTable rows={leads} selectedLead={selectedLead} onSelectLead={onSelectLead} />
+        <LeadsGrid rows={leads} selectedLead={selectedLead} onSelectLead={onSelectLead} />
       )}
     </WorkspacePage>
   )

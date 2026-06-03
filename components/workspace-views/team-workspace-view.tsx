@@ -130,10 +130,10 @@ function NetworkInstructionsPanel() {
             <Network className="h-5 w-5 text-violet-300" aria-hidden />
           </span>
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground sm:text-base">Lyncr Network Instructions</h2>
+            <h2 className="text-sm font-semibold text-foreground sm:text-base">Live Instruction Script</h2>
             <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-              Notes for the live operators answering your calls — business hours, how to greet callers,
-              pricing scripts, and what details to collect. Saved to every operator on your lines.
+              Dispatch notes, active pricing scripts, and immediate alerts for the live operators on your
+              line — business hours, how to greet callers, and what details to collect on every call.
             </p>
           </div>
         </div>
@@ -152,6 +152,7 @@ function NetworkInstructionsPanel() {
         disabled={!loaded || saving}
         rows={7}
         placeholder={
+          "ALERT: Fully booked for key copies today — only accept emergency car lockouts!\n" +
           "Business hours: Mon–Fri 8am–6pm, closed weekends\n" +
           "Greeting: \"Thanks for calling Ace Mobile Detailing, how can I help?\"\n" +
           "Pricing: Basic wash $40 · Full detail from $150 — quote ranges only, never commit a final price\n" +
@@ -287,6 +288,15 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
 
       <NetworkInstructionsPanel />
 
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground sm:text-base">Your Active Operator Network</h2>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Lyncr operators assigned to watch your inbound line.
+          </p>
+        </div>
+      </div>
+
       {billingCycleLabel ? (
         <p className="mb-4 text-xs text-zinc-500">
           Payout totals for billing cycle {billingCycleLabel}.
@@ -345,11 +355,18 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
                 </div>
                 <p
                   className={cn(
-                    "mt-4 text-[11px] font-medium uppercase tracking-wide transition-colors duration-200",
+                    "mt-4 inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide transition-colors duration-200",
                     online ? "text-success" : "text-zinc-500"
                   )}
                 >
-                  {online ? "Available for calls" : "Off duty"}
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      online ? "bg-success shadow-[0_0_8px_-1px_var(--success)]" : "bg-zinc-600"
+                    )}
+                    aria-hidden
+                  />
+                  {online ? "Active Coverage" : "Off duty"}
                 </p>
                 {payout ? (
                   <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-400">

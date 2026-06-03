@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useEffect, useState } from "react"
-import { Bell, Clock, CreditCard, Loader2, LogOut, MessageSquare, Shield, Smartphone, Volume2, Zap } from "lucide-react"
+import { Bell, Clock, CreditCard, FileAudio, Loader2, LogOut, MessageSquare, Shield, Siren, Smartphone, Volume2, Zap } from "lucide-react"
 import { updateNotificationPreferences } from "@/app/actions/notification-preferences"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
@@ -117,6 +117,10 @@ const SettingsWorkspaceBody = memo(function SettingsWorkspaceBody({
   setDispatchSmsPhone,
   notificationSaving,
   onSaveNotificationPreferences,
+  onToggleSmsLeads,
+  emailRecordingsEnabled,
+  onToggleEmailRecordings,
+  dispatchAlertsSaving,
   billingCycleEnd,
   subscriptionActive,
   signingOut,
@@ -142,6 +146,10 @@ const SettingsWorkspaceBody = memo(function SettingsWorkspaceBody({
   setDispatchSmsPhone: (v: string) => void
   notificationSaving: boolean
   onSaveNotificationPreferences: () => void
+  onToggleSmsLeads: (v: boolean) => void
+  emailRecordingsEnabled: boolean
+  onToggleEmailRecordings: (v: boolean) => void
+  dispatchAlertsSaving: boolean
   billingCycleEnd: string | null
   subscriptionActive: boolean
   signingOut: boolean
@@ -297,6 +305,58 @@ const SettingsWorkspaceBody = memo(function SettingsWorkspaceBody({
         </div>
       </WorkspacePanel>
 
+      <WorkspacePanel className="p-6 sm:p-8">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10">
+            <Siren className="h-5 w-5 text-amber-300" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1 space-y-5">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Lyncr Operator Dispatch Alerts</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Stay in the loop the moment a live operator wraps a call on your line.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <MessageSquare className="mt-0.5 h-4 w-4 text-primary" aria-hidden />
+                <div>
+                  <p className="text-sm font-medium text-foreground">SMS Lead Notifications</p>
+                  <p className="text-xs text-zinc-500">
+                    Text your phone an instant summary the second an operator finishes logging a call.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={smsLeadsEnabled}
+                onCheckedChange={onToggleSmsLeads}
+                disabled={dispatchAlertsSaving || notificationSaving}
+                aria-label="SMS Lead Notifications"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <FileAudio className="mt-0.5 h-4 w-4 text-primary" aria-hidden />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Email Call Recordings</p>
+                  <p className="text-xs text-zinc-500">
+                    Deliver mp3 playback files of completed calls to your primary email address.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={emailRecordingsEnabled}
+                onCheckedChange={onToggleEmailRecordings}
+                disabled={dispatchAlertsSaving}
+                aria-label="Email Call Recordings"
+              />
+            </div>
+          </div>
+        </div>
+      </WorkspacePanel>
+
       <RoutingStrategyCard />
 
       <Messaging10DlcCard />
@@ -362,6 +422,8 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
   const [smsLeadsEnabled, setSmsLeadsEnabled] = useState(false)
   const [dispatchSmsPhone, setDispatchSmsPhone] = useState("")
   const [notificationSaving, setNotificationSaving] = useState(false)
+  const [emailRecordingsEnabled, setEmailRecordingsEnabled] = useState(false)
+  const [dispatchAlertsSaving, setDispatchAlertsSaving] = useState(false)
   const [billingCycleEnd, setBillingCycleEnd] = useState<string | null>(null)
   const [subscriptionActive, setSubscriptionActive] = useState(false)
 
@@ -388,6 +450,15 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
       })
       .catch(() => {
         /* optional until migration 027 */
+      })
+
+    fetch("/api/settings/email-recordings", { credentials: "include" })
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.data) setEmailRecordingsEnabled(data.data.email_recordings_enabled === true)
+      })
+      .catch(() => {
+        /* optional until migration 056 */
       })
   }, [])
 
@@ -456,6 +527,62 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
     }
   }
 
+  async function toggleSmsLeads(next: boolean) {
+    if (!companyUserId) {
+      toast({ title: "Could not save", description: "Session not loaded yet.", variant: "destructive" })
+      return
+    }
+    const prev = smsLeadsEnabled
+    setSmsLeadsEnabled(next)
+    setDispatchAlertsSaving(true)
+    try {
+      const result = await updateNotificationPreferences(companyUserId, next, dispatchSmsPhone)
+      if (!result.ok) throw new Error(result.error)
+      setSmsLeadsEnabled(result.sms_leads_enabled)
+      setDispatchSmsPhone(result.dispatch_sms_phone ?? dispatchSmsPhone)
+      toast({ title: next ? "SMS lead alerts on" : "SMS lead alerts off" })
+    } catch (e) {
+      setSmsLeadsEnabled(prev)
+      toast({
+        title: "Could not update SMS alerts",
+        description: e instanceof Error ? e.message : "Try again",
+        variant: "destructive",
+      })
+    } finally {
+      setDispatchAlertsSaving(false)
+    }
+  }
+
+  async function toggleEmailRecordings(next: boolean) {
+    const prev = emailRecordingsEnabled
+    setEmailRecordingsEnabled(next)
+    setDispatchAlertsSaving(true)
+    try {
+      const res = await fetch("/api/settings/email-recordings", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_recordings_enabled: next }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { email_recordings_enabled?: boolean }
+        error?: string
+      }
+      if (!res.ok) throw new Error(json.error || "Could not save")
+      setEmailRecordingsEnabled(json.data?.email_recordings_enabled === true)
+      toast({ title: next ? "Email recordings on" : "Email recordings off" })
+    } catch (e) {
+      setEmailRecordingsEnabled(prev)
+      toast({
+        title: "Could not update email recordings",
+        description: e instanceof Error ? e.message : "Try again",
+        variant: "destructive",
+      })
+    } finally {
+      setDispatchAlertsSaving(false)
+    }
+  }
+
   return (
     <WorkspaceRightSheetGate<typeof HOURS_SHEET_KEY>
       render={() => <SettingsHoursSheet />}
@@ -481,6 +608,10 @@ export const SettingsWorkspaceView = memo(function SettingsWorkspaceView() {
         setDispatchSmsPhone={setDispatchSmsPhone}
         notificationSaving={notificationSaving}
         onSaveNotificationPreferences={() => void saveNotificationPreferences()}
+        onToggleSmsLeads={(v) => void toggleSmsLeads(v)}
+        emailRecordingsEnabled={emailRecordingsEnabled}
+        onToggleEmailRecordings={(v) => void toggleEmailRecordings(v)}
+        dispatchAlertsSaving={dispatchAlertsSaving}
         billingCycleEnd={billingCycleEnd}
         subscriptionActive={subscriptionActive}
         signingOut={signingOut}

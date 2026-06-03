@@ -5154,6 +5154,51 @@ export async function setRoutingInstructions(userId: string, text: string): Prom
   }
 }
 
+/**
+ * "Email Call Recordings" dispatch-alert preference (scripts/056). Isolated + deploy-safe so a
+ * pre-migration deploy can't break profile loads — returns false until the column exists.
+ */
+export async function getEmailRecordingsEnabled(userId: string): Promise<boolean> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT email_recordings_enabled FROM onboarding_profiles WHERE user_id = ${userId} LIMIT 1
+    `
+    const row = rows[0] as Record<string, unknown> | undefined
+    return row?.email_recordings_enabled === true || row?.email_recordings_enabled === "t"
+  } catch (e) {
+    if (
+      pgErrorCode(e) === "42703" ||
+      isMissingOnboardingProfilesTableError(e) ||
+      isWrongLegacyProfilesTableError(e)
+    ) {
+      return false
+    }
+    throw e
+  }
+}
+
+/** Save the "Email Call Recordings" preference. Throws a friendly hint until 056 is applied. */
+export async function setEmailRecordingsEnabled(userId: string, enabled: boolean): Promise<boolean> {
+  await ensureOnboardingProfile(userId)
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE onboarding_profiles
+      SET email_recordings_enabled = ${enabled}, updated_at = now()
+      WHERE user_id = ${userId}
+    `
+    return enabled
+  } catch (e) {
+    if (pgErrorCode(e) === "42703") {
+      throw new Error(
+        "Dispatch-alert prefs need migration 056 — run scripts/056-dispatch-alert-prefs.sql in Neon."
+      )
+    }
+    throw e
+  }
+}
+
 export async function getOnboardingProfile(userId: string): Promise<OnboardingProfile | null> {
   const sql = getSql()
   try {

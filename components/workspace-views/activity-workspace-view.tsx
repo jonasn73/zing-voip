@@ -81,40 +81,116 @@ function classifyCall(call: UiCallRecord): ActivityCallStatus {
   return "missed"
 }
 
-function simulatedTranscript(call: UiCallRecord): { role: "ai" | "caller"; text: string }[] {
-  return [
-    { role: "ai", text: "Thank you for calling. How can I help you today?" },
-    { role: "caller", text: `Hi, this is ${call.callerName}. I need assistance.` },
-    { role: "ai", text: "I can help. What's the best callback number?" },
-    { role: "caller", text: `${call.callerNumber}` },
-    { role: "ai", text: "Captured. Someone will follow up shortly." },
-  ]
+type CallAgent = { label: string; kind: "operator" | "ai" | "owner" | "none" }
+
+/** Resolve who handled the call traffic for the Agent badge. */
+function resolveCallAgent(call: UiCallRecord): CallAgent {
+  const st = classifyCall(call)
+  const routed = (call.routedTo ?? "").trim()
+  if (st === "voicemail") return { label: "Voicemail", kind: "none" }
+  if (st === "missed") return { label: "Unanswered", kind: "none" }
+  if (st === "ai_handled" || /ai receptionist|voice ai|assistant/i.test(routed)) {
+    return { label: "Lyncr AI", kind: "ai" }
+  }
+  if (!routed || /^owner$/i.test(routed) || /\byou\b/i.test(routed)) {
+    return { label: "You", kind: "owner" }
+  }
+  const name = routed.replace(/^routed to\s+/i, "").trim() || "Operator"
+  return { label: name, kind: "operator" }
+}
+
+function AgentBadge({ agent }: { agent: CallAgent }) {
+  if (agent.kind === "none") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700/70 bg-zinc-800/40 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
+        {agent.label}
+      </span>
+    )
+  }
+  const tone =
+    agent.kind === "ai"
+      ? "border-cyan-500/35 bg-cyan-500/10 text-cyan-300"
+      : agent.kind === "owner"
+        ? "border-primary/35 bg-primary/10 text-primary"
+        : "border-violet-500/40 bg-violet-500/10 text-violet-300"
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+        tone
+      )}
+      title={`Answered by: ${agent.label}`}
+    >
+      <span
+        className={cn(
+          "h-1.5 w-1.5 shrink-0 rounded-full",
+          agent.kind === "ai" ? "bg-cyan-400" : agent.kind === "owner" ? "bg-primary" : "bg-violet-400"
+        )}
+        aria-hidden
+      />
+      <span className="truncate">Answered by: {agent.label}</span>
+    </span>
+  )
+}
+
+/** Plain-language recap of who handled the call and what was captured. */
+function buildCallSummary(call: UiCallRecord): string {
+  const agent = resolveCallAgent(call)
+  const dur = formatDuration(call.durationSeconds)
+  const caller = `${call.callerName} (${call.callerNumber})`
+  if (agent.kind === "none") {
+    return call.type === "voicemail"
+      ? `${caller} reached your line and left a voicemail. No live operator picked up — follow up to recover this lead.`
+      : `${caller} called your line but the call went unanswered. Consider returning the call to recover this lead.`
+  }
+  const who =
+    agent.kind === "ai"
+      ? "the Lyncr AI receptionist"
+      : agent.kind === "owner"
+        ? "you directly"
+        : `Lyncr operator ${agent.label}`
+  return `${caller} called in and was answered by ${who}. The conversation lasted ${dur}. The caller's request and any details collected during the call are noted below for your follow-up.`
 }
 
 function CallLogSheet({ call, onClose }: { call: UiCallRecord; onClose: () => void }) {
-  const lines = simulatedTranscript(call)
+  const agent = resolveCallAgent(call)
+  const summary = buildCallSummary(call)
   return (
     <>
       <DrawerStepHeader
         step="Log"
-        title="Call transcript"
+        title="Call detail"
         subtitle={`${call.callerName} · ${call.callerNumber}`}
       />
       <DrawerScrollBody>
-        <div className="space-y-3">
-          {lines.map((line, i) => (
-            <div
-              key={i}
-              className={cn(
-                "max-w-[92%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
-                line.role === "ai"
-                  ? "mr-auto border border-cyan-500/30 bg-cyan-500/10 text-foreground"
-                  : "ml-auto border border-zinc-700 bg-zinc-900/80 text-zinc-300"
-              )}
-            >
-              {line.text}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <AgentBadge agent={agent} />
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700/70 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-medium tabular-nums text-zinc-400">
+              {formatDuration(call.durationSeconds)}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700/70 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+              {formatCallTimestamp(call)}
+            </span>
+          </div>
+
+          <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.06] p-4">
+            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-cyan-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" aria-hidden />
+              Lyncr AI Call Summary &amp; Notes
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-200">{summary}</p>
+          </div>
+
+          {call.hasRecording && call.recordingUrl ? (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Call recording</p>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio controls preload="none" src={call.recordingUrl} className="w-full">
+                Your browser does not support audio playback.
+              </audio>
             </div>
-          ))}
+          ) : null}
         </div>
       </DrawerScrollBody>
       <DrawerStickyFooter dirty={false} saving={false} onSave={onClose} onCancel={onClose} saveLabel="Close" />
@@ -135,10 +211,11 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
     <WorkspacePanel className="min-h-[380px]">
       <WorkspaceTableWrap className="min-h-[340px]">
         <colgroup>
-          <col className="w-[18%]" />
-          <col className="w-[28%]" />
-          <col className="w-[12%]" />
-          <col className="w-[32%]" />
+          <col className="w-[14%]" />
+          <col className="w-[24%]" />
+          <col className="w-[10%]" />
+          <col className="w-[20%]" />
+          <col className="w-[22%]" />
           <col className="w-[10%]" />
         </colgroup>
         <thead>
@@ -146,6 +223,7 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
             <WorkspaceTh>Status</WorkspaceTh>
             <WorkspaceTh>Caller</WorkspaceTh>
             <WorkspaceTh>Duration</WorkspaceTh>
+            <WorkspaceTh>Agent</WorkspaceTh>
             <WorkspaceTh>Target line</WorkspaceTh>
             <WorkspaceTh />
           </tr>
@@ -153,7 +231,7 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <WorkspaceTd colSpan={5} className="py-12 text-center text-zinc-600">
+              <WorkspaceTd colSpan={6} className="py-12 text-center text-zinc-600">
                 No calls yet
               </WorkspaceTd>
             </tr>
@@ -175,6 +253,9 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
                   </WorkspaceTd>
                   <WorkspaceTd className="tabular-nums text-zinc-400">
                     {formatDuration(call.durationSeconds)}
+                  </WorkspaceTd>
+                  <WorkspaceTd>
+                    <AgentBadge agent={resolveCallAgent(call)} />
                   </WorkspaceTd>
                   <WorkspaceTd>
                     <p className="truncate font-medium text-zinc-200" title={targetLabel}>

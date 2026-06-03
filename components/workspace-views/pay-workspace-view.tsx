@@ -49,7 +49,9 @@ type TalkTimeCall = {
 function formatLedgerDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return "—"
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  return `${date}, ${time}`
 }
 
 /** Round seconds to a tenth of a minute for display. */
@@ -252,7 +254,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
       <div className="flex flex-col gap-8">
         <div className="grid min-h-[5.75rem] gap-4 sm:grid-cols-2">
           <WorkspaceStatCard
-            label="Available talk-time credit"
+            label="Lyncr Talk-Time Balance"
             value={balanceLabel}
             hint={
               availableTalkMinutes != null
@@ -380,10 +382,10 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
             </colgroup>
             <thead>
               <tr>
-                <WorkspaceTh>Date</WorkspaceTh>
-                <WorkspaceTh>Active operator</WorkspaceTh>
-                <WorkspaceTh>Minutes used</WorkspaceTh>
-                <WorkspaceTh>Total cost</WorkspaceTh>
+                <WorkspaceTh>Date/Time</WorkspaceTh>
+                <WorkspaceTh>Answered By</WorkspaceTh>
+                <WorkspaceTh>Duration (Min)</WorkspaceTh>
+                <WorkspaceTh>Total Deducted</WorkspaceTh>
               </tr>
             </thead>
             <tbody className="min-h-[208px]">

@@ -3975,6 +3975,7 @@ function parseFieldTechnicianRow(row: Record<string, unknown>): FieldTechnician 
     phone: String(row.phone ?? ""),
     email: row.email != null ? String(row.email) : null,
     is_active: row.is_active == null ? true : pgBool(row.is_active),
+    invite_pending: String(row.invite_status ?? "").toLowerCase() === "invited",
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
 }
@@ -3985,7 +3986,7 @@ export async function listFieldTechnicians(ownerUserId: string): Promise<FieldTe
   try {
     const rows = await sql`
       SELECT ft.id, ft.user_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
-             u.email AS email
+             u.email AS email, u.invite_status AS invite_status
       FROM field_technicians ft
       LEFT JOIN users u ON u.id = ft.portal_user_id
       WHERE ft.user_id = ${ownerUserId}
@@ -3994,6 +3995,23 @@ export async function listFieldTechnicians(ownerUserId: string): Promise<FieldTe
     return rows.map(parseFieldTechnicianRow)
   } catch (e) {
     if (isMissingFieldTechTableError(e)) return []
+    // invite_status missing (pre-054/064) → retry without it.
+    if (pgErrorCode(e) === "42703") {
+      try {
+        const rows = await sql`
+          SELECT ft.id, ft.user_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
+                 u.email AS email
+          FROM field_technicians ft
+          LEFT JOIN users u ON u.id = ft.portal_user_id
+          WHERE ft.user_id = ${ownerUserId}
+          ORDER BY ft.created_at DESC
+        `
+        return rows.map(parseFieldTechnicianRow)
+      } catch (e2) {
+        if (isMissingFieldTechTableError(e2)) return []
+        throw e2
+      }
+    }
     throw e
   }
 }

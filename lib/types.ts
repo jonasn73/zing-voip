@@ -43,6 +43,8 @@ export interface FieldTechnician {
   /** Login email (joined from the linked users row). */
   email: string | null
   is_active: boolean
+  /** True while the tech still has a pending SMS invite (hasn't set their password yet). */
+  invite_pending?: boolean
   created_at: string
 }
 

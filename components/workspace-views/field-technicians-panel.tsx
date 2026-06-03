@@ -1,14 +1,22 @@
-// Owner Team panel: provision field-tech logins for road staff and manage the roster.
+// Owner Team panel: invite field techs by mobile number (hands-free SMS setup link) and manage the
+// roster. No passwords to manage — the tech taps their text and sets their own password.
 
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { HardHat, Loader2, Plus, Copy, Check, UserPlus } from "lucide-react"
+import { HardHat, Loader2, Plus, UserPlus, MessageSquare, Send, Check } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { WorkspacePanel } from "@/components/dashboard-workspace-ui"
 import type { FieldTechnician } from "@/lib/types"
 
-type NewCredentials = { email: string; password: string; login_url: string }
+type InviteResult = {
+  name: string
+  phone: string
+  expires_at: string
+  setup_url: string
+  sms_sent: boolean
+  sms_error: string | null
+}
 
 function formatPhoneDisplay(phone: string): string {
   const d = phone.replace(/\D/g, "")
@@ -23,11 +31,11 @@ export function FieldTechniciansPanel() {
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [credentials, setCredentials] = useState<NewCredentials | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [invite, setInvite] = useState<InviteResult | null>(null)
+  const [resentId, setResentId] = useState<string | null>(null)
 
-  const [name, setName] = useState("")
-  const [email, setEmail] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
   const [phone, setPhone] = useState("")
 
   const load = useCallback(() => {
@@ -45,29 +53,44 @@ export function FieldTechniciansPanel() {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    setCredentials(null)
+    setInvite(null)
     try {
       const res = await fetch("/api/technicians", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), phone: phone.trim() }),
+        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() }),
       })
       const j = await res.json()
       if (!res.ok) {
-        setError(j?.error || "Could not add technician")
+        setError(j?.error || "Could not invite technician")
         return
       }
-      setCredentials(j.data.credentials as NewCredentials)
-      setName("")
-      setEmail("")
+      if (Array.isArray(j.data?.technicians)) setTechs(j.data.technicians as FieldTechnician[])
+      setInvite(j.data.invite as InviteResult)
+      setFirstName("")
+      setLastName("")
       setPhone("")
       setAdding(false)
-      load()
     } catch {
       setError("Network error. Please try again.")
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function resend(tech: FieldTechnician) {
+    setResentId(tech.id)
+    try {
+      await fetch("/api/tech/invite", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ technicianId: tech.id }),
+      })
+      setTimeout(() => setResentId(null), 2500)
+    } catch {
+      setResentId(null)
     }
   }
 
@@ -86,15 +109,6 @@ export function FieldTechniciansPanel() {
     }
   }
 
-  function copyCreds() {
-    if (!credentials) return
-    const text = `Lyncr Field Console\nLogin: ${location.origin}${credentials.login_url}\nEmail: ${credentials.email}\nPassword: ${credentials.password}`
-    navigator.clipboard?.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
   return (
     <WorkspacePanel className="mt-6 p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -111,7 +125,7 @@ export function FieldTechniciansPanel() {
           <button
             onClick={() => {
               setAdding(true)
-              setCredentials(null)
+              setInvite(null)
             }}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-violet-500"
           >
@@ -120,44 +134,42 @@ export function FieldTechniciansPanel() {
         )}
       </div>
 
-      {/* New-credentials banner (shown once after provisioning) */}
-      {credentials && (
+      {/* Invite-sent confirmation */}
+      {invite && (
         <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <p className="text-sm font-semibold text-emerald-200">Technician login created</p>
-          <p className="mt-1 text-xs text-emerald-100/80">
-            Share these once — the password isn&apos;t shown again. They sign in at{" "}
-            <span className="font-mono">{credentials.login_url}</span>.
+          <p className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+            <MessageSquare className="h-4 w-4" />
+            {invite.sms_sent ? `Invite texted to ${invite.name}` : `Invite created for ${invite.name}`}
           </p>
-          <div className="mt-3 space-y-1 rounded-lg bg-black/30 p-3 font-mono text-xs text-emerald-100">
-            <p>Email: {credentials.email}</p>
-            <p>Password: {credentials.password}</p>
-          </div>
-          <button
-            onClick={copyCreds}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/10"
-          >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? "Copied" : "Copy login details"}
-          </button>
+          <p className="mt-1 text-xs text-emerald-100/80">
+            {invite.sms_sent
+              ? `We sent a secure setup link to ${formatPhoneDisplay(invite.phone)}. They tap it, pick a password, and they're in — no password for you to manage.`
+              : `We couldn't send the SMS automatically${invite.sms_error ? ` (${invite.sms_error})` : ""}. Share this setup link with them directly:`}
+          </p>
+          {!invite.sms_sent && (
+            <p className="mt-2 break-all rounded-lg bg-black/30 p-2 font-mono text-[11px] text-emerald-100">
+              {invite.setup_url}
+            </p>
+          )}
+          <p className="mt-2 text-[11px] text-emerald-100/60">Link expires in 48 hours.</p>
         </div>
       )}
 
-      {/* Add form */}
+      {/* Invite form — first, last, mobile only */}
       {adding && (
         <form onSubmit={submit} className="mb-4 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Full name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="First name"
               required
               className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-500"
             />
             <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              placeholder="Login email"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Last name"
               required
               className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-500"
             />
@@ -165,7 +177,10 @@ export function FieldTechniciansPanel() {
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="Mobile phone (optional)"
+            type="tel"
+            inputMode="tel"
+            placeholder="Mobile phone number"
+            required
             className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-500"
           />
           {error && <p className="text-sm text-red-400">{error}</p>}
@@ -176,7 +191,7 @@ export function FieldTechniciansPanel() {
               className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-              Create login
+              Send invite
             </button>
             <button
               type="button"
@@ -190,7 +205,7 @@ export function FieldTechniciansPanel() {
             </button>
           </div>
           <p className="text-[11px] text-zinc-500">
-            We generate a temporary password automatically. The tech can use it at the Lyncr Field Console.
+            We text them a secure link to set their own password — you never handle passwords.
           </p>
         </form>
       )}
@@ -210,13 +225,29 @@ export function FieldTechniciansPanel() {
               className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{tech.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-medium text-foreground">{tech.name}</p>
+                  {tech.invite_pending && (
+                    <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                      Setup pending
+                    </span>
+                  )}
+                </div>
                 <p className="truncate text-xs text-zinc-500">
-                  {tech.email || "—"}
-                  {tech.phone ? ` · ${formatPhoneDisplay(tech.phone)}` : ""}
+                  {tech.phone ? formatPhoneDisplay(tech.phone) : "—"}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-3">
+                {tech.invite_pending && (
+                  <button
+                    onClick={() => void resend(tech)}
+                    disabled={resentId === tech.id}
+                    className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
+                  >
+                    {resentId === tech.id ? <Check className="h-3 w-3" /> : <Send className="h-3 w-3" />}
+                    {resentId === tech.id ? "Sent" : "Resend"}
+                  </button>
+                )}
                 <span className={`text-[11px] font-medium ${tech.is_active ? "text-success" : "text-zinc-500"}`}>
                   {tech.is_active ? "Active" : "Off"}
                 </span>

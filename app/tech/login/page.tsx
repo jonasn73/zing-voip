@@ -5,6 +5,7 @@
 
 import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { syntheticTechEmail } from "@/lib/tech-invite"
 
 export default function TechLoginPage() {
   // useSearchParams() requires a Suspense boundary during static prerender.
@@ -18,7 +19,7 @@ export default function TechLoginPage() {
 function TechLoginForm() {
   const router = useRouter()
   const search = useSearchParams()
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -28,15 +29,18 @@ function TechLoginForm() {
     setBusy(true)
     setError(null)
     try {
+      // Techs sign in with their mobile number (converted to their login identity); an email also works.
+      const raw = identifier.trim()
+      const loginEmail = raw.includes("@") ? raw.toLowerCase() : syntheticTechEmail(raw)
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include", // store the session cookie
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify({ email: loginEmail, password }),
       })
       const json = await res.json()
       if (!res.ok) {
-        setError(json?.error || "Invalid email or password")
+        setError(json?.error || "Invalid mobile number or password")
         return
       }
       // The API tells us where this account belongs; techs land on /tech/dashboard.
@@ -63,16 +67,16 @@ function TechLoginForm() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Email</label>
+            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Mobile number</label>
             <input
-              type="email"
-              inputMode="email"
+              type="text"
+              inputMode="tel"
               autoComplete="username"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3.5 text-base text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
-              placeholder="you@email.com"
+              placeholder="(555) 123-4567"
             />
           </div>
           <div>

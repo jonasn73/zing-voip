@@ -1,28 +1,19 @@
 // ============================================
 // GET  /api/technicians   — list the owner's field techs
-// POST /api/technicians   — provision a new field tech login + roster row
+// POST /api/technicians   — invite a field tech by mobile number (no password)
 // ============================================
+// Hands-free invite flow: the owner submits first name, last name and mobile number. We create a
+// passwordless stub login + roster row carrying a one-time token (48h), then text the tech a secure
+// /tech/setup link where they pick their own password. See lib/tech-invite-stub.ts.
 
 import { NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcryptjs"
 import { getUserIdFromRequest } from "@/lib/auth"
-import {
-  createUser,
-  getAuthUserByEmail,
-  getUser,
-  insertFieldTechnician,
-  listFieldTechnicians,
-} from "@/lib/db"
+import { getUser, listFieldTechnicians } from "@/lib/db"
+import { TECH_INVITE_TTL_MS } from "@/lib/tech-invite"
+import { createTechInviteStub } from "@/lib/tech-invite-stub"
+import { resolveAppBaseUrl, sendTechInviteSms } from "@/lib/tech-invite-sms"
 
 export const dynamic = "force-dynamic"
-
-/** Readable temporary password, e.g. "Lyncr-7F3K9Q". */
-function generateTempPassword(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no ambiguous chars
-  let s = ""
-  for (let i = 0; i < 7; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)]
-  return `Lyncr-${s}`
-}
 
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -46,59 +37,70 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as {
+    firstName?: string
+    lastName?: string
     name?: string
     phone?: string
-    email?: string
-    password?: string
   }
-  const name = String(body.name || "").trim()
+  const firstName = String(body.firstName || "").trim()
+  const lastName = String(body.lastName || "").trim()
+  // Accept a combined `name` too, but prefer first + last.
+  const name = (firstName || lastName ? `${firstName} ${lastName}` : String(body.name || "")).trim()
   const phone = String(body.phone || "").trim()
-  const email = String(body.email || "").trim().toLowerCase()
-  if (!name || !email) {
-    return NextResponse.json({ error: "Name and email are required" }, { status: 400 })
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 })
-  }
 
-  // No duplicate logins.
-  const existing = await getAuthUserByEmail(email)
-  if (existing) {
-    return NextResponse.json({ error: "That email already has a Lyncr login" }, { status: 409 })
+  if (!name || name.length < 2) {
+    return NextResponse.json({ error: "First and last name are required" }, { status: 400 })
   }
-
-  const tempPassword = (body.password || "").trim() || generateTempPassword()
-  if (tempPassword.length < 6) {
-    return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 })
+  const phoneDigits = phone.replace(/\D/g, "")
+  if (phoneDigits.length < 10) {
+    return NextResponse.json({ error: "Enter a valid mobile phone number" }, { status: 400 })
   }
 
   try {
-    const passwordHash = await bcrypt.hash(tempPassword, 10)
-    // The tech's login account — same business name so branding carries through.
-    const techUser = await createUser({
-      email,
-      name,
-      phone: phone || owner.phone || "+10000000000",
-      business_name: owner.business_name,
-      password_hash: passwordHash,
-      account_role: "field_tech",
-    })
-    const technician = await insertFieldTechnician({
-      owner_user_id: userId,
-      portal_user_id: techUser.id,
+    const token = crypto.randomUUID()
+    const expiresAt = new Date(Date.now() + TECH_INVITE_TTL_MS).toISOString()
+
+    await createTechInviteStub({
+      ownerUserId: userId,
+      ownerBusinessName: owner.business_name,
       name,
       phone,
+      token,
+      expiresAt,
     })
 
-    // Credentials are returned ONCE so the owner can hand them to the tech.
+    // Fire the white-labeled invite SMS immediately.
+    const baseUrl = resolveAppBaseUrl(req.nextUrl.origin)
+    const sms = await sendTechInviteSms({
+      ownerUserId: userId,
+      toPhone: phone,
+      businessName: owner.business_name,
+      token,
+      baseUrl,
+    })
+
+    // Return the refreshed roster so the UI updates, plus invite/SMS status.
+    const technicians = await listFieldTechnicians(userId)
     return NextResponse.json({
       data: {
-        technician,
-        credentials: { email, password: tempPassword, login_url: "/tech/login" },
+        technicians,
+        invite: {
+          name,
+          phone,
+          expires_at: expiresAt,
+          setup_url: sms.setupUrl,
+          sms_sent: sms.sent,
+          sms_error: sms.error,
+        },
       },
     })
   } catch (e) {
+    const msg = e instanceof Error ? e.message : "Could not invite technician"
     console.error("[POST /api/technicians] failed:", e)
-    return NextResponse.json({ error: "Could not provision technician" }, { status: 500 })
+    // Surface friendly validation/migration errors to the owner.
+    const isUserFacing = /already has|migration 064/i.test(msg)
+    return NextResponse.json({ error: isUserFacing ? msg : "Could not invite technician" }, {
+      status: isUserFacing ? 409 : 500,
+    })
   }
 }

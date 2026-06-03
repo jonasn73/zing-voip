@@ -19,12 +19,14 @@ import {
   applyLeadDisposition,
   assignJobToTech,
   resolveDispatchTechForOwner,
+  setLeadCoordinates,
   setLeadDispatchStatus,
   type LeadDisposition,
 } from "@/lib/db"
 import { dispatchStateFor } from "@/lib/call-disposition"
 import { publishOwnerEvent, publishTechnicianEvent } from "@/lib/realtime/pusher-server"
 import { onJobStateChange } from "@/lib/sms-pipeline"
+import { geocodeAddress, pickAddressFromFields } from "@/lib/geocode"
 
 type LogJobBody = {
   callLogId?: string
@@ -123,8 +125,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Broadcast + customer SMS without delaying the operator's response.
+    // Broadcast + customer SMS + geocoding without delaying the operator's response.
     after(async () => {
+      // Geocode the service address so the field-tech 50m arrival geofence can fire on this job.
+      if (isBooked) {
+        const address = pickAddressFromFields(fields)
+        if (address) {
+          try {
+            const coords = await geocodeAddress(address)
+            if (coords) await setLeadCoordinates(result.id, coords.lat, coords.lng)
+          } catch (e) {
+            console.error("[receptionist/log-job] geocode failed:", e)
+          }
+        }
+      }
+
       try {
         await publishOwnerEvent(ctx.owner_user_id, isBooked ? "job-booked" : "lead-salvageable", {
           leadId: result.id,

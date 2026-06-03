@@ -91,6 +91,9 @@ NEXT_PUBLIC_APP_URL=                   # Your deployed URL (for webhook URLs)
 
 # AI (for AI receptionist fallback)
 OPENAI_API_KEY=                         # Or use Vercel AI Gateway
+
+# Geocoding (field-tech 50m arrival geofence) — OPTIONAL
+GOOGLE_GEOCODING_API_KEY=               # If unset, falls back to free OpenStreetMap Nominatim
 ```
 
 ## Implementation Order

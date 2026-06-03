@@ -4233,6 +4233,22 @@ export async function setLeadDispatchStatus(leadId: string, dispatchStatus: stri
   }
 }
 
+/** Persist a geocoded service address onto a lead's collected JSONB (drives the arrival geofence). */
+export async function setLeadCoordinates(leadId: string, lat: number, lng: number): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE ai_leads
+      SET collected = jsonb_set(
+            jsonb_set(coalesce(collected, '{}'::jsonb), '{customer_lat}', to_jsonb(${lat}::float8), true),
+            '{customer_lng}', to_jsonb(${lng}::float8), true)
+      WHERE id = ${leadId}
+    `
+  } catch (e) {
+    if (!isUndefinedRelationError(e, "ai_leads")) throw e
+  }
+}
+
 export interface TechActiveJobGeo {
   leadId: string
   job_status: string | null

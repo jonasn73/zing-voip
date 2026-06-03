@@ -4048,6 +4048,105 @@ export async function listRecentBookedLeads(
   }
 }
 
+/** Save the operator's transcribed job notes onto the call log (deploy-safe — no-op until scripts/060). */
+export async function setCallLogInternalNotes(
+  providerCallSidOrId: string,
+  notes: string
+): Promise<void> {
+  const key = providerCallSidOrId.trim()
+  if (!key) return
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE call_logs
+      SET internal_notes = ${notes}
+      WHERE provider_call_sid = ${key} OR twilio_call_sid = ${key} OR id::text = ${key}
+    `
+  } catch (e) {
+    if (pgErrorCode(e) === "42703") return
+    throw e
+  }
+}
+
+/** True when the receptionist is opted into the mobile voice wrap-up callback (false until scripts/060). */
+export async function getReceptionistIsMobileOperator(receptionistId: string): Promise<boolean> {
+  const id = receptionistId.trim()
+  if (!id) return false
+  const sql = getSql()
+  try {
+    const rows = await sql`SELECT is_mobile_operator FROM receptionists WHERE id = ${id} LIMIT 1`
+    return rows[0]?.is_mobile_operator === true
+  } catch (e) {
+    if (pgErrorCode(e) === "42703") return false
+    throw e
+  }
+}
+
+export interface CallContactInfo {
+  user_id: string
+  from_number: string | null
+  caller_name: string | null
+  to_number: string | null
+}
+
+/** Customer contact fields for a call (used by the owner dispatch SMS). */
+export async function getCallContactByProviderSid(providerCallSid: string): Promise<CallContactInfo | null> {
+  const sid = providerCallSid.trim()
+  if (!sid) return null
+  const sql = getSql()
+  const rows = await sql`
+    SELECT user_id, from_number, caller_name, to_number
+    FROM call_logs
+    WHERE provider_call_sid = ${sid} OR twilio_call_sid = ${sid}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    user_id: String(row.user_id),
+    from_number: row.from_number != null ? String(row.from_number) : null,
+    caller_name: row.caller_name != null ? String(row.caller_name) : null,
+    to_number: row.to_number != null ? String(row.to_number) : null,
+  }
+}
+
+/** Best-effort job site + customer name from the most recent captured lead for this caller. */
+export async function getLatestLeadContextForCaller(
+  userId: string,
+  callerE164: string | null
+): Promise<{ location: string | null; customerName: string | null } | null> {
+  if (!callerE164?.trim()) return null
+  const sql = getSql()
+  let rows: Record<string, unknown>[]
+  try {
+    rows = await sql`
+      SELECT collected, summary
+      FROM ai_leads
+      WHERE user_id = ${userId} AND caller_e164 = ${callerE164}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+  } catch (e) {
+    if (isUndefinedRelationError(e, "ai_leads")) return null
+    throw e
+  }
+  const row = rows[0]
+  if (!row) return null
+  const collected = (row.collected as Record<string, unknown>) || {}
+  const pick = (keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = collected[k]
+      if (typeof v === "string" && v.trim()) return v.trim()
+    }
+    return null
+  }
+  return {
+    location: pick(["location", "service_address", "address", "job_address", "address_line1", "vehicle_location"]),
+    customerName: pick(["customer_name", "name", "caller_name", "contact_name"]),
+  }
+}
+
 /** Stamp the call_logs row's final disposition (deploy-safe — no-op until scripts/059 runs). */
 export async function setCallLogDisposition(
   providerCallSidOrId: string,

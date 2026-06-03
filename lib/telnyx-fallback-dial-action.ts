@@ -4,8 +4,10 @@
 // Used by /api/voice/telnyx/fallback and /api/voice/telnyx/fallback/u/[userId].
 // Telnyx sometimes strips query params on Dial callbacks or uses GET — path userId + merged params fixes empty userId / wrong routing.
 
+import { after } from "next/server"
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
+import { maybePlaceMobileWrapupCallback } from "@/lib/mobile-wrapup-callback"
 import type { FallbackType, RoutingConfig, User } from "@/lib/types"
 import {
   getRoutingConfig,
@@ -607,6 +609,23 @@ export async function handleTelnyxFallbackDialEnded(
           pathFallbackMode: pathFallbackMode ?? null,
         }
       )
+      // Mobile operator? Ring them back for the hands-free voice wrap-up (inert unless configured + flagged).
+      if (lr && lr.user_id === userId && lr.selected_receptionist_id?.trim()) {
+        after(async () => {
+          try {
+            await maybePlaceMobileWrapupCallback({
+              userId,
+              receptionistId: lr.selected_receptionist_id,
+              receptionistPhoneRaw: lr.receptionist_phone,
+              businessLineE164: effectiveBusinessLine || businessLineE164,
+              businessName: lr.business_name,
+              callSid,
+            })
+          } catch (e) {
+            console.error("[telnyx-fallback] mobile wrap-up callback failed:", e)
+          }
+        })
+      }
       if (callSid.trim()) void markTelnyxInboundDialCallerLegDone(callSid)
       texml.hangup()
       return new NextResponse(texml.toString(), {

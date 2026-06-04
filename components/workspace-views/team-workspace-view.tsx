@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useCallback, useEffect, useState } from "react"
-import { Check, Loader2, Network, Plus, Save } from "lucide-react"
+import { Check, Loader2, Network, Plus, Save, Users } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
@@ -31,32 +31,6 @@ function formatPhoneDisplay(phone: string): string {
   if (digits.length === 11 && digits.startsWith("1"))
     return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
   return phone
-}
-
-function AddTeamMemberCard({ onClick }: { onClick: () => void }) {
-  return (
-    <WorkspacePanel
-      className={cn(
-        "flex min-h-[148px] flex-col items-center justify-center border-dashed border-zinc-800",
-        "bg-transparent p-5 shadow-none ring-0",
-        "opacity-90 transition-[opacity,border-color,background-color] duration-200",
-        "hover:border-zinc-600 hover:bg-zinc-900/30 hover:opacity-100"
-      )}
-    >
-      <button
-        type="button"
-        onClick={onClick}
-        className="group flex h-full w-full flex-col items-center justify-center text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-      >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-zinc-400 transition-colors group-hover:border-zinc-500 group-hover:text-zinc-200">
-          <Plus className="h-5 w-5" strokeWidth={1.5} aria-hidden />
-        </span>
-        <p className="mt-3 text-sm font-medium text-zinc-500 transition-colors group-hover:text-zinc-300">
-          + Add Team Member
-        </p>
-      </button>
-    </WorkspacePanel>
-  )
 }
 
 function formatUsd(amount: number): string {
@@ -124,7 +98,7 @@ function NetworkInstructionsPanel() {
   }
 
   return (
-    <WorkspacePanel className="mb-6 p-5">
+    <WorkspacePanel className="flex h-full flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10">
@@ -192,11 +166,6 @@ function NetworkInstructionsPanel() {
       </div>
     </WorkspacePanel>
   )
-}
-
-function formatTalkMinutes(seconds: number): string {
-  const minutes = Math.round((seconds / 60) * 10) / 10
-  return `${minutes} min`
 }
 
 export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
@@ -287,116 +256,105 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
     <WorkspacePage>
       <WorkspacePageHeader eyebrow="Routing" title="Team" />
 
-      <NetworkInstructionsPanel />
-
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground sm:text-base">Your Active Operator Network</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            Lyncr operators assigned to watch your inbound line.
-          </p>
+      {/* Upper ops row: instruction script (wide) + operator network (narrow). */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <NetworkInstructionsPanel />
         </div>
+
+        <WorkspacePanel className="flex h-full flex-col p-5 lg:col-span-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10">
+                <Network className="h-5 w-5 text-emerald-300" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-foreground sm:text-base">Your Active Operator Network</h2>
+                <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                  Lyncr operators assigned to watch your inbound line.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500"
+            >
+              <Plus className="h-4 w-4" aria-hidden /> Add
+            </button>
+          </div>
+
+          {billingCycleLabel ? (
+            <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-[11px] text-zinc-500">
+              Payout totals · billing cycle {billingCycleLabel}
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex-1">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-zinc-500">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading…
+              </div>
+            ) : members.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <span className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/60 text-zinc-600">
+                  <Users className="h-5 w-5" aria-hidden />
+                </span>
+                <p className="text-sm text-zinc-500">No operators assigned yet.</p>
+                {error ? <p className="text-xs text-destructive">{error}</p> : null}
+              </div>
+            ) : (
+              <div className="max-h-[420px] space-y-2.5 overflow-y-auto pr-0.5">
+                {members.map((member, i) => {
+                  const color = AVATAR_COLORS[i % AVATAR_COLORS.length]
+                  const online = isMemberOnline(member)
+                  const payout = payoutsById[member.id]
+                  return (
+                    <div key={member.id} className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="relative">
+                            <Avatar className="h-9 w-9">
+                              <AvatarFallback className={cn("text-xs font-semibold text-primary-foreground", color)}>
+                                {initials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span
+                              className={cn(
+                                "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card",
+                                online ? "bg-success" : "bg-zinc-600"
+                              )}
+                              aria-hidden
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-foreground">{member.name}</p>
+                            <p className="truncate text-xs text-zinc-500">{formatPhoneDisplay(member.phone)}</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={online}
+                          disabled={togglingId === member.id}
+                          onCheckedChange={() => void toggleActive(member)}
+                          aria-label={`${member.name} availability`}
+                        />
+                      </div>
+                      {payout ? (
+                        <p className="mt-2 text-[11px] text-zinc-400">
+                          {payout.answered_calls} call{payout.answered_calls === 1 ? "" : "s"} ·{" "}
+                          <span className="font-medium text-zinc-200">{formatUsd(payout.total_earnings)} earned</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </WorkspacePanel>
       </div>
 
-      {billingCycleLabel ? (
-        <p className="mb-4 text-xs text-zinc-500">
-          Payout totals for billing cycle {billingCycleLabel}.
-        </p>
-      ) : null}
-
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-zinc-500">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          Loading team…
-        </div>
-      ) : error && members.length === 0 ? (
-        <div className="space-y-4">
-          <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <AddTeamMemberCard onClick={() => setInviteOpen(true)} />
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {members.map((member, i) => {
-            const color = AVATAR_COLORS[i % AVATAR_COLORS.length]
-            const online = isMemberOnline(member)
-            const payout = payoutsById[member.id]
-            return (
-              <WorkspacePanel key={member.id} className="min-h-[148px] p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Avatar className="h-11 w-11">
-                        <AvatarFallback className={cn("text-sm font-semibold text-primary-foreground", color)}>
-                          {initials(member.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span
-                        className={cn(
-                          "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card transition-colors duration-200",
-                          online ? "bg-success shadow-[0_0_8px_-2px_var(--success)]" : "bg-zinc-600"
-                        )}
-                        aria-label={online ? "Available" : "Unavailable"}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground">{member.name}</p>
-                      <p className="text-xs text-zinc-500">{formatPhoneDisplay(member.phone)}</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={online}
-                    disabled={togglingId === member.id}
-                    onCheckedChange={() => void toggleActive(member)}
-                    aria-label={`${member.name} availability`}
-                  />
-                </div>
-                <p
-                  className={cn(
-                    "mt-4 inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide transition-colors duration-200",
-                    online ? "text-success" : "text-zinc-500"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      online ? "bg-success shadow-[0_0_8px_-1px_var(--success)]" : "bg-zinc-600"
-                    )}
-                    aria-hidden
-                  />
-                  {online ? "Active Coverage" : "Off duty"}
-                </p>
-                {payout ? (
-                  <div className="mt-3 border-t border-zinc-800 pt-3 text-xs text-zinc-400">
-                    <p>
-                      {payout.answered_calls} answered call{payout.answered_calls === 1 ? "" : "s"} this cycle
-                    </p>
-                    <p className="mt-1 font-medium text-zinc-200">
-                      {formatUsd(payout.total_earnings)} earned
-                      {payout.pay_mode === "PER_MINUTE" ? (
-                        <span className="font-normal text-zinc-500">
-                          {" "}
-                          · {formatTalkMinutes(payout.total_talk_seconds)} @ {formatUsd(payout.rate_per_minute)}/min
-                        </span>
-                      ) : (
-                        <span className="font-normal text-zinc-500">
-                          {" "}
-                          · {formatUsd(payout.flat_rate_usd)} flat / call
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                ) : null}
-              </WorkspacePanel>
-            )
-          })}
-          <AddTeamMemberCard onClick={() => setInviteOpen(true)} />
-        </div>
-      )}
-
+      {/* Lower field staff: unified fleet directory. */}
       <FieldTechniciansPanel />
 
       <TeamInviteModal open={inviteOpen} onOpenChange={setInviteOpen} />

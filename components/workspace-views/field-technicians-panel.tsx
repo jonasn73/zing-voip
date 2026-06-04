@@ -110,7 +110,7 @@ export function FieldTechniciansPanel() {
   }
 
   return (
-    <WorkspacePanel className="mt-6 p-5">
+    <WorkspacePanel className="p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
@@ -216,7 +216,12 @@ export function FieldTechniciansPanel() {
           <Loader2 className="h-5 w-5 animate-spin" /> Loading technicians…
         </div>
       ) : techs.length === 0 ? (
-        <p className="py-6 text-center text-sm text-zinc-500">No field technicians yet.</p>
+        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/60 text-zinc-600">
+            <HardHat className="h-6 w-6" aria-hidden />
+          </span>
+          <p className="text-sm text-zinc-500">No field technicians yet.</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {techs.map((tech) => (

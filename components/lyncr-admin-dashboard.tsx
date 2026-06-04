@@ -712,17 +712,16 @@ export function LyncrAdminDashboard({
         </Card>
       </div>
 
-      <LiveTrafficPulse />
+      {/* Two-column workflow grid: User Directory (left, wide) + Live Traffic Pulse (right, narrow). */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">Invite platform receptionists to the payout portal.</p>
+            <AdminInviteReceptionistDialog />
+          </div>
 
-      <CallHistoryTable />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-500">Invite platform receptionists to the payout portal.</p>
-        <AdminInviteReceptionistDialog />
-      </div>
-
-      <Card className="border-slate-800 bg-slate-900/40">
-        <CardHeader className="border-b border-slate-800/80 pb-4">
+          <Card className="border-slate-800 bg-slate-900/40">
+            <CardHeader className="border-b border-slate-800/80 pb-4">
           <CardTitle className="text-lg text-slate-100">User directory</CardTitle>
           <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
             <div className="relative max-w-md flex-1">
@@ -892,7 +891,16 @@ export function LyncrAdminDashboard({
             </Table>
           </div>
         </CardContent>
-      </Card>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-1">
+          <LiveTrafficPulse />
+        </div>
+      </div>
+
+      {/* Full-width historical call log spanning the bottom of the dashboard. */}
+      <CallHistoryTable />
     </div>
   )
 }

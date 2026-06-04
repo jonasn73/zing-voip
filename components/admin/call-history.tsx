@@ -199,7 +199,7 @@ export function CallHistoryTable() {
             <p className="text-sm text-slate-500">No call records yet.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="max-h-[460px] overflow-auto rounded-lg border border-slate-800/60">
             <Table>
               <TableHeader>
                 <TableRow className="border-slate-800 hover:bg-transparent">

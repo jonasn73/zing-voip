@@ -167,3 +167,41 @@ export function buildPortingNotificationText(body: Record<string, unknown>): str
 export function buildPortingNotificationTitle(eventType: string): string {
   return humanizeEventType(eventType)
 }
+
+/** Find the richest Telnyx porting-order object embedded in a webhook payload. */
+export function extractPortingOrderRecord(body: Record<string, unknown>): Record<string, unknown> | null {
+  const data = body.data as Record<string, unknown> | undefined
+  const record = data?.record
+  if (record && typeof record === "object" && !Array.isArray(record)) {
+    return record as Record<string, unknown>
+  }
+  const po = body.porting_order ?? data?.porting_order
+  if (po && typeof po === "object" && !Array.isArray(po)) {
+    return po as Record<string, unknown>
+  }
+  return deepFindPortingOrderRecord(body)
+}
+
+function deepFindPortingOrderRecord(obj: unknown, depth = 0): Record<string, unknown> | null {
+  if (depth > 14 || obj == null) return null
+  if (typeof obj !== "object") return null
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = deepFindPortingOrderRecord(item, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+  const o = obj as Record<string, unknown>
+  const hasOrderStatus =
+    typeof o.porting_order_status === "string" ||
+    (typeof o.status === "string" && (o.phone_numbers != null || o.id != null))
+  if (hasOrderStatus && (o.phone_numbers != null || o.porting_order_status != null)) {
+    return o
+  }
+  for (const v of Object.values(o)) {
+    const found = deepFindPortingOrderRecord(v, depth + 1)
+    if (found) return found
+  }
+  return null
+}

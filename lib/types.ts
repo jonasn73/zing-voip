@@ -632,6 +632,24 @@ export interface RoutingConfig {
   updated_at: string
 }
 
+// --- Porting orders (native LNP — scripts/066) ---
+export type PortingOrderStatus = "pending" | "processing" | "completed" | "rejected"
+
+export interface PortingOrder {
+  id: string
+  owner_user_id: string
+  organization_id: string | null
+  phone_number: string
+  current_carrier: string
+  account_number: string
+  pin_or_sid: string | null
+  status: PortingOrderStatus
+  telnyx_order_id: string | null
+  telnyx_status: string | null
+  created_at: string
+  updated_at: string
+}
+
 // --- Organizations (multi-business workspaces — scripts/065) ---
 export interface Organization {
   id: string

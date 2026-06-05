@@ -1,18 +1,19 @@
 import {
   CARRIER_PROVISIONING_FEE_USD,
-  canAddNumberForTier,
   hasEnoughCarrierCredit,
   normalizeSubscriptionTier,
   tierActiveNumberLimit,
   tierUpgradeMessage,
   type SubscriptionTier,
 } from "@/lib/subscription-tier"
+import { buildServiceContext, canAddNumberWithServiceContext } from "@/lib/service-context"
 import {
   adjustUserCarrierCredit,
   countActivePhoneNumbers,
   ensureOnboardingProfile,
   getOnboardingProfile,
   getPhoneNumbers,
+  getUser,
   normalizePhoneNumberE164,
 } from "@/lib/db"
 import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
@@ -39,16 +40,18 @@ export type NumberPurchaseGateResult =
       upgrade_message: string | null
     }
 
-function buildTierGateBase(
-  profile: Awaited<ReturnType<typeof getOnboardingProfile>>,
-  activeCount: number
-) {
-  const tier = normalizeSubscriptionTier(profile?.subscription_tier)
+async function buildTierGateBase(userId: string, activeCount: number) {
+  const [profile, user] = await Promise.all([getOnboardingProfile(userId), getUser(userId)])
+  const service = buildServiceContext(
+    user ?? { email: "" },
+    profile
+  )
   return {
-    tier,
+    tier: service.subscription_tier,
     active_count: activeCount,
-    line_limit: tierActiveNumberLimit(tier),
+    line_limit: service.active_number_limit,
     carrier_credit: Number(profile?.carrier_credit ?? 0),
+    service,
   }
 }
 
@@ -58,28 +61,28 @@ export async function evaluateNumberReservationGate(
   reservedE164: string
 ): Promise<NumberPurchaseGateResult> {
   await ensureOnboardingProfile(userId)
-  const profile = await getOnboardingProfile(userId)
   const normalized = normalizePhoneNumberE164(reservedE164.trim())
   const existing = await getPhoneNumbers(userId)
   const matchingRow = existing.find((row) => normalizePhoneNumberE164(row.number) === normalized)
   const activeCount = await countActivePhoneNumbers(userId)
-  const base = buildTierGateBase(profile, activeCount)
+  const base = await buildTierGateBase(userId, activeCount)
+  const { service, ...gateBase } = base
 
   if (matchingRow) {
-    return { allowed: true, ...base }
+    return { allowed: true, ...gateBase }
   }
 
-  if (!canAddNumberForTier(base.tier, activeCount)) {
+  if (!canAddNumberWithServiceContext(service, activeCount)) {
     return {
       allowed: false,
       reason: "tier_limit",
-      message: tierUpgradeMessage(base.tier) ?? "Your plan does not allow more business numbers.",
-      upgrade_message: tierUpgradeMessage(base.tier),
-      ...base,
+      message: tierUpgradeMessage(gateBase.tier) ?? "Your plan does not allow more business numbers.",
+      upgrade_message: tierUpgradeMessage(gateBase.tier),
+      ...gateBase,
     }
   }
 
-  return { allowed: true, ...base }
+  return { allowed: true, ...gateBase }
 }
 
 /** Gate before carrier provisioning — skips tier cap when completing the same reserved line. */
@@ -88,68 +91,64 @@ export async function evaluateNumberProvisionGate(
   reservedE164: string
 ): Promise<NumberPurchaseGateResult> {
   await ensureOnboardingProfile(userId)
-  const profile = await getOnboardingProfile(userId)
   const normalized = normalizePhoneNumberE164(reservedE164.trim())
   const existing = await getPhoneNumbers(userId)
   const matchingRow = existing.find((row) => normalizePhoneNumberE164(row.number) === normalized)
   const activeCount = await countActivePhoneNumbers(userId)
-  const base = buildTierGateBase(profile, activeCount)
+  const base = await buildTierGateBase(userId, activeCount)
+  const { service, ...gateBase } = base
 
-  if (!canAddNumberForTier(base.tier, activeCount) && !matchingRow) {
+  if (!canAddNumberWithServiceContext(service, activeCount) && !matchingRow) {
     return {
       allowed: false,
       reason: "tier_limit",
-      message: tierUpgradeMessage(base.tier) ?? "Your plan does not allow more business numbers.",
-      upgrade_message: tierUpgradeMessage(base.tier),
-      ...base,
+      message: tierUpgradeMessage(gateBase.tier) ?? "Your plan does not allow more business numbers.",
+      upgrade_message: tierUpgradeMessage(gateBase.tier),
+      ...gateBase,
     }
   }
 
-  if (!hasEnoughCarrierCredit(base.carrier_credit)) {
+  if (!hasEnoughCarrierCredit(gateBase.carrier_credit)) {
     return {
       allowed: false,
       reason: "insufficient_credit",
       message: `Add at least $${CARRIER_PROVISIONING_FEE_USD.toFixed(2)} carrier credit on the Pay tab before purchasing a line.`,
       upgrade_message: null,
-      ...base,
+      ...gateBase,
     }
   }
 
-  return { allowed: true, ...base }
+  return { allowed: true, ...gateBase }
 }
 
 /** Server-side gate before buying a new business line from the marketplace. */
 export async function evaluateNumberPurchaseGate(userId: string): Promise<NumberPurchaseGateResult> {
   await ensureOnboardingProfile(userId)
-  const profile = await getOnboardingProfile(userId)
-  const tier = normalizeSubscriptionTier(profile?.subscription_tier)
   const activeCount = await countActivePhoneNumbers(userId)
-  const lineLimit = tierActiveNumberLimit(tier)
-  const carrierCredit = Number(profile?.carrier_credit ?? 0)
+  const base = await buildTierGateBase(userId, activeCount)
+  const { service, ...gateBase } = base
 
-  const base = { tier, active_count: activeCount, line_limit: lineLimit, carrier_credit: carrierCredit }
-
-  if (!canAddNumberForTier(tier, activeCount)) {
+  if (!canAddNumberWithServiceContext(service, activeCount)) {
     return {
       allowed: false,
       reason: "tier_limit",
-      message: tierUpgradeMessage(tier) ?? "Your plan does not allow more business numbers.",
-      upgrade_message: tierUpgradeMessage(tier),
-      ...base,
+      message: tierUpgradeMessage(gateBase.tier) ?? "Your plan does not allow more business numbers.",
+      upgrade_message: tierUpgradeMessage(gateBase.tier),
+      ...gateBase,
     }
   }
 
-  if (!hasEnoughCarrierCredit(carrierCredit)) {
+  if (!hasEnoughCarrierCredit(gateBase.carrier_credit)) {
     return {
       allowed: false,
       reason: "insufficient_credit",
       message: `Add at least $${CARRIER_PROVISIONING_FEE_USD.toFixed(2)} carrier credit on the Pay tab before purchasing a line.`,
       upgrade_message: null,
-      ...base,
+      ...gateBase,
     }
   }
 
-  return { allowed: true, ...base }
+  return { allowed: true, ...gateBase }
 }
 
 export type PurchasePhoneNumberResult =

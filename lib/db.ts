@@ -52,6 +52,8 @@ import type {
   AdminCallHistoryRow,
   OperatorPayoutRow,
   Organization,
+  PortingOrder,
+  PortingOrderStatus,
 } from "./types"
 import { isAccountRoutingBlocked, parseAccountStatus } from "./account-status"
 import { defaultProfileFromUserIndustry } from "./business-industries"
@@ -3395,6 +3397,188 @@ export async function getDefaultOrganizationForOwner(ownerUserId: string): Promi
   return list.find((o) => o.is_default) ?? list[0] ?? null
 }
 
+function parsePortingOrderRow(row: Record<string, unknown>): PortingOrder {
+  const status = String(row.status ?? "pending").toLowerCase()
+  const normalized: PortingOrderStatus =
+    status === "processing" || status === "completed" || status === "rejected" ? status : "pending"
+  return {
+    id: String(row.id),
+    owner_user_id: String(row.owner_user_id),
+    organization_id: row.organization_id != null ? String(row.organization_id) : null,
+    phone_number: String(row.phone_number),
+    current_carrier: String(row.current_carrier ?? ""),
+    account_number: String(row.account_number ?? ""),
+    pin_or_sid: row.pin_or_sid != null ? String(row.pin_or_sid) : null,
+    status: normalized,
+    telnyx_order_id: row.telnyx_order_id != null ? String(row.telnyx_order_id) : null,
+    telnyx_status: row.telnyx_status != null ? String(row.telnyx_status) : null,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+  }
+}
+
+function isMissingPortingOrdersTableError(e: unknown): boolean {
+  return isUndefinedRelationError(e, "porting_orders")
+}
+
+export function mapTelnyxStatusToPortingOrderStatus(telnyxStatus: string): PortingOrderStatus {
+  const s = telnyxStatus.toLowerCase().trim().replace(/_/g, "-")
+  if (s === "ported") return "completed"
+  if (["rejected", "exception", "failed", "cancelled", "canceled"].includes(s)) return "rejected"
+  if (
+    [
+      "in-process",
+      "submitted",
+      "foc-date-confirmed",
+      "port-activating",
+      "activation-in-progress",
+      "foc-date-confirmed-pending",
+    ].includes(s)
+  ) {
+    return "processing"
+  }
+  return "pending"
+}
+
+export async function createPortingOrder(params: {
+  owner_user_id: string
+  organization_id: string | null
+  phone_number: string
+  current_carrier: string
+  account_number: string
+  pin_or_sid?: string | null
+  status?: PortingOrderStatus
+  telnyx_order_id?: string | null
+  telnyx_status?: string | null
+}): Promise<PortingOrder> {
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  const status = params.status ?? "pending"
+  const rows = await sql`
+    INSERT INTO porting_orders (
+      id, owner_user_id, organization_id, phone_number, current_carrier, account_number,
+      pin_or_sid, status, telnyx_order_id, telnyx_status, created_at, updated_at
+    )
+    VALUES (
+      ${id}, ${params.owner_user_id}, ${params.organization_id}, ${normalizePhoneNumberE164(params.phone_number)},
+      ${params.current_carrier}, ${params.account_number}, ${params.pin_or_sid ?? null},
+      ${status}, ${params.telnyx_order_id ?? null}, ${params.telnyx_status ?? null}, now(), now()
+    )
+    RETURNING *
+  `
+  return parsePortingOrderRow(rows[0] as Record<string, unknown>)
+}
+
+export async function listPortingOrdersForOwner(
+  ownerUserId: string,
+  organizationId?: string | null
+): Promise<PortingOrder[]> {
+  const sql = getSql()
+  try {
+    const rows =
+      organizationId && !organizationId.startsWith("legacy-")
+        ? await sql`
+            SELECT * FROM porting_orders
+            WHERE owner_user_id = ${ownerUserId} AND organization_id = ${organizationId}
+            ORDER BY created_at DESC
+            LIMIT 20
+          `
+        : await sql`
+            SELECT * FROM porting_orders
+            WHERE owner_user_id = ${ownerUserId}
+            ORDER BY created_at DESC
+            LIMIT 20
+          `
+    return rows.map((r) => parsePortingOrderRow(r as Record<string, unknown>))
+  } catch (e) {
+    if (isMissingPortingOrdersTableError(e)) return []
+    throw e
+  }
+}
+
+export async function getPortingOrderByTelnyxOrderId(
+  ownerUserId: string,
+  telnyxOrderId: string
+): Promise<PortingOrder | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT * FROM porting_orders
+      WHERE owner_user_id = ${ownerUserId} AND telnyx_order_id = ${telnyxOrderId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    return rows[0] ? parsePortingOrderRow(rows[0] as Record<string, unknown>) : null
+  } catch (e) {
+    if (isMissingPortingOrdersTableError(e)) return null
+    throw e
+  }
+}
+
+export async function updatePortingOrderByTelnyxOrderId(
+  ownerUserId: string,
+  telnyxOrderId: string,
+  updates: { status: PortingOrderStatus; telnyx_status: string }
+): Promise<PortingOrder | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      UPDATE porting_orders
+      SET
+        status = ${updates.status},
+        telnyx_status = ${updates.telnyx_status},
+        updated_at = now()
+      WHERE owner_user_id = ${ownerUserId} AND telnyx_order_id = ${telnyxOrderId}
+      RETURNING *
+    `
+    return rows[0] ? parsePortingOrderRow(rows[0] as Record<string, unknown>) : null
+  } catch (e) {
+    if (isMissingPortingOrdersTableError(e)) return null
+    throw e
+  }
+}
+
+export async function updatePortingOrderStatus(
+  id: string,
+  ownerUserId: string,
+  updates: { status?: PortingOrderStatus; telnyx_status?: string | null }
+): Promise<PortingOrder | null> {
+  const sql = getSql()
+  try {
+    if (updates.status != null && updates.telnyx_status != null) {
+      const rows = await sql`
+        UPDATE porting_orders
+        SET status = ${updates.status}, telnyx_status = ${updates.telnyx_status}, updated_at = now()
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+        RETURNING *
+      `
+      return rows[0] ? parsePortingOrderRow(rows[0] as Record<string, unknown>) : null
+    }
+    if (updates.status != null) {
+      const rows = await sql`
+        UPDATE porting_orders
+        SET status = ${updates.status}, updated_at = now()
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+        RETURNING *
+      `
+      return rows[0] ? parsePortingOrderRow(rows[0] as Record<string, unknown>) : null
+    }
+    if (updates.telnyx_status != null) {
+      const rows = await sql`
+        UPDATE porting_orders
+        SET telnyx_status = ${updates.telnyx_status}, updated_at = now()
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+        RETURNING *
+      `
+      return rows[0] ? parsePortingOrderRow(rows[0] as Record<string, unknown>) : null
+    }
+    return null
+  } catch (e) {
+    if (isMissingPortingOrdersTableError(e)) return null
+    throw e
+  }
+}
+
 export async function createOrganizationForOwner(
   ownerUserId: string,
   name: string
@@ -3685,6 +3869,7 @@ export async function ensurePortingLineRecord(params: {
   number: string
   label: string
   port_order_id: string
+  organization_id?: string | null
 }): Promise<void> {
   const sql = getSql()
   const e164 = normalizePhoneNumberE164(params.number)
@@ -3701,14 +3886,21 @@ export async function ensurePortingLineRecord(params: {
     return
   }
   if (porting) return
+  let organizationId = params.organization_id ?? null
+  if (!organizationId) {
+    const def = await getDefaultOrganizationForOwner(params.user_id)
+    if (def && !def.id.startsWith("legacy-")) organizationId = def.id
+  }
   await insertPhoneNumber({
     user_id: params.user_id,
+    organization_id: organizationId,
     number: e164,
     friendly_name: e164,
     label: params.label,
     type: "local",
     status: "porting",
     provider_number_sid: params.port_order_id,
+    source_provider: "telnyx",
   })
 }
 

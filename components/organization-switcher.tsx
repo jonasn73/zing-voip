@@ -17,6 +17,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { showUpgradeSubscriptionModal } from "@/components/upgrade-subscription-modal"
+import {
+  MULTI_TENANT_UPGRADE_MESSAGE,
+  MULTI_TENANT_UPGRADE_TITLE,
+} from "@/lib/service-context"
+import type { SubscriptionTier } from "@/lib/subscription-tier"
 
 type Props = {
   className?: string
@@ -24,11 +30,34 @@ type Props = {
   onOrganizationsLoaded?: (organizations: Organization[]) => void
 }
 
+type ServiceContextPayload = {
+  master_test_bypass?: boolean
+  subscription_tier?: SubscriptionTier
+  subscription_active?: boolean
+  capabilities?: { multi_tenant_workspaces?: boolean }
+}
+
 export function OrganizationSwitcher({ className, onOrganizationChange, onOrganizationsLoaded }: Props) {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [canAddWorkspace, setCanAddWorkspace] = useState(false)
+  const [serviceTier, setServiceTier] = useState<SubscriptionTier>("starter")
+  const [subscriptionActive, setSubscriptionActive] = useState(false)
+
+  const loadServiceContext = useCallback(() => {
+    fetch("/api/service-context", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { data?: ServiceContextPayload }) => {
+        const data = j?.data
+        if (!data) return
+        setCanAddWorkspace(data.capabilities?.multi_tenant_workspaces === true)
+        if (data.subscription_tier) setServiceTier(data.subscription_tier)
+        setSubscriptionActive(data.subscription_active === true)
+      })
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -50,10 +79,11 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [onOrganizationChange])
+  }, [onOrganizationChange, onOrganizationsLoaded])
 
   useEffect(() => {
     load()
+    loadServiceContext()
     const onChanged = () => {
       const id = readActiveOrganizationId()
       setActiveId(id)
@@ -61,7 +91,7 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
     }
     window.addEventListener("lyncr-organization-changed", onChanged)
     return () => window.removeEventListener("lyncr-organization-changed", onChanged)
-  }, [load, onOrganizationChange])
+  }, [load, loadServiceContext, onOrganizationChange])
 
   const active = organizations.find((o) => o.id === activeId) ?? organizations[0]
 
@@ -71,9 +101,23 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
     onOrganizationChange?.(id)
   }
 
-  async function addBusiness() {
+  function promptAddWorkspace() {
+    if (!canAddWorkspace) {
+      showUpgradeSubscriptionModal({
+        title: MULTI_TENANT_UPGRADE_TITLE,
+        message: MULTI_TENANT_UPGRADE_MESSAGE,
+        currentTier: serviceTier,
+        suggestedTier: "business",
+        subscriptionActive,
+      })
+      return
+    }
     const name = window.prompt("New business name", "Key Squad 502")?.trim()
     if (!name || name.length < 2) return
+    void submitNewWorkspace(name)
+  }
+
+  async function submitNewWorkspace(name: string) {
     setCreating(true)
     try {
       const res = await fetch("/api/organizations", {
@@ -83,6 +127,16 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
         body: JSON.stringify({ name }),
       })
       const j = await res.json().catch(() => ({}))
+      if (res.status === 403 && j.upgrade_required) {
+        showUpgradeSubscriptionModal({
+          title: MULTI_TENANT_UPGRADE_TITLE,
+          message: j.error || MULTI_TENANT_UPGRADE_MESSAGE,
+          currentTier: serviceTier,
+          suggestedTier: "business",
+          subscriptionActive,
+        })
+        return
+      }
       if (!res.ok) throw new Error(j.error || "Could not create business")
       const created = j.data?.organization as Organization | undefined
       if (created?.id) selectOrg(created.id)
@@ -141,11 +195,11 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
           disabled={creating}
           onSelect={(e) => {
             e.preventDefault()
-            void addBusiness()
+            promptAddWorkspace()
           }}
         >
           {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          Add another business
+          Add new business location / workspace
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

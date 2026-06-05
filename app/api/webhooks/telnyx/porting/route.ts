@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { insertPortingNotificationIfNew } from "@/lib/db"
 import { SITE_NAME } from "@/lib/brand"
+import { syncPortingOrderFromTelnyxWebhook } from "@/lib/porting-order-sync"
 import {
   buildPortingNotificationText,
   buildPortingNotificationTitle,
@@ -58,6 +59,13 @@ export async function POST(req: NextRequest) {
       body: text,
       rawPayload: body,
     })
+
+    const orderSync = await syncPortingOrderFromTelnyxWebhook({
+      ownerUserId: userId,
+      body,
+      telnyxOrderId: orderId,
+    })
+
     console.log(
       JSON.stringify({
         zing: "telnyx-porting-webhook",
@@ -65,9 +73,15 @@ export async function POST(req: NextRequest) {
         eventType,
         eventId,
         inserted,
+        porting_order_sync: orderSync,
       })
     )
-    return NextResponse.json({ received: true, stored: inserted })
+    return NextResponse.json({
+      received: true,
+      stored: inserted,
+      porting_order_updated: orderSync.updated,
+      porting_order_status: orderSync.status,
+    })
   } catch (e) {
     console.error("[Sigo] telnyx-porting-webhook insert error:", e)
     return NextResponse.json({ error: "Storage failed" }, { status: 500 })

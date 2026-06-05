@@ -25,6 +25,7 @@ export const UPGRADE_SUBSCRIPTION_MODAL_EVENT = "zing-show-upgrade-modal"
 
 export type UpgradeModalDetail = {
   message?: string
+  title?: string
   currentTier?: SubscriptionTier
   suggestedTier?: CheckoutSubscriptionTier
   subscriptionActive?: boolean
@@ -35,6 +36,7 @@ export function UpgradeSubscriptionModal() {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [modalTitle, setModalTitle] = useState<string | null>(null)
   const [currentTier, setCurrentTier] = useState<SubscriptionTier>("starter")
   const [subscriptionActive, setSubscriptionActive] = useState(false)
   const [selectedTier, setSelectedTier] = useState<CheckoutSubscriptionTier>("professional")
@@ -45,6 +47,7 @@ export function UpgradeSubscriptionModal() {
     const onShow = (event: Event) => {
       const detail = (event as CustomEvent<UpgradeModalDetail>).detail
       setMessage(detail?.message ?? "Upgrade your plan to add more business numbers.")
+      setModalTitle(detail?.title ?? null)
       setCurrentTier(detail?.currentTier ?? "starter")
       setSubscriptionActive(detail?.subscriptionActive === true)
       const suggested =
@@ -89,7 +92,9 @@ export function UpgradeSubscriptionModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="border-border/80 bg-card/95 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{subscriptionActive ? "Upgrade your plan" : "Choose a plan"}</DialogTitle>
+          <DialogTitle>
+            {modalTitle ?? (subscriptionActive ? "Upgrade your plan" : "Choose a plan")}
+          </DialogTitle>
           <DialogDescription>
             {message ??
               (subscriptionActive

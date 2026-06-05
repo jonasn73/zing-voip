@@ -14,7 +14,7 @@ import {
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import { fetchNumberEntitlements } from "@/lib/number-entitlements-client"
 import { dispatchBusinessNumbersChanged } from "@/components/dashboard-numbers-modal-context"
-import { LinkExternalNumberPanel } from "@/components/link-external-number-panel"
+import { PortNumberModal } from "@/components/dashboard/port-number-modal"
 import { useToast } from "@/hooks/use-toast"
 import { showUpgradeSubscriptionModal } from "@/components/upgrade-subscription-modal"
 
@@ -151,7 +151,7 @@ export function BuyNumberMarketplaceModal({
   const [lineLabel, setLineLabel] = useState("Main Line")
   const [lastFourDigits, setLastFourDigits] = useState("")
   const [entitlementsBlocked, setEntitlementsBlocked] = useState<string | null>(null)
-  const [panelView, setPanelView] = useState<"marketplace" | "external">("marketplace")
+  const [panelView, setPanelView] = useState<"marketplace" | "port">("marketplace")
   const searchSeqRef = useRef(0)
 
   const results = inventoryPool
@@ -311,10 +311,11 @@ export function BuyNumberMarketplaceModal({
           "transform-gpu will-change-transform backface-hidden"
         )}
       >
-        {panelView === "external" ? (
-          <LinkExternalNumberPanel
+        {panelView === "port" ? (
+          <PortNumberModal
+            embedded
             onBack={() => setPanelView("marketplace")}
-            onLinked={() => {
+            onSubmitted={() => {
               dispatchBusinessNumbersChanged()
               onOpenChange(false)
             }}
@@ -489,10 +490,10 @@ export function BuyNumberMarketplaceModal({
         <div className="shrink-0 space-y-2 border-t border-border/60 px-6 py-3 text-center">
           <button
             type="button"
-            onClick={() => setPanelView("external")}
+            onClick={() => setPanelView("port")}
             className="block w-full text-xs font-semibold text-violet-400 hover:text-violet-300 hover:underline"
           >
-            Bring an Existing Number (Twilio / External)
+            Port your existing number to Lyncr
           </button>
           {onOpenManage ? (
             <button

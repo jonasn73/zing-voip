@@ -3,7 +3,12 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
+import {
+  requirePremiumCapability,
+  resolveAuthenticatedServiceContext,
+} from "@/app/api/middleware/auth-check"
 import { createOrganizationForOwner, getUser, listOrganizationsForOwner } from "@/lib/db"
+import { MULTI_TENANT_UPGRADE_MESSAGE } from "@/lib/service-context"
 
 export const dynamic = "force-dynamic"
 
@@ -26,14 +31,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = getUserIdFromRequest(req.headers.get("cookie"))
-  if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+  const resolved = await resolveAuthenticatedServiceContext(req)
+  if (resolved instanceof NextResponse) return resolved
 
-  const user = await getUser(userId)
-  if (!user || user.account_role !== "owner") {
+  const { session, service } = resolved
+  if (session.user.account_role !== "owner") {
     return NextResponse.json({ error: "Only business owners can create workspaces" }, { status: 403 })
   }
 
+  const tierBlock = requirePremiumCapability(
+    service,
+    "multi_tenant_workspaces",
+    MULTI_TENANT_UPGRADE_MESSAGE
+  )
+  if (tierBlock) return tierBlock
+
+  const userId = session.userId
   const body = (await req.json().catch(() => ({}))) as { name?: string }
   const name = String(body.name ?? "").trim()
   if (name.length < 2) {

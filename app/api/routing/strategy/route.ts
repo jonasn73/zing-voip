@@ -12,6 +12,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
+import {
+  requirePremiumCapability,
+  resolveAuthenticatedServiceContext,
+} from "@/app/api/middleware/auth-check"
 import { getLineHybridRoutingStrategy, updateRoutingConfig } from "@/lib/db"
 import type { RoutingStrategy } from "@/lib/types"
 
@@ -56,6 +60,21 @@ export async function PUT(req: NextRequest) {
       !VALID_STRATEGIES.includes(body.routing_strategy as RoutingStrategy)
     ) {
       return NextResponse.json({ error: "Invalid routing_strategy" }, { status: 400 })
+    }
+
+    const poolStrategy =
+      body.routing_strategy === "lyncr_only" ||
+      body.routing_strategy === "hybrid_fallback" ||
+      body.allow_lyncr_network_fallback === true
+    if (poolStrategy) {
+      const resolved = await resolveAuthenticatedServiceContext(req)
+      if (resolved instanceof NextResponse) return resolved
+      const tierBlock = requirePremiumCapability(
+        resolved.service,
+        "operator_pooling",
+        "Upgrade to Professional or Business (Scale) to use the Lyncr operator pool and hybrid network routing."
+      )
+      if (tierBlock) return tierBlock
     }
 
     // Clamp the timeout to a sane phone-ring window (5–60s).

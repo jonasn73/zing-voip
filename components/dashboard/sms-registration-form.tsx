@@ -8,6 +8,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { WorkspacePanel, workspaceFieldClass } from "@/components/dashboard-workspace-ui"
 import { readActiveOrganizationId } from "@/lib/workspace-organizations"
+import { notifyCarrierRegistrationUpdated } from "@/lib/settings-modals-events"
 import { SMS_ENTITY_TYPE_OPTIONS } from "@/lib/sms-registration-constants"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
@@ -112,6 +113,7 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
         title: "Registration submitted",
         description: "Carriers are reviewing your business profile. SMS alerts unlock after approval.",
       })
+      notifyCarrierRegistrationUpdated()
       onSubmitted?.()
     } catch (err) {
       toast({

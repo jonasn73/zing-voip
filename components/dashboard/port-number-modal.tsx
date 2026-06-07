@@ -12,8 +12,14 @@ import {
 } from "@/lib/porting-timeline"
 import { dispatchBusinessNumbersChanged } from "@/components/dashboard-numbers-modal-context"
 import { readActiveOrganizationId } from "@/lib/workspace-organizations"
+import {
+  CARRIER_REGISTRATION_UPDATED_EVENT,
+  openCarrierRegistrationModal,
+} from "@/lib/settings-modals-events"
 import type { PortingOrder } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
+
+const MISSING_ADDRESS_CODE = "missing_service_address"
 
 type Props = {
   /** When set, render inside buy-number modal with a back link. */
@@ -103,8 +109,31 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
   const [dragOver, setDragOver] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [addressBlock, setAddressBlock] = useState<{ message: string; code: string } | null>(null)
   const [latestOrder, setLatestOrder] = useState<PortingOrder | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const checkServiceAddress = useCallback(async (): Promise<boolean> => {
+    const orgId = readActiveOrganizationId()
+    const qs = orgId ? `?organization_id=${encodeURIComponent(orgId)}` : ""
+    try {
+      const res = await fetch(`/api/numbers/port/validate${qs}`, { credentials: "include" })
+      const j = await res.json().catch(() => ({}))
+      if (j?.data?.ready === true) {
+        setAddressBlock(null)
+        return true
+      }
+      setAddressBlock({
+        message:
+          String(j?.data?.error ?? "").trim() ||
+          "Complete your business address for this workspace before porting.",
+        code: String(j?.data?.error_code ?? MISSING_ADDRESS_CODE),
+      })
+      return false
+    } catch {
+      return true
+    }
+  }, [])
 
   const loadOrders = useCallback(() => {
     const orgId = readActiveOrganizationId()
@@ -121,9 +150,20 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
   useEffect(() => {
     if (!embedded && !open) return
     loadOrders()
+    void checkServiceAddress()
     const interval = window.setInterval(loadOrders, 20_000)
-    return () => window.clearInterval(interval)
-  }, [embedded, open, loadOrders])
+    const onOrgChanged = () => {
+      void checkServiceAddress()
+      loadOrders()
+    }
+    window.addEventListener("lyncr-organization-changed", onOrgChanged)
+    window.addEventListener(CARRIER_REGISTRATION_UPDATED_EVENT, onOrgChanged)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener("lyncr-organization-changed", onOrgChanged)
+      window.removeEventListener(CARRIER_REGISTRATION_UPDATED_EVENT, onOrgChanged)
+    }
+  }, [embedded, open, loadOrders, checkServiceAddress])
 
   function onFilePick(file: File | null) {
     if (!file) return
@@ -149,6 +189,11 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
       setError("Upload your latest customer invoice or bill.")
       return
     }
+    const addressReady = await checkServiceAddress()
+    if (!addressReady) {
+      setError(null)
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -170,6 +215,13 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok || j.success === false) {
+        if (j.error_code === MISSING_ADDRESS_CODE) {
+          setAddressBlock({
+            message: String(j.error ?? "Complete your business address for this workspace before porting."),
+            code: MISSING_ADDRESS_CODE,
+          })
+          return
+        }
         throw new Error(j.error || "Could not submit transfer request")
       }
       if (j.data?.order) setLatestOrder(j.data.order as PortingOrder)
@@ -330,7 +382,23 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
             />
           </div>
 
-          {error ? (
+          {addressBlock ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-xs text-destructive"
+            >
+              <p>{addressBlock.message}</p>
+              <button
+                type="button"
+                onClick={() => openCarrierRegistrationModal()}
+                className="mt-2 inline-flex items-center gap-1 font-semibold text-destructive underline underline-offset-2 hover:text-destructive/90"
+              >
+                Fix now — add business address
+              </button>
+            </div>
+          ) : null}
+
+          {error && !addressBlock ? (
             <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {error}
             </p>
@@ -338,7 +406,7 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
 
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || Boolean(addressBlock)}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 py-3 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}

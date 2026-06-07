@@ -5,12 +5,16 @@ import { getUserIdFromRequest } from "@/lib/auth"
 import {
   createPortingOrder,
   ensurePortingLineRecord,
-  getDefaultOrganizationForOwner,
-  getMessaging10DlcRegistration,
   getOrganizationForOwner,
   getUser,
 } from "@/lib/db"
 import { SITE_NAME } from "@/lib/brand"
+import {
+  PORT_ADDRESS_ERROR_CODE,
+  PORT_ADDRESS_ERROR_MESSAGE,
+  resolvePortOrganizationId,
+  validatePortServiceAddress,
+} from "@/lib/port-address-validation"
 import { classifyTelnyxPortError, submitTelnyxLnpPort, toPortE164 } from "@/lib/telnyx-lnp-submit"
 
 export const dynamic = "force-dynamic"
@@ -61,29 +65,31 @@ export async function POST(req: NextRequest) {
     }
 
     let organizationId = String(body.organization_id ?? "").trim()
+    const { organization_id: resolvedOrgId, org_uuid: orgUuid } = await resolvePortOrganizationId(
+      userId,
+      organizationId || undefined
+    )
+    organizationId = resolvedOrgId ?? organizationId
     if (!organizationId) {
-      const def = await getDefaultOrganizationForOwner(userId)
-      if (!def) return NextResponse.json({ error: "No business workspace found" }, { status: 404 })
-      organizationId = def.id
+      return NextResponse.json({ error: "No business workspace found" }, { status: 404 })
     }
     const org = await getOrganizationForOwner(organizationId, userId)
     if (!org) return NextResponse.json({ error: "Workspace not found" }, { status: 404 })
-    const orgUuid = org.id.startsWith("legacy-") ? null : org.id
 
-    const tenDlc = await getMessaging10DlcRegistration(userId)
-    const street = tenDlc?.street?.trim()
-    const city = tenDlc?.city?.trim()
-    const state = tenDlc?.state?.trim()
-    const zip = tenDlc?.postal_code?.trim()
-    if (!street || !city || !state || !zip) {
+    const addressCheck = await validatePortServiceAddress(userId, orgUuid ?? organizationId)
+    if (!addressCheck.ok || !addressCheck.address) {
       return NextResponse.json(
         {
-          error:
-            "Complete your business address under Settings → SMS lead-alert registration (10DLC) before porting. Carriers require a service address that matches your bill.",
+          error: PORT_ADDRESS_ERROR_MESSAGE,
+          error_code: PORT_ADDRESS_ERROR_CODE,
+          missing_fields: addressCheck.missing_fields,
+          organization_id: addressCheck.organization_id,
         },
         { status: 400 }
       )
     }
+
+    const { street, city, state, postal_code: zip } = addressCheck.address
 
     const telnyx = await submitTelnyxLnpPort({
       userId,

@@ -17,7 +17,7 @@ type Props = {
 export function CarrierRegistrationModal({ open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(92vh,900px)] overflow-hidden border-border/80 bg-card/95 sm:max-w-xl">
+      <DialogContent className="max-h-[min(92vh,900px)] overflow-hidden border-border/80 bg-card sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Carrier 10DLC registration</DialogTitle>
           <DialogDescription>
@@ -25,7 +25,9 @@ export function CarrierRegistrationModal({ open, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[calc(92vh-8rem)] overflow-y-auto pr-1">
-          <SmsRegistrationForm variant="modal" onSubmitted={() => onOpenChange(false)} />
+          {open ? (
+            <SmsRegistrationForm variant="modal" onSubmitted={() => onOpenChange(false)} />
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

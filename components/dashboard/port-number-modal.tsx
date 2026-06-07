@@ -151,7 +151,12 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
     if (!embedded && !open) return
     loadOrders()
     void checkServiceAddress()
-    const interval = window.setInterval(loadOrders, 20_000)
+
+    const orderInProgress =
+      latestOrder?.status === "pending" || latestOrder?.status === "processing"
+    if (!orderInProgress) return
+
+    const interval = window.setInterval(loadOrders, 45_000)
     const onOrgChanged = () => {
       void checkServiceAddress()
       loadOrders()
@@ -163,7 +168,7 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
       window.removeEventListener("lyncr-organization-changed", onOrgChanged)
       window.removeEventListener(CARRIER_REGISTRATION_UPDATED_EVENT, onOrgChanged)
     }
-  }, [embedded, open, loadOrders, checkServiceAddress])
+  }, [embedded, open, latestOrder?.status, loadOrders, checkServiceAddress])
 
   function onFilePick(file: File | null) {
     if (!file) return

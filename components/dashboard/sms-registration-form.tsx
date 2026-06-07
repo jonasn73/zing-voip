@@ -77,12 +77,12 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
 
   useEffect(() => {
     const onOrgChanged = () => {
-      setLoading(true)
+      if (variant === "page") setLoading(true)
       void load()
     }
     window.addEventListener("lyncr-organization-changed", onOrgChanged)
     return () => window.removeEventListener("lyncr-organization-changed", onOrgChanged)
-  }, [load])
+  }, [load, variant])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -126,7 +126,7 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
     }
   }
 
-  if (loading) {
+  if (loading && variant === "page") {
     return (
       <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -257,6 +257,12 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
 
   return (
     <form onSubmit={submit} className={variant === "modal" ? "space-y-5" : "space-y-6"}>
+      {loading && variant === "modal" ? (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+          Syncing saved details for this workspace…
+        </p>
+      ) : null}
       {variant === "page" ? (
         <ol className="grid gap-2 sm:grid-cols-3">
           {["Business identity", "Service address", "Campaign use case"].map((step, i) => (

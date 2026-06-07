@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Building2, ChevronDown, Loader2, Plus } from "lucide-react"
 import type { Organization } from "@/lib/types"
 import {
@@ -46,6 +46,11 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
   const [serviceTier, setServiceTier] = useState<SubscriptionTier>("starter")
   const [subscriptionActive, setSubscriptionActive] = useState(false)
 
+  const onOrganizationChangeRef = useRef(onOrganizationChange)
+  const onOrganizationsLoadedRef = useRef(onOrganizationsLoaded)
+  onOrganizationChangeRef.current = onOrganizationChange
+  onOrganizationsLoadedRef.current = onOrganizationsLoaded
+
   const loadServiceContext = useCallback(() => {
     fetch("/api/service-context", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
@@ -59,27 +64,32 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
       .catch(() => {})
   }, [])
 
-  const load = useCallback(() => {
-    setLoading(true)
+  const load = useCallback((opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     fetch("/api/organizations", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("load"))))
       .then((j: { data?: { organizations?: Organization[] } }) => {
         const rows = Array.isArray(j.data?.organizations) ? j.data!.organizations! : []
         setOrganizations(rows)
-        onOrganizationsLoaded?.(rows)
+        onOrganizationsLoadedRef.current?.(rows)
         const stored = readActiveOrganizationId()
         const pick =
           (stored && rows.some((o) => o.id === stored) ? stored : null) ??
           rows.find((o) => o.is_default)?.id ??
           rows[0]?.id ??
           null
-        setActiveId(pick)
+        setActiveId((prev) => {
+          if (pick !== prev) {
+            onOrganizationChangeRef.current?.(pick)
+            return pick
+          }
+          return prev
+        })
         if (pick) writeActiveOrganizationId(pick)
-        onOrganizationChange?.(pick)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [onOrganizationChange, onOrganizationsLoaded])
+  }, [])
 
   useEffect(() => {
     load()
@@ -87,18 +97,19 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
     const onChanged = () => {
       const id = readActiveOrganizationId()
       setActiveId(id)
-      onOrganizationChange?.(id)
+      onOrganizationChangeRef.current?.(id)
     }
     window.addEventListener("lyncr-organization-changed", onChanged)
     return () => window.removeEventListener("lyncr-organization-changed", onChanged)
-  }, [load, loadServiceContext, onOrganizationChange])
+  }, [load, loadServiceContext])
 
   const active = organizations.find((o) => o.id === activeId) ?? organizations[0]
 
   function selectOrg(id: string) {
+    if (id === activeId) return
     setActiveId(id)
     writeActiveOrganizationId(id)
-    onOrganizationChange?.(id)
+    onOrganizationChangeRef.current?.(id)
   }
 
   function promptAddWorkspace() {
@@ -140,7 +151,7 @@ export function OrganizationSwitcher({ className, onOrganizationChange, onOrgani
       if (!res.ok) throw new Error(j.error || "Could not create business")
       const created = j.data?.organization as Organization | undefined
       if (created?.id) selectOrg(created.id)
-      load()
+      load({ silent: true })
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Could not create business")
     } finally {

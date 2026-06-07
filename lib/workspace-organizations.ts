@@ -14,9 +14,12 @@ export function readActiveOrganizationId(): string | null {
 export function writeActiveOrganizationId(organizationId: string | null): void {
   if (typeof window === "undefined") return
   try {
-    if (!organizationId) localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY)
-    else localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, organizationId)
-    window.dispatchEvent(new CustomEvent("lyncr-organization-changed", { detail: { organizationId } }))
+    const next = organizationId?.trim() || null
+    const prev = readActiveOrganizationId()
+    if (prev === next) return
+    if (!next) localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY)
+    else localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, next)
+    window.dispatchEvent(new CustomEvent("lyncr-organization-changed", { detail: { organizationId: next } }))
   } catch {
     // ignore quota / private mode
   }

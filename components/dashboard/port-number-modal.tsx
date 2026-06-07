@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowLeft, Check, Loader2, PhoneForwarded, Upload } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Check, Loader2, MessageSquare, PhoneForwarded, Upload } from "lucide-react"
 import { submitFormEvent } from "@/lib/form-keyboard"
 import { cn } from "@/lib/utils"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
@@ -11,12 +11,19 @@ import {
   portingTimelineStepIndex,
 } from "@/lib/porting-timeline"
 import { dispatchBusinessNumbersChanged } from "@/components/dashboard-numbers-modal-context"
+import { PortingOrderCommentsDialog } from "@/components/porting-order-comments-dialog"
 import { readActiveOrganizationId } from "@/lib/workspace-organizations"
 import {
   CARRIER_REGISTRATION_UPDATED_EVENT,
   openPortServiceAddressModal,
 } from "@/lib/settings-modals-events"
-import type { PortingOrder } from "@/lib/types"
+import { displayPortingMessageBody } from "@/lib/porting-display"
+import {
+  countUnreadForOrder,
+  latestActionNeededNotification,
+  orderNeedsPortingAttention,
+} from "@/lib/porting-notification-ui"
+import type { PortingNotification, PortingOrder } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 
 const MISSING_ADDRESS_CODE = "missing_service_address"
@@ -98,6 +105,145 @@ function PortingProgressTimeline({ order }: { order: PortingOrder | null }) {
   )
 }
 
+function PortingCommunicationsPanel({ order }: { order: PortingOrder | null }) {
+  const telnyxOrderId = order?.telnyx_order_id?.trim() || null
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [notifications, setNotifications] = useState<PortingNotification[]>([])
+  const [loadingNotifs, setLoadingNotifs] = useState(false)
+
+  const allowReply =
+    order != null && order.status !== "completed" && order.status !== "rejected"
+
+  const phoneLabel = order?.phone_number
+    ? formatPhoneDisplay(order.phone_number)
+    : "Your transfer"
+
+  const loadNotifications = useCallback(async () => {
+    if (!telnyxOrderId) {
+      setNotifications([])
+      return
+    }
+    setLoadingNotifs(true)
+    try {
+      const qs = `?porting_order_id=${encodeURIComponent(telnyxOrderId)}`
+      const res = await fetch(`/api/notifications/porting${qs}`, { credentials: "include" })
+      const json = await res.json().catch(() => ({}))
+      const rows = json?.data?.notifications
+      if (Array.isArray(rows)) setNotifications(rows as PortingNotification[])
+    } finally {
+      setLoadingNotifs(false)
+    }
+  }, [telnyxOrderId])
+
+  useEffect(() => {
+    void loadNotifications()
+    if (!telnyxOrderId || !allowReply) return
+    const interval = window.setInterval(() => void loadNotifications(), 45_000)
+    return () => window.clearInterval(interval)
+  }, [telnyxOrderId, allowReply, loadNotifications])
+
+  async function openMessages() {
+    setCommentsOpen(true)
+    const unreadIds = notifications.filter((n) => n.read_at == null).map((n) => n.id)
+    if (unreadIds.length === 0) return
+    try {
+      await fetch("/api/notifications/porting", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: unreadIds }),
+      })
+      setNotifications((prev) =>
+        prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read_at: new Date().toISOString() } : n))
+      )
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  if (!order || !telnyxOrderId) return null
+
+  const unreadCount = countUnreadForOrder(notifications)
+  const actionAlert = latestActionNeededNotification(notifications)
+  const statusNeedsAttention = orderNeedsPortingAttention(order.telnyx_status)
+  const showActionBanner = Boolean(actionAlert) || statusNeedsAttention
+
+  return (
+    <div className="mt-4 space-y-3">
+      {showActionBanner ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-3"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-100">
+                Action needed: the porting team left an update on this transfer
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+                {actionAlert?.body
+                  ? displayPortingMessageBody(actionAlert.body).slice(0, 220)
+                  : "Open Messages to read carrier questions (PIN, bill copy, LOA fixes) and reply."}
+              </p>
+              <button
+                type="button"
+                onClick={() => void openMessages()}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100"
+              >
+                <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+                Open messages & reply
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {notifications.length > 0 && !showActionBanner ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+            Messages from support
+          </p>
+          <ul className="mt-2 space-y-2">
+            {notifications.slice(0, 3).map((n) => (
+              <li key={n.id} className="text-xs text-zinc-400">
+                <span className="font-medium text-zinc-300">{n.title}</span>
+                {n.body ? (
+                  <span className="text-zinc-500"> — {displayPortingMessageBody(n.body).slice(0, 120)}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => void openMessages()}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/15"
+      >
+        <MessageSquare className="h-4 w-4" aria-hidden />
+        Transfer messages
+        {unreadCount > 0 ? (
+          <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-amber-950">
+            {unreadCount} new
+          </span>
+        ) : null}
+        {loadingNotifs ? <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" aria-hidden /> : null}
+      </button>
+
+      <PortingOrderCommentsDialog
+        orderId={telnyxOrderId}
+        phoneLabel={phoneLabel}
+        open={commentsOpen}
+        onOpenChange={setCommentsOpen}
+        allowReply={allowReply}
+        onReplySent={() => void loadNotifications()}
+      />
+    </div>
+  )
+}
+
 export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenChange }: Props) {
   const { toast } = useToast()
   const [phone, setPhone] = useState("")
@@ -142,7 +288,7 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { data?: { orders?: PortingOrder[] } }) => {
         const rows = j?.data?.orders
-        if (Array.isArray(rows) && rows.length > 0) setLatestOrder(rows[0])
+        if (Array.isArray(rows)) setLatestOrder(rows.length > 0 ? rows[0] : null)
       })
       .catch(() => {})
   }, [])
@@ -420,6 +566,7 @@ export function PortNumberModal({ embedded, onBack, onSubmitted, open, onOpenCha
         </form>
 
         <PortingProgressTimeline order={latestOrder} />
+        <PortingCommunicationsPanel order={latestOrder} />
       </div>
     </>
   )

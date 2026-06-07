@@ -5841,17 +5841,27 @@ export async function insertPortingNotificationIfNew(params: {
 
 export async function listPortingNotifications(
   userId: string,
-  limit: number = 50
+  limit: number = 50,
+  portingOrderId?: string | null
 ): Promise<PortingNotification[]> {
   const sql = getSql()
+  const orderFilter = portingOrderId?.trim() || null
   try {
-    const rows = await sql`
-      SELECT id, user_id, telnyx_event_id, porting_order_id, event_type, title, body, read_at, created_at
-      FROM porting_notifications
-      WHERE user_id = ${userId}
-      ORDER BY created_at DESC
-      LIMIT ${Math.min(Math.max(limit, 1), 100)}
-    `
+    const rows = orderFilter
+      ? await sql`
+          SELECT id, user_id, telnyx_event_id, porting_order_id, event_type, title, body, read_at, created_at
+          FROM porting_notifications
+          WHERE user_id = ${userId} AND porting_order_id = ${orderFilter}
+          ORDER BY created_at DESC
+          LIMIT ${Math.min(Math.max(limit, 1), 100)}
+        `
+      : await sql`
+          SELECT id, user_id, telnyx_event_id, porting_order_id, event_type, title, body, read_at, created_at
+          FROM porting_notifications
+          WHERE user_id = ${userId}
+          ORDER BY created_at DESC
+          LIMIT ${Math.min(Math.max(limit, 1), 100)}
+        `
     return (rows as Record<string, unknown>[]).map((row) => ({
       id: String(row.id),
       user_id: String(row.user_id),

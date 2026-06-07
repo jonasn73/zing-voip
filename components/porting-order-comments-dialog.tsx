@@ -34,6 +34,7 @@ export function PortingOrderCommentsDialog({
   open,
   onOpenChange,
   allowReply,
+  onReplySent,
 }: {
   orderId: string | null
   phoneLabel: string
@@ -41,6 +42,8 @@ export function PortingOrderCommentsDialog({
   onOpenChange: (open: boolean) => void
   /** False when port is cancelled / closed — read-only. */
   allowReply: boolean
+  /** Called after a reply is posted to Telnyx via POST /api/numbers/porting/comments */
+  onReplySent?: () => void
 }) {
   const [comments, setComments] = useState<CommentRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -92,6 +95,7 @@ export function PortingOrderCommentsDialog({
       })
       const d2 = await r2.json()
       if (d2?.data?.comments) setComments(d2.data.comments)
+      onReplySent?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send")
     } finally {

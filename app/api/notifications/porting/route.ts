@@ -19,13 +19,17 @@ export async function GET(req: NextRequest) {
   }
   const { searchParams } = new URL(req.url)
   const unreadOnly = searchParams.get("unread") === "1"
+  const portingOrderId = searchParams.get("porting_order_id")?.trim() || null
   try {
     const [notifications, unreadCount] = await Promise.all([
-      listPortingNotifications(userId, 50),
+      listPortingNotifications(userId, 50, portingOrderId),
       countUnreadPortingNotifications(userId),
     ])
     const data = unreadOnly ? notifications.filter((n) => n.read_at == null) : notifications
-    return NextResponse.json({ data: { notifications: data, unreadCount } })
+    const orderUnreadCount = portingOrderId
+      ? data.filter((n) => n.read_at == null).length
+      : unreadCount
+    return NextResponse.json({ data: { notifications: data, unreadCount: orderUnreadCount } })
   } catch (e) {
     console.error("[Sigo] GET /api/notifications/porting:", e)
     return NextResponse.json({ error: "Failed to load notifications" }, { status: 500 })

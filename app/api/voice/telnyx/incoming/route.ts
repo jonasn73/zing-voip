@@ -192,6 +192,15 @@ function resolveReceptionistDialE164(rawPhone: string): string {
   return ""
 }
 
+/** Snapshot already has a dialable PSTN leg (receptionist cell or owner) — skip skill-pool DB probe. */
+function hasDirectInboundPstnTarget(routing: IncomingRoutingRowNonNull): boolean {
+  return Boolean(resolveReceptionistDialE164(routing.receptionist_phone || routing.owner_phone || ""))
+}
+
+function directPstnLogNumber(fields: Record<string, string>, calledNumberRaw: string): string {
+  return pickField(fields, ["To", "to", "Called", "called"]) || calledNumberRaw
+}
+
 async function readWebhookFields(req: NextRequest): Promise<Record<string, string>> {
   const contentType = (req.headers.get("content-type") || "").toLowerCase()
   if (contentType.includes("application/json")) {
@@ -680,16 +689,23 @@ async function handleIncomingCall(
     const overlayEnabled = readInboundRoutingCfgOverlayEnabled()
 
     if (!mightRepeatLeg && !overlayEnabled) {
-      const poolDial = await tryRoutingPoolInboundDial({
-        routing,
-        businessLineE164,
-        calledNumber,
-        callerNumber,
-        callSid,
-        callerName,
-        appUrl,
-      })
-      if (poolDial) return poolDial
+      if (!hasDirectInboundPstnTarget(routing)) {
+        const poolDial = await tryRoutingPoolInboundDial({
+          routing,
+          businessLineE164,
+          calledNumber,
+          callerNumber,
+          callSid,
+          callerName,
+          appUrl,
+        })
+        if (poolDial) return poolDial
+      } else {
+        console.log(
+          "🚀 [Voice Optimization] Skipping routing pool probe, direct PSTN line detected for number: " +
+            directPstnLogNumber(webhookFields, calledNumber)
+        )
+      }
 
       if (routing.receptionist_phone?.trim() || routing.owner_phone?.trim()) {
         const fast = tryFastInboundPstnDial({
@@ -1279,7 +1295,7 @@ async function tryFastInboundReceptionistResponse(
     }
   }
 
-  if (!resolveReceptionistDialE164(routing.receptionist_phone || routing.owner_phone || "")) {
+  if (!hasDirectInboundPstnTarget(routing)) {
     const poolDial = await tryRoutingPoolInboundDial({
       routing,
       businessLineE164,
@@ -1298,21 +1314,10 @@ async function tryFastInboundReceptionistResponse(
     return null
   }
 
-  const poolDial = await tryRoutingPoolInboundDial({
-    routing,
-    businessLineE164,
-    calledNumber: calledNumberRaw,
-    callerNumber,
-    callSid,
-    callerName,
-    appUrl: VOICE_WEBHOOK_APP_URL,
-    perfStartMs,
-  })
-  if (poolDial) {
-    return new NextResponse(texmlResponseBody(poolDial), {
-      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
-    })
-  }
+  console.log(
+    "🚀 [Voice Optimization] Skipping routing pool probe, direct PSTN line detected for number: " +
+      directPstnLogNumber(fields, calledNumberRaw)
+  )
 
   const fast = tryFastInboundPstnDial({
     routing,

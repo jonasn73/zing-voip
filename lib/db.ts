@@ -3925,6 +3925,7 @@ export async function patchPortingOrderFields(
     telnyx_status?: string
     status?: PortingOrderStatus
     carrier_rejection_reason?: string | null
+    current_carrier?: string
   }
 ): Promise<PortingOrder | null> {
   const current = await getPortingOrderById(orderId)
@@ -3943,6 +3944,7 @@ export async function patchPortingOrderFields(
             ? updates.carrier_rejection_reason
             : current.carrier_rejection_reason ?? null
         },
+        current_carrier = ${updates.current_carrier ?? current.current_carrier},
         updated_at = now()
       WHERE id = ${orderId}
       RETURNING *
@@ -3990,7 +3992,7 @@ export async function getPortingOrderByTelnyxOrderId(
 export async function updatePortingOrderByTelnyxOrderId(
   ownerUserId: string,
   telnyxOrderId: string,
-  updates: { status: PortingOrderStatus; telnyx_status: string }
+  updates: { status: PortingOrderStatus; telnyx_status: string; current_carrier?: string }
 ): Promise<PortingOrder | null> {
   const sql = getSql()
   try {
@@ -3999,6 +4001,7 @@ export async function updatePortingOrderByTelnyxOrderId(
       SET
         status = ${updates.status},
         telnyx_status = ${updates.telnyx_status},
+        current_carrier = COALESCE(${updates.current_carrier ?? null}, current_carrier),
         updated_at = now()
       WHERE owner_user_id = ${ownerUserId} AND telnyx_order_id = ${telnyxOrderId}
       RETURNING *

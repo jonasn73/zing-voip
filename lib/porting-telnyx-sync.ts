@@ -18,10 +18,36 @@ import {
 } from "@/lib/telnyx-porting-orders"
 import { cleansePortingHumanComment } from "@/lib/porting-display"
 import {
+  extractPortingCarrierRequirementLogBody,
+  extractLosingCarrierName,
+} from "@/lib/porting-carrier-exceptions"
+import {
   isPortRejectionWebhook,
   looksLikePinPasscodeRejection,
   looksLikeCarrierRejection,
 } from "@/lib/telnyx-porting-webhook"
+
+/** Backfill structured losing-carrier exception line from live Telnyx order payload. */
+export async function backfillPortingExceptionsFromTelnyxOrder(params: {
+  ownerUserId: string
+  telnyxOrderId: string
+}): Promise<boolean> {
+  const telnyxOrderId = params.telnyxOrderId.trim()
+  if (!telnyxOrderId) return false
+  const live = await fetchTelnyxPortingOrderById(telnyxOrderId)
+  if (!live) return false
+  const body = extractPortingCarrierRequirementLogBody({ data: { record: live } })
+  if (!body) return false
+  return insertPortingNotificationIfNew({
+    userId: params.ownerUserId,
+    telnyxEventId: `telnyx-exception-sync-${telnyxOrderId}`,
+    portingOrderId: telnyxOrderId,
+    eventType: "porting_order.status_changed",
+    title: "Action needed on your transfer",
+    body,
+    rawPayload: live,
+  })
+}
 
 /** Backfill porting_notifications from Telnyx /comments (historical + missed webhooks). */
 export async function backfillPortingNotificationsFromTelnyxComments(params: {
@@ -77,6 +103,19 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
 
   let nextStatus = order.status
   let rejectionReason: string | null = null
+  let actionNote: string | null = null
+
+  if (live) {
+    const liveRequirement = extractPortingCarrierRequirementLogBody({
+      data: { record: live },
+    })
+    if (liveRequirement) {
+      actionNote = liveRequirement
+      if (order.status !== "rejected" && order.status !== "completed") {
+        nextStatus = "action_required"
+      }
+    }
+  }
 
   if (latestAdmin?.body.trim()) {
     const raw = latestAdmin.body.trim()
@@ -92,12 +131,13 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
         (body.toLowerCase().includes("reject") || body.toLowerCase().includes("rejection")))
     ) {
       nextStatus = "rejected"
-      rejectionReason = body
+      rejectionReason = actionNote ?? body
     } else if (isPortRejectionWebhook(pseudoPayload)) {
       nextStatus = "rejected"
-      rejectionReason = body
+      rejectionReason = actionNote ?? body
     } else if (order.status !== "rejected" && order.status !== "completed") {
       nextStatus = "action_required"
+      actionNote = actionNote ?? body
     }
   }
 
@@ -110,7 +150,11 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
       if (mapped === "rejected" && nextStatus !== "completed") {
         nextStatus = "rejected"
         rejectionReason =
-          rejectionReason ?? latestAdmin?.body?.trim() ?? order.carrier_rejection_reason ?? null
+          rejectionReason ??
+          actionNote ??
+          latestAdmin?.body?.trim() ??
+          order.carrier_rejection_reason ??
+          null
       } else if (mapped === "action_required" && nextStatus !== "rejected") {
         nextStatus = "action_required"
       } else if (
@@ -138,14 +182,22 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
     const updated = await markPortingOrderActionRequired(
       order.owner_user_id,
       telnyxOrderId,
-      latestAdmin?.body?.trim() ?? null
+      actionNote ?? latestAdmin?.body?.trim() ?? null
     )
     return updated ?? order
   }
 
+  const losingCarrier = live ? extractLosingCarrierName({ data: { record: live } }) : null
+  const carrierPatch =
+    losingCarrier &&
+    (!order.current_carrier.trim() || order.current_carrier.trim().toLowerCase() === "your current carrier")
+      ? losingCarrier
+      : undefined
+
   const patched = await patchPortingOrderFields(order.id, {
     status: nextStatus,
     telnyx_status: telnyxStatus ?? order.telnyx_status,
+    ...(carrierPatch ? { current_carrier: carrierPatch } : {}),
   })
   return patched ?? order
 }

@@ -12,6 +12,7 @@ import { buildPortingConversationFeed } from "@/lib/porting-conversation-feed"
 import { buildOwnerPortingPipeline, getPortingBannerPhase } from "@/lib/porting-lifecycle"
 import {
   backfillPortingNotificationsFromTelnyxComments,
+  backfillPortingExceptionsFromTelnyxOrder,
   syncPortingOrderFromTelnyxLive,
 } from "@/lib/porting-telnyx-sync"
 import { listTelnyxPortingOrderComments } from "@/lib/telnyx-porting-orders"
@@ -30,6 +31,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const telnyxOrderId = order.telnyx_order_id?.trim() || ""
 
   if (telnyxOrderId) {
+    await backfillPortingExceptionsFromTelnyxOrder({
+      ownerUserId: userId,
+      telnyxOrderId,
+    })
     await backfillPortingNotificationsFromTelnyxComments({
       ownerUserId: userId,
       telnyxOrderId,

@@ -1,5 +1,9 @@
 // Build sanitized porting_notifications body text from Telnyx webhook payloads.
 
+import {
+  extractPortingCarrierRequirementLogBody,
+  hasPortingCarrierExceptions,
+} from "@/lib/porting-carrier-exceptions"
 import { cleansePortingHumanComment } from "@/lib/porting-display"
 import {
   collectPortingStatuses,
@@ -67,6 +71,11 @@ export function buildPortingNotificationLogBody(
 ): string {
   const et = (eventType ?? extractEventType(body)).toLowerCase()
 
+  if (hasPortingCarrierExceptions(body)) {
+    const carrierRequirement = extractPortingCarrierRequirementLogBody(body)
+    if (carrierRequirement) return carrierRequirement
+  }
+
   if (isPortingStatusChangedEvent(et)) {
     const keyword = extractPortingStatusKeyword(body)
     return keyword ? formatPortingSystemStatusMessage(keyword) : "System Update: Transfer status changed."
@@ -96,6 +105,7 @@ export function buildPortingNotificationLogBody(
 }
 
 export function isPortingSystemNotificationBody(text: string, eventType: string): boolean {
+  if (text.trim().startsWith("Losing Carrier")) return false
   if (text.trim().startsWith("System Update:")) return true
   return isPortingStatusChangedEvent(eventType)
 }

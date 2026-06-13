@@ -15,6 +15,10 @@ import {
   PORTING_STATUS_PRIORITY,
 } from "@/lib/telnyx-porting-status"
 import { cleansePortingHumanComment } from "@/lib/porting-display"
+import {
+  extractPortingCarrierRequirementLogBody,
+  extractLosingCarrierName,
+} from "@/lib/porting-carrier-exceptions"
 import { buildPortingNotificationLogBody } from "@/lib/porting-notification-log"
 import {
   extractEventType,
@@ -27,10 +31,23 @@ import {
 } from "@/lib/telnyx-porting-webhook"
 
 function cleansedPortingWebhookText(body: Record<string, unknown>, eventType?: string): string {
+  const carrierRequirement = extractPortingCarrierRequirementLogBody(body)
+  if (carrierRequirement) return carrierRequirement
   const logged = buildPortingNotificationLogBody(body, eventType).trim()
   if (logged && !logged.startsWith("System Update:")) return logged
   const raw = buildPortingNotificationText(body).trim()
   return cleansePortingHumanComment(raw) || raw
+}
+
+function resolveLosingCarrierPatch(
+  existing: string,
+  fromPayload: string | null
+): string | undefined {
+  const next = fromPayload?.trim()
+  if (!next) return undefined
+  const current = existing.trim()
+  if (!current || current.toLowerCase() === "your current carrier") return next
+  return undefined
 }
 
 const STATUS_RANK: Record<PortingOrderStatus, number> = {
@@ -268,6 +285,7 @@ export async function syncPortingOrderFromTelnyxWebhook(params: {
   const updated = await updatePortingOrderByTelnyxOrderId(params.ownerUserId, telnyxOrderId, {
     status: statusToWrite,
     telnyx_status: telnyxToWrite,
+    current_carrier: resolveLosingCarrierPatch(existing.current_carrier, extractLosingCarrierName(params.body)),
   })
 
   const justCompleted = !wasCompleted && statusToWrite === "completed"

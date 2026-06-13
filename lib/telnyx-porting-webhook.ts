@@ -5,6 +5,10 @@
 // We walk the tree for `customer_reference` starting with `zing-` and stable event ids.
 
 import { cleansePortingHumanComment } from "@/lib/porting-display"
+import {
+  extractPortingCarrierRequirementLogBody,
+  hasPortingCarrierExceptions,
+} from "@/lib/porting-carrier-exceptions"
 
 /** Find `customer_reference` like `zing-<uuid>` anywhere in the payload. */
 export function findZingCustomerReference(obj: unknown): string | null {
@@ -206,6 +210,9 @@ export function looksLikeCarrierRejection(text: string): boolean {
 
 /** Best rejection / correction message from a Telnyx porting webhook payload. */
 export function extractPortRejectionReason(body: Record<string, unknown>, eventType?: string): string | null {
+  const carrierRequirement = extractPortingCarrierRequirementLogBody(body)
+  if (carrierRequirement) return carrierRequirement
+
   const et = (eventType ?? extractEventType(body)).toLowerCase()
   const rawComment = buildPortingNotificationText(body).trim()
   const comment = rawComment ? cleansePortingHumanComment(rawComment) || rawComment : ""
@@ -275,6 +282,7 @@ function deepFindPortingCommentUserType(obj: unknown, depth = 0): string | null 
 /** True when owner should see amber action_required (not a terminal rejection). */
 export function isPortActionRequiredWebhook(body: Record<string, unknown>): boolean {
   if (isPortRejectionWebhook(body)) return false
+  if (hasPortingCarrierExceptions(body)) return true
   const eventType = extractEventType(body).toLowerCase()
   if (eventType.includes("exception") || eventType.includes("action_required")) return true
   if (eventType.includes("comment") && hasCarrierAgentAuthor(body)) return true

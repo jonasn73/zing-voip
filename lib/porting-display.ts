@@ -76,7 +76,7 @@ export function cleansePortingHumanComment(raw: string): string {
 /** Core conversational text for bubble rendering. */
 export function formatPortingThreadMessage(raw: string): string {
   const trimmed = raw.trim()
-  if (trimmed.startsWith("System Update:")) return trimmed
+  if (trimmed.startsWith("System Update:") || trimmed.startsWith("Losing Carrier")) return trimmed
   const cleaned = stripPortingEmailBoilerplate(raw)
   return cleaned || displayUserFacingMessage(raw).trim()
 }
@@ -91,6 +91,7 @@ export function isPortingSystemStatusMessage(title: string, body: string, author
   if (author === "porting_desk" || author === "customer") return false
   const trimmed = body.trim()
   if (trimmed.startsWith("System Update:")) return true
+  if (trimmed.startsWith("Losing Carrier")) return false
   const blob = `${title} ${body}`.toLowerCase()
   if (blob.includes("new comment") || blob.includes("carrier core desk")) return false
   return (

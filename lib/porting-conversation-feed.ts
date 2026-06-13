@@ -19,6 +19,7 @@ function commentAuthor(userType: string): PortingConversationItem["author"] {
 }
 
 function notificationAuthor(n: PortingNotification): PortingConversationItem["author"] {
+  if (n.body.trim().startsWith("Losing Carrier")) return "porting_desk"
   if (isPortingSystemNotificationBody(n.body, n.event_type)) return "system"
   if (n.body.trim().startsWith("System Update:")) return "system"
   const blob = `${n.event_type} ${n.title}`.toLowerCase()
@@ -37,7 +38,7 @@ function normalizeBody(text: string): string {
 function displayBodyForItem(item: Pick<PortingConversationItem, "body" | "author">): string {
   const raw = item.body.trim()
   if (!raw) return ""
-  if (raw.startsWith("System Update:")) return raw
+  if (raw.startsWith("System Update:") || raw.startsWith("Losing Carrier")) return raw
   if (item.author === "system") return raw
   const cleansed = cleansePortingHumanComment(raw)
   if (cleansed) return cleansed

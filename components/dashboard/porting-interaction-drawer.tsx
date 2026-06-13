@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
-import { Check, Loader2, MessageSquare, Send, Truck } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Check, Lightbulb, Loader2, MessageSquare, Send, Truck } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { WORKSPACE_SHEET_CLASS } from "@/lib/workspace-sheet-classes"
 import { DrawerScrollBody, DrawerStepHeader } from "@/components/dashboard-routing-drawer-shared"
@@ -11,6 +11,7 @@ import {
   formatPortingThreadMessage,
   isPortingSystemStatusMessage,
 } from "@/lib/porting-display"
+import { buildCarrierLookupGuide } from "@/lib/porting-carrier-lookup-guide"
 import { dispatchPortingOrdersChanged } from "@/components/dashboard-numbers-modal-context"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
@@ -73,8 +74,61 @@ function formatThreadTime(iso: string): string {
   })
 }
 
+function normalizeCoreMessage(text: string): string {
+  return formatPortingThreadMessage(text).trim().replace(/\s+/g, " ").toLowerCase()
+}
+
+/** Client-side guard: hide consecutive bubbles with the same core text (desk vs network tags). */
+function dedupeConversationForDisplay(items: PortingConversationItem[]): PortingConversationItem[] {
+  if (items.length <= 1) return items
+  const out: PortingConversationItem[] = []
+  let index = 0
+  while (index < items.length) {
+    const norm = normalizeCoreMessage(items[index].body)
+    let end = index + 1
+    while (end < items.length && normalizeCoreMessage(items[end].body) === norm) {
+      end += 1
+    }
+    if (end > index + 1) {
+      out.push(items[end - 1])
+      index = end
+    } else {
+      out.push(items[index])
+      index += 1
+    }
+  }
+  return out
+}
+
+function CarrierLookupGuideCard({
+  order,
+  conversation,
+}: {
+  order: OwnerPortingDeskDetail["order"]
+  conversation: PortingConversationItem[]
+}) {
+  const guide = buildCarrierLookupGuide(order, conversation)
+  return (
+    <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
+      <div className="flex items-center gap-2">
+        <Lightbulb className="h-4 w-4 text-sky-300" aria-hidden />
+        <h3 className="text-sm font-semibold text-sky-100">{guide.title}</h3>
+      </div>
+      <p className="mt-2 text-xs font-medium uppercase tracking-wide text-sky-200/70">
+        Losing carrier: {guide.carrier_label}
+      </p>
+      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-sky-50/90">
+        {guide.tips.map((tip) => (
+          <li key={tip}>{tip}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ConversationFeed({ items }: { items: PortingConversationItem[] }) {
-  if (items.length === 0) {
+  const visibleItems = useMemo(() => dedupeConversationForDisplay(items), [items])
+  if (visibleItems.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">
         No carrier updates yet. Open this desk again after a moment — carrier correspondence syncs on
@@ -85,7 +139,7 @@ function ConversationFeed({ items }: { items: PortingConversationItem[] }) {
 
   return (
     <div className="space-y-4">
-      {items.map((item) => {
+      {visibleItems.map((item) => {
         const text = formatPortingThreadMessage(item.body)
         const isSystem = isPortingSystemStatusMessage(item.title, item.body, item.author)
         const isCustomer = item.author === "customer"
@@ -257,6 +311,8 @@ export function PortingInteractionDrawer({ orderId, open, onOpenChange }: Props)
                 </div>
                 <ConversationFeed items={detail.conversation} />
               </div>
+
+              <CarrierLookupGuideCard order={detail.order} conversation={detail.conversation} />
 
               <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                 {detail.order.status === "rejected" ? (

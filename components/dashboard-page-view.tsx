@@ -2,6 +2,7 @@
 
 import { memo, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
+import { PortingStatusBanner } from "@/components/dashboard/porting-status-banner"
 
 export const DashboardPageView = memo(function DashboardPageView({
   children,
@@ -18,6 +19,7 @@ export const DashboardPageView = memo(function DashboardPageView({
         animateEnter && "animate-sigo-page-enter"
       )}
     >
+      <PortingStatusBanner />
       {children}
     </div>
   )

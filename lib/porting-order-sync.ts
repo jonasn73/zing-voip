@@ -19,6 +19,8 @@ import {
   extractPortingOrderRecord,
   findPortingOrderId,
   isPortRejectionWebhook,
+  looksLikePinPasscodeRejection,
+  buildPortingNotificationText,
 } from "@/lib/telnyx-porting-webhook"
 
 const STATUS_RANK: Record<PortingOrderStatus, number> = {
@@ -84,7 +86,10 @@ export async function applyPortRejectionFromTelnyxWebhook(params: {
   }
 
   const eventType = extractEventType(params.body)
-  const reason = extractPortRejectionReason(params.body, eventType)
+  const commentText = buildPortingNotificationText(params.body).trim()
+  const reason =
+    extractPortRejectionReason(params.body, eventType) ||
+    (commentText && looksLikePinPasscodeRejection(commentText) ? commentText : null)
   if (!reason) {
     return {
       applied: false,
@@ -164,6 +169,22 @@ export async function syncPortingOrderFromTelnyxWebhook(params: {
       just_completed: false,
       phone_number: existing.phone_number,
       skipped_reason: "no_change",
+    }
+  }
+
+  if (statusToWrite === "rejected") {
+    const reason =
+      extractPortRejectionReason(params.body) ||
+      existing.carrier_rejection_reason ||
+      "Port request rejected by carrier."
+    const updated = await rejectPortingOrderWithReason(params.ownerUserId, telnyxOrderId, reason)
+    return {
+      updated: updated != null,
+      telnyx_order_id: telnyxOrderId,
+      telnyx_status: telnyxToWrite,
+      status: "rejected" as PortingOrderStatus,
+      just_completed: false,
+      phone_number: updated?.phone_number ?? existing.phone_number,
     }
   }
 

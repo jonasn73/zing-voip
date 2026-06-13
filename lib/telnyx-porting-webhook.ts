@@ -174,17 +174,28 @@ export function isPortRejectionEventType(eventType: string): boolean {
   return lower.includes("porting_order.rejected") || lower.endsWith(".rejected")
 }
 
-/** Comment / exception bodies that indicate the carrier rejected or needs correction. */
-export function looksLikeCarrierRejection(text: string): boolean {
+/** PIN / passcode correction comments from Telnyx (e.g. "rejection due to an invalid PIN/Passcode"). */
+export function looksLikePinPasscodeRejection(text: string): boolean {
   const lower = text.toLowerCase()
   return (
-    lower.includes("reject") ||
     lower.includes("invalid pin") ||
     lower.includes("invalid passcode") ||
     lower.includes("passcode") ||
     lower.includes("pin/passcode") ||
     lower.includes("account pin") ||
+    lower.includes("pin or passcode") ||
+    lower.includes("pin/pass code")
+  )
+}
+
+/** Comment / exception bodies that indicate the carrier rejected or needs correction. */
+export function looksLikeCarrierRejection(text: string): boolean {
+  const lower = text.toLowerCase()
+  return (
+    looksLikePinPasscodeRejection(text) ||
+    lower.includes("reject") ||
     lower.includes("action required") ||
+    lower.includes("action item") ||
     lower.includes("exception") ||
     lower.includes("cannot be ported") ||
     lower.includes("port request failed")
@@ -214,11 +225,17 @@ export function extractPortRejectionReason(body: Record<string, unknown>, eventT
 
 /** True when this webhook should set porting_orders.status = rejected. */
 export function isPortRejectionWebhook(body: Record<string, unknown>): boolean {
-  const eventType = extractEventType(body)
+  const eventType = extractEventType(body).toLowerCase()
   if (isPortRejectionEventType(eventType)) return true
-  if (eventType.toLowerCase().includes("comment_created")) {
+  if (
+    eventType.includes("comment") ||
+    eventType.includes("exception") ||
+    eventType.includes("action_required")
+  ) {
     const reason = extractPortRejectionReason(body, eventType)
-    return Boolean(reason)
+    if (reason) return true
+    const comment = buildPortingNotificationText(body).trim()
+    if (comment && looksLikePinPasscodeRejection(comment)) return true
   }
   return false
 }

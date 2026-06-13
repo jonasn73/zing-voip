@@ -32,6 +32,13 @@ export function dispatchBusinessNumbersChanged() {
   }
 }
 
+/** Tell dashboard banners to refetch porting_orders (after resubmit or webhook-driven refresh). */
+export function dispatchPortingOrdersChanged() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("zing-porting-orders-changed"))
+  }
+}
+
 export function requestOpenBuyNumberModal() {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("zing-open-buy-number-modal"))

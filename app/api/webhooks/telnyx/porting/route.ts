@@ -107,8 +107,9 @@ export async function POST(req: NextRequest) {
       received: true,
       stored: inserted,
       porting_rejection_applied: rejectionSync.applied,
-      porting_order_updated: orderSync.updated,
-      porting_order_status: orderSync.status,
+      carrier_rejection_reason: rejectionSync.carrier_rejection_reason,
+      porting_order_updated: orderSync.updated || rejectionSync.applied,
+      porting_order_status: rejectionSync.applied ? "rejected" : orderSync.status,
     })
   } catch (e) {
     console.error("[Sigo] telnyx-porting-webhook insert error:", e)

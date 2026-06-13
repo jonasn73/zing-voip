@@ -24,7 +24,7 @@ import {
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import { fetchOnboardingProfile } from "@/lib/onboarding-profile-client"
 import { formatBillingCycleDate } from "@/lib/format-billing-cycle"
-import { dispatchBusinessNumbersChanged } from "@/components/dashboard-numbers-modal-context"
+import { dispatchBusinessNumbersChanged, dispatchPortingOrdersChanged } from "@/components/dashboard-numbers-modal-context"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { organizationQueryString } from "@/lib/workspace-organizations"
 import { useToast } from "@/hooks/use-toast"
@@ -97,6 +97,7 @@ function PortPinCorrectionForm({
         description: data.message || "Carrier is reviewing your corrected PIN.",
       })
       onResubmitted()
+      dispatchPortingOrdersChanged()
     } catch (e) {
       toast({
         variant: "destructive",

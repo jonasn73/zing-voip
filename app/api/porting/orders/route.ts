@@ -4,6 +4,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getUser, listPortingOrdersForOwner, countUnreadPortingNotificationsForOrder } from "@/lib/db"
 import { isActivePortingOrder } from "@/lib/porting-lifecycle"
+import {
+  backfillPortingNotificationsFromTelnyxComments,
+  syncPortingOrderFromTelnyxLive,
+} from "@/lib/porting-telnyx-sync"
 
 export const dynamic = "force-dynamic"
 
@@ -22,8 +26,28 @@ export async function GET(req: NextRequest) {
     const orders = await listPortingOrdersForOwner(userId, orgId)
     const activeOnly = req.nextUrl.searchParams.get("active") === "1"
     const filtered = activeOnly ? orders.filter(isActivePortingOrder) : orders
+
+    const syncedOrders = activeOnly
+      ? await Promise.all(
+          filtered.map(async (order) => {
+            const telnyxId = order.telnyx_order_id?.trim()
+            if (!telnyxId) return order
+            try {
+              await backfillPortingNotificationsFromTelnyxComments({
+                ownerUserId: userId,
+                telnyxOrderId: telnyxId,
+              })
+              return await syncPortingOrderFromTelnyxLive(order)
+            } catch (e) {
+              console.warn("[GET /api/porting/orders] Telnyx sync:", e)
+              return order
+            }
+          })
+        )
+      : filtered
+
     const enriched = await Promise.all(
-      filtered.map(async (order) => {
+      syncedOrders.map(async (order) => {
         const telnyxId = order.telnyx_order_id?.trim() || ""
         const unread_notification_count = telnyxId
           ? await countUnreadPortingNotificationsForOrder(userId, telnyxId)

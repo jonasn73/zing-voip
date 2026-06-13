@@ -10,7 +10,7 @@ import { displayPortingMessageBody } from "@/lib/porting-display"
 import { dispatchPortingOrdersChanged } from "@/components/dashboard-numbers-modal-context"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
-import type { OwnerPortingDeskDetail, PortingNotification } from "@/lib/types"
+import type { OwnerPortingDeskDetail, PortingConversationItem } from "@/lib/types"
 
 type Props = {
   orderId: string | null
@@ -60,38 +60,44 @@ function PipelineTracker({ steps }: { steps: OwnerPortingDeskDetail["pipeline_st
   )
 }
 
-function ConversationFeed({ notifications }: { notifications: PortingNotification[] }) {
-  if (notifications.length === 0) {
+function ConversationFeed({ items }: { items: PortingConversationItem[] }) {
+  if (items.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">
-        No carrier messages yet. Updates from the porting desk will appear here.
+        No carrier messages yet. If Telnyx left a comment in their portal, open this desk again in a
+        moment — we pull those messages live on each refresh.
       </p>
     )
   }
 
   return (
     <ul className="space-y-3">
-      {notifications.map((n) => {
-        const isCarrier =
-          n.event_type.toLowerCase().includes("comment") ||
-          n.title.toLowerCase().includes("comment") ||
-          n.title.toLowerCase().includes("action")
+      {items.map((item) => {
+        const isCarrier = item.author === "porting_desk" || item.author === "carrier"
         return (
           <li
-            key={n.id}
+            key={item.id}
             className={cn(
               "rounded-xl border px-3 py-3 text-sm",
               isCarrier
                 ? "border-amber-500/30 bg-amber-500/10 text-amber-50"
-                : "border-zinc-800 bg-zinc-950/50 text-zinc-300"
+                : item.author === "customer"
+                  ? "border-sky-500/25 bg-sky-500/10 text-sky-50"
+                  : "border-zinc-800 bg-zinc-950/50 text-zinc-300"
             )}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-                {isCarrier ? "Porting desk" : "System update"}
+                {item.author === "porting_desk"
+                  ? "Porting desk"
+                  : item.author === "customer"
+                    ? "You"
+                    : item.author === "system"
+                      ? "System update"
+                      : "Carrier"}
               </span>
               <time className="text-[10px] text-zinc-600">
-                {new Date(n.created_at).toLocaleString(undefined, {
+                {new Date(item.created_at).toLocaleString(undefined, {
                   month: "short",
                   day: "numeric",
                   hour: "numeric",
@@ -100,9 +106,9 @@ function ConversationFeed({ notifications }: { notifications: PortingNotificatio
               </time>
             </div>
             <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">
-              {displayPortingMessageBody(n.body)}
+              {displayPortingMessageBody(item.body)}
             </p>
-            {n.read_at == null ? (
+            {item.is_new ? (
               <span className="mt-2 inline-block rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
                 New
               </span>
@@ -215,7 +221,7 @@ export function PortingInteractionDrawer({ orderId, open, onOpenChange }: Props)
                   <MessageSquare className="h-4 w-4 text-amber-400" aria-hidden />
                   <h3 className="text-sm font-semibold text-foreground">Telnyx conversation</h3>
                 </div>
-                <ConversationFeed notifications={detail.notifications} />
+                <ConversationFeed items={detail.conversation} />
               </div>
 
               <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">

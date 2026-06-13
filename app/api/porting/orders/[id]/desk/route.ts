@@ -1,4 +1,4 @@
-// GET /api/porting/orders/[id]/desk — owner porting drawer (pipeline + notification thread).
+// GET /api/porting/orders/[id]/desk — owner porting drawer (pipeline + Telnyx conversation thread).
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
@@ -8,7 +8,13 @@ import {
   listPortingNotificationsChronological,
   markPortingNotificationsRead,
 } from "@/lib/db"
+import { buildPortingConversationFeed } from "@/lib/porting-conversation-feed"
 import { buildOwnerPortingPipeline, getPortingBannerPhase } from "@/lib/porting-lifecycle"
+import {
+  backfillPortingNotificationsFromTelnyxComments,
+  syncPortingOrderFromTelnyxLive,
+} from "@/lib/porting-telnyx-sync"
+import { listTelnyxPortingOrderComments } from "@/lib/telnyx-porting-orders"
 import type { OwnerPortingDeskDetail } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -18,22 +24,40 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 
   const { id } = await ctx.params
-  const order = await getPortingOrderByIdForOwner(id, userId)
+  let order = await getPortingOrderByIdForOwner(id, userId)
   if (!order) return NextResponse.json({ error: "Port order not found" }, { status: 404 })
 
   const telnyxOrderId = order.telnyx_order_id?.trim() || ""
-  const [notifications, unreadCount] = await Promise.all([
+
+  if (telnyxOrderId) {
+    await backfillPortingNotificationsFromTelnyxComments({
+      ownerUserId: userId,
+      telnyxOrderId,
+    })
+    order = await syncPortingOrderFromTelnyxLive(order)
+  }
+
+  const [notifications, telnyxComments, unreadCount] = await Promise.all([
     telnyxOrderId
       ? listPortingNotificationsChronological(userId, telnyxOrderId)
+      : Promise.resolve([]),
+    telnyxOrderId
+      ? listTelnyxPortingOrderComments(telnyxOrderId).catch((e) => {
+          console.warn("[porting/desk] Telnyx comments:", e)
+          return []
+        })
       : Promise.resolve([]),
     telnyxOrderId
       ? countUnreadPortingNotificationsForOrder(userId, telnyxOrderId)
       : Promise.resolve(0),
   ])
 
+  const conversation = buildPortingConversationFeed(notifications, telnyxComments)
+
   const detail: OwnerPortingDeskDetail = {
     order,
     notifications,
+    conversation,
     pipeline_steps: buildOwnerPortingPipeline(order),
     unread_count: unreadCount,
     banner_phase: getPortingBannerPhase(order, unreadCount),

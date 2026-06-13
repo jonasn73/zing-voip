@@ -805,9 +805,21 @@ export interface PortingNotification {
 }
 
 /** Owner porting drawer — order + thread + pipeline for GET /api/porting/orders/[id]/desk. */
+export interface PortingConversationItem {
+  id: string
+  source: "webhook" | "telnyx_comment"
+  author: "porting_desk" | "customer" | "system" | "carrier"
+  title: string
+  body: string
+  created_at: string
+  is_new: boolean
+}
+
 export interface OwnerPortingDeskDetail {
   order: PortingOrder
   notifications: PortingNotification[]
+  /** Merged Telnyx API comments + webhook notifications (preferred for UI). */
+  conversation: PortingConversationItem[]
   pipeline_steps: { key: string; label: string; state: "complete" | "current" | "upcoming" | "failed" }[]
   unread_count: number
   banner_phase: "in_progress" | "action_needed" | "rejected"

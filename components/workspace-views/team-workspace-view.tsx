@@ -11,7 +11,7 @@ import {
   WorkspacePageHeader,
   WorkspacePanel,
 } from "@/components/dashboard-workspace-ui"
-import { TeamInviteModal } from "@/components/team-invite-modal"
+import { openTeamInviteModal } from "@/lib/team-invite-events"
 import { FieldTechniciansPanel } from "@/components/workspace-views/field-technicians-panel"
 
 const AVATAR_COLORS = ["bg-primary", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"]
@@ -176,7 +176,6 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
   const [error, setError] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [availability, setAvailability] = useState<Record<string, boolean>>({})
-  const [inviteOpen, setInviteOpen] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -277,7 +276,7 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
             </div>
             <button
               type="button"
-              onClick={() => setInviteOpen(true)}
+              onClick={() => openTeamInviteModal()}
               className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500"
             >
               <Plus className="h-4 w-4" aria-hidden /> Add
@@ -356,8 +355,6 @@ export const TeamWorkspaceView = memo(function TeamWorkspaceView() {
 
       {/* Lower field staff: unified fleet directory. */}
       <FieldTechniciansPanel />
-
-      <TeamInviteModal open={inviteOpen} onOpenChange={setInviteOpen} />
     </WorkspacePage>
   )
 })

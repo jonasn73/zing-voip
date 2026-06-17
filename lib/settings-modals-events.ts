@@ -6,6 +6,7 @@ export const OPEN_SMS_AUTOMATION_MODAL_EVENT = "lyncr-open-sms-automation-modal"
 export const OPEN_BUSINESS_PROFILE_MODAL_EVENT = "lyncr-open-business-profile-modal"
 export const OPEN_BILLING_MODAL_EVENT = "lyncr-open-billing-modal"
 export const OPEN_ROUTING_STRATEGY_MODAL_EVENT = "lyncr-open-routing-strategy-modal"
+export const OPEN_TEAM_INVITE_MODAL_EVENT = "lyncr-open-team-invite-modal"
 export const CARRIER_REGISTRATION_UPDATED_EVENT = "lyncr-carrier-registration-updated"
 
 export function openCarrierRegistrationModal() {

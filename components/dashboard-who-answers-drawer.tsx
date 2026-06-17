@@ -1,10 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
 import { Network, Plus, User } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { submitFormEvent } from "@/lib/form-keyboard"
+import { openTeamInviteModal } from "@/lib/team-invite-events"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -262,13 +262,17 @@ export function DashboardWhoAnswersDrawer({
           })}
         </div>
 
-        <Link
-          href="/dashboard/contacts"
+        <button
+          type="button"
+          onClick={() => {
+            onClose()
+            openTeamInviteModal()
+          }}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 bg-transparent px-4 py-3 text-sm font-semibold text-zinc-400 transition-colors duration-200 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
         >
           <Plus className="h-4 w-4" aria-hidden />
           Add backup number
-        </Link>
+        </button>
 
         {receptionists.length === 0 ? (
           <p className="mt-4 text-center text-[11px] leading-relaxed text-zinc-500">

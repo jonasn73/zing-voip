@@ -8,6 +8,7 @@
 import { neon } from "@neondatabase/serverless"
 import { unstable_cache, revalidateTag } from "next/cache"
 import { resolveNeonDatabaseUrl } from "@/lib/neon-database-url"
+import { formatAdminRoutingOverridePhoneForTelnyx } from "@/lib/phone-e164"
 import { SITE_NAME } from "@/lib/brand"
 import { parseRoutingPoolMode, parseSkillsArray, normalizeRoutingPoolSkillTag, routingSkillTagFromCertCode } from "@/lib/routing-pool-skills"
 import type {
@@ -7159,8 +7160,8 @@ export async function adminApplyUserOverride(params: {
       let overrideE164: string | null = null
       const rawOverride = params.adminRoutingOverridePhone
       if (rawOverride !== null && String(rawOverride).trim().length > 0) {
-        overrideE164 = normalizePhoneNumberE164(String(rawOverride))
-        if (!isReasonablePstnDialString(overrideE164)) {
+        overrideE164 = formatAdminRoutingOverridePhoneForTelnyx(String(rawOverride))
+        if (!overrideE164) {
           throw new Error("adminRoutingOverridePhone must be a valid phone number")
         }
       }

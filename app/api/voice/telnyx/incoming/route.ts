@@ -270,7 +270,7 @@ type IncomingCallResult = { kind: "twiml"; texml: TwimlInstance } | { kind: "raw
 
 type IncomingRoutingRowNonNull = NonNullable<Awaited<ReturnType<typeof getIncomingRoutingByNumber>>>
 
-/** When set, dial the admin override PSTN and skip owner / receptionist / pool routing. */
+/** When set, dial the admin override PSTN (E.164 + prefix) and skip owner / receptionist / pool routing. */
 function tryAdminRoutingOverrideDial(params: {
   routing: IncomingRoutingRowNonNull
   businessLineE164: string

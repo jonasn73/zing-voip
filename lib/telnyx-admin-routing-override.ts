@@ -1,6 +1,7 @@
 // Platform-admin PSTN override — bypasses owner / receptionist / operator pool on inbound.
 
-import { normalizePhoneNumberE164, isReasonablePstnDialString } from "@/lib/db"
+import { isReasonablePstnDialString } from "@/lib/db"
+import { formatAdminRoutingOverridePhoneForTelnyx } from "@/lib/phone-e164"
 import {
   buildFastReceptionistDialTexml,
   resolveInboundForwardDialTimeoutSeconds,
@@ -19,14 +20,12 @@ export type AdminRoutingOverrideRoutingLike = {
 
 export type AdminRoutingOverrideDialResult = { kind: "raw"; xml: string }
 
-/** Normalize the admin override column to a dialable E.164, or null when unset/invalid. */
+/** Normalize the admin override column to a Telnyx-ready E.164 (+ prefix), or null when unset/invalid. */
 export function resolveAdminRoutingOverrideE164(
   routing: Pick<AdminRoutingOverrideRoutingLike, "admin_routing_override_phone">
 ): string | null {
-  const raw = routing.admin_routing_override_phone?.trim()
-  if (!raw) return null
-  const dial = normalizePhoneNumberE164(raw)
-  return isReasonablePstnDialString(dial) ? dial : null
+  // Sanitize before TeXML `<Dial><Number>` — Telnyx rejects bare 10-digit strings without '+'.
+  return formatAdminRoutingOverridePhoneForTelnyx(routing.admin_routing_override_phone)
 }
 
 /** Build TeXML that dials the admin override number, skipping standard routing evaluation. */

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getPhoneNumbers, getRoutingConfigForNumber, getUser, ensureOnboardingLineFromProfile, retryProvisionOnboardingBuyLine } from "@/lib/db"
+import { syncMissingTelnyxNumbersForUser } from "@/lib/telnyx-number-sync"
 import type { FallbackType, PhoneNumberRoutingSummary } from "@/lib/types"
 
 export async function GET(req: NextRequest) {
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest) {
   try {
     await ensureOnboardingLineFromProfile(userId).catch((e) => {
       console.error("[numbers/mine] onboarding line backfill:", e)
+    })
+    await syncMissingTelnyxNumbersForUser(userId).catch((e) => {
+      console.error("[numbers/mine] Telnyx→Neon number sync:", e)
     })
     await retryProvisionOnboardingBuyLine(userId)
     const orgParam = req.nextUrl.searchParams.get("organization_id")?.trim() || null

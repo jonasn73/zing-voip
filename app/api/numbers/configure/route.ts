@@ -15,11 +15,13 @@ import {
   getPhoneNumbers,
   insertPhoneNumber,
   getPhoneNumberByNumberAndStatus,
+  normalizePhoneNumberE164,
 } from "@/lib/db"
 import {
   telnyxHeaders,
   getOrCreateTexmlApp,
 } from "@/lib/telnyx-config"
+import { listTelnyxAccountPhoneNumbers } from "@/lib/telnyx-number-sync"
 
 const TELNYX_BASE = "https://api.telnyx.com/v2"
 
@@ -35,41 +37,30 @@ export async function POST(req: NextRequest) {
     // Step 1: Find or create the lyncr Call Router TeXML app (with outbound voice profile)
     const texmlAppId = await getOrCreateTexmlApp()
 
-    // Step 2: Get all Telnyx phone numbers on this account
-    const telnyxNumbersRes = await fetch(
-      `${TELNYX_BASE}/phone_numbers?page[size]=100`,
-      { headers: telnyxHeaders() }
-    )
-    const telnyxNumbersBody = await telnyxNumbersRes.json()
-    const telnyxNumbers: { id: string; phone_number: string; connection_id: string | null }[] =
-      (telnyxNumbersBody?.data || []).map((n: Record<string, unknown>) => ({
-        id: String(n.id),
-        phone_number: String(n.phone_number || ""),
-        connection_id: n.connection_id ? String(n.connection_id) : null,
-      }))
+    const telnyxNumbers = await listTelnyxAccountPhoneNumbers()
 
-    // Step 3: Get user's numbers from our DB
     const dbNumbers = await getPhoneNumbers(userId)
-    const dbNumberSet = new Set(dbNumbers.map((n) => n.number))
+    const dbDigitSet = new Set(dbNumbers.map((n) => normalizePhoneNumberE164(n.number).replace(/\D/g, "")))
 
-    // Step 4: For each Telnyx number, ensure it's in our DB and configured with TeXML
     for (const tn of telnyxNumbers) {
       if (!tn.phone_number) continue
+      const e164 = normalizePhoneNumberE164(tn.phone_number)
+      const digitKey = e164.replace(/\D/g, "")
 
-      // Add to DB if not already there
-      if (!dbNumberSet.has(tn.phone_number)) {
-        const existingInDb = await getPhoneNumberByNumberAndStatus(tn.phone_number, "active")
+      if (digitKey && !dbDigitSet.has(digitKey)) {
+        const existingInDb = await getPhoneNumberByNumberAndStatus(e164, "active")
         if (!existingInDb) {
           await insertPhoneNumber({
             user_id: userId,
-            number: tn.phone_number,
-            friendly_name: tn.phone_number,
+            number: e164,
+            friendly_name: e164,
             label: "Business Line",
             type: "local",
             status: "active",
             provider_number_sid: tn.id,
           })
-          results.push({ number: tn.phone_number, action: "added to database" })
+          results.push({ number: e164, action: "added to database" })
+          dbDigitSet.add(digitKey)
         }
       }
 

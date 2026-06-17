@@ -10,14 +10,16 @@ import { buildServiceContext, canAddNumberWithServiceContext } from "@/lib/servi
 import {
   adjustUserCarrierCredit,
   countActivePhoneNumbers,
+  clearIncomingRoutingCache,
   ensureOnboardingProfile,
   getOnboardingProfile,
   getPhoneNumbers,
+  getPhoneNumberByNumberAndStatus,
   getUser,
+  insertPhoneNumber,
   normalizePhoneNumberE164,
 } from "@/lib/db"
 import { purchaseAndConfigureTelnyxLine } from "@/lib/telnyx-purchase-line"
-import { insertPhoneNumber } from "@/lib/db"
 
 export type NumberPurchaseBlockReason = "tier_limit" | "insufficient_credit"
 
@@ -173,6 +175,18 @@ export async function purchasePhoneNumberForUser(
     return { ok: false, error: purchase.error, reason: purchase.reason }
   }
 
+  const normalized = normalizePhoneNumberE164(purchase.phone_number)
+  const existing =
+    (await getPhoneNumbers(userId)).find(
+      (row) => normalizePhoneNumberE164(row.number) === normalized && row.status !== "released"
+    ) ??
+    (await getPhoneNumberByNumberAndStatus(normalized, "active")) ??
+    (await getPhoneNumberByNumberAndStatus(normalized, "porting"))
+
+  if (existing && existing.user_id === userId) {
+    return { ok: true, phone_number: normalized, order_id: purchase.order_id }
+  }
+
   await adjustUserCarrierCredit({
     userId,
     deltaUsd: -CARRIER_PROVISIONING_FEE_USD,
@@ -192,6 +206,7 @@ export async function purchasePhoneNumberForUser(
     organization_id: organizationId ?? null,
   })
 
+  clearIncomingRoutingCache()
   void saved
   return { ok: true, phone_number: purchase.phone_number, order_id: purchase.order_id }
 }

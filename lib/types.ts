@@ -390,6 +390,8 @@ export interface AdminTenantControls {
   }
   organizations: AdminTenantControlOrganization[]
   pending_invites: AdminTenantControlPendingInvite[]
+  /** Platform-admin PSTN override — inbound calls dial here first (072). */
+  admin_routing_override_phone: string | null
 }
 
 /** One row in the receptionist payout ledger view. */
@@ -415,6 +417,7 @@ export type AdminUserOverrideResult = {
   custom_routing_note: string | null
   phone_number: string | null
   carrier_credit: number
+  admin_routing_override_phone?: string | null
   reset_active_lines?: boolean
 }
 

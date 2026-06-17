@@ -74,6 +74,7 @@ lyncr cannot update your Neon database from Git or Vercel automatically. After p
 | 69 | `069-sms-messages.sql` | **Two-way SMS threads.** Adds **`sms_messages`** (inbound + outbound per workspace). **Required** for Telnyx `message.received` storage and `POST /api/messaging/send` replies in the dashboard. |
 | 70 | `070-porting-rejection-reason.sql` | **Port rejection capture.** Adds **`porting_orders.carrier_rejection_reason`** — Telnyx `porting_order.rejected` / rejection comments update owner Lines modal with PIN correction. **Required** for rejected-port resubmit flow. |
 | 71 | `071-porting-lifecycle-statuses.sql` | **Port lifecycle statuses.** Extends **`porting_orders.status`** with `action_required`, `pending_info`, `submitted`, `pending_carrier_review` for the dashboard transfer tracker banner + interaction drawer. **Required** for amber action-required alerts. |
+| 72 | `072-admin-routing-override-phone.sql` | **Admin inbound routing override.** Adds **`onboarding_profiles.admin_routing_override_phone`** — when set, Telnyx `/incoming` dials this PSTN number instead of owner/receptionist/pool routing. **Required** for the admin drawer forwarding override field. |
 
 ## Platform admin (`admin@lyncr.app`)
 

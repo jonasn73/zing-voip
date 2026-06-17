@@ -116,7 +116,8 @@ function isMissingOnboardingProfileColumnError(e: unknown): boolean {
     msg.includes("custom_routing_note") ||
     msg.includes("sms_leads_enabled") ||
     msg.includes("notification_phone") ||
-    msg.includes("dispatch_sms_phone")
+    msg.includes("dispatch_sms_phone") ||
+    msg.includes("admin_routing_override_phone")
   )
 }
 
@@ -272,6 +273,8 @@ export type IncomingRoutingRow = {
   active_phone_count: number
   /** First active DID — PSTN caller-id when account has multiple lines. */
   primary_phone_number: string
+  /** Platform-admin PSTN override — bypasses owner/receptionist/pool when set (072). */
+  admin_routing_override_phone: string | null
 }
 
 // L1: in-memory per serverless instance. L2: Vercel Data Cache (unstable_cache) shared across instances.
@@ -375,10 +378,12 @@ async function fetchInboundDialSnapshotSql(normalized: string): Promise<Incoming
         COALESCE(pn.inbound_ring_timeout_seconds, 30) AS ring_timeout_seconds,
         COALESCE(pn.inbound_ai_ring_owner_first, false) AS ai_ring_owner_first,
         COALESCE(pn.inbound_account_status, 'active') AS account_status,
+        op.admin_routing_override_phone AS admin_routing_override_phone,
         -- to_jsonb(pn)->>'col' reads a column that may not exist yet (pre-050) without erroring.
         to_jsonb(pn) ->> 'inbound_routing_endpoint' AS inbound_routing_endpoint,
         to_jsonb(pn) ->> 'inbound_sip_username' AS inbound_sip_username
       FROM phone_numbers pn
+      LEFT JOIN onboarding_profiles op ON op.user_id = pn.user_id
       WHERE pn.status = 'active'
         AND pn.number = ${normalized}
         AND pn.inbound_routing_updated_at IS NOT NULL
@@ -410,9 +415,64 @@ async function fetchInboundDialSnapshotSql(normalized: string): Promise<Incoming
       account_status: row.account_status != null ? String(row.account_status) : "active",
       active_phone_count: 1,
       primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : normalized,
+      admin_routing_override_phone:
+        row.admin_routing_override_phone != null ? String(row.admin_routing_override_phone) : null,
     }
   } catch (e) {
     if (isMissingInboundDialSnapshotColumnError(e)) return null
+    if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("admin_routing_override_phone")) {
+      try {
+        const rows = await sql`
+          SELECT
+            pn.user_id,
+            pn.number AS primary_phone_number,
+            pn.inbound_dial_e164 AS receptionist_phone,
+            pn.inbound_receptionist_id AS selected_receptionist_id,
+            pn.inbound_receptionist_name AS receptionist_name,
+            COALESCE(pn.inbound_fallback_type, 'owner') AS fallback_type,
+            COALESCE(pn.inbound_ring_timeout_seconds, 30) AS ring_timeout_seconds,
+            COALESCE(pn.inbound_ai_ring_owner_first, false) AS ai_ring_owner_first,
+            COALESCE(pn.inbound_account_status, 'active') AS account_status,
+            to_jsonb(pn) ->> 'inbound_routing_endpoint' AS inbound_routing_endpoint,
+            to_jsonb(pn) ->> 'inbound_sip_username' AS inbound_sip_username
+          FROM phone_numbers pn
+          WHERE pn.status = 'active'
+            AND pn.number = ${normalized}
+            AND pn.inbound_routing_updated_at IS NOT NULL
+            AND NULLIF(trim(pn.inbound_dial_e164), '') IS NOT NULL
+          LIMIT 1
+        `
+        if (!rows[0]) return null
+        const row = rows[0] as Record<string, unknown>
+        const dialE164 = row.receptionist_phone ? String(row.receptionist_phone).trim() : ""
+        const recvId = row.selected_receptionist_id ? String(row.selected_receptionist_id) : null
+        return {
+          user_id: String(row.user_id),
+          user_name: "",
+          business_name: "My Business",
+          inbound_receptionist_whisper_enabled: true,
+          owner_phone: recvId ? "" : dialE164,
+          selected_receptionist_id: recvId,
+          fallback_type: (row.fallback_type as RoutingConfig["fallback_type"]) || "owner",
+          ring_timeout_seconds: Number(row.ring_timeout_seconds ?? 30),
+          ai_ring_owner_first: row.ai_ring_owner_first === true || row.ai_ring_owner_first === "t",
+          receptionist_name: row.receptionist_name ? String(row.receptionist_name) : null,
+          receptionist_phone: recvId ? dialE164 : dialE164,
+          receptionist_routing_endpoint:
+            String(row.inbound_routing_endpoint ?? "").toUpperCase() === "WEB" ? "WEB" : "CELL",
+          receptionist_sip_username: row.inbound_sip_username ? String(row.inbound_sip_username) : null,
+          phone_line_label: "Main Line",
+          phone_line_friendly_name: "",
+          account_status: row.account_status != null ? String(row.account_status) : "active",
+          active_phone_count: 1,
+          primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : normalized,
+          admin_routing_override_phone: null,
+        }
+      } catch (inner) {
+        if (isMissingInboundDialSnapshotColumnError(inner)) return null
+        throw inner
+      }
+    }
     throw e
   }
 }
@@ -1955,6 +2015,8 @@ function mapIncomingRoutingRowFromDb(row: Record<string, unknown>): IncomingRout
     account_status: row.account_status != null ? String(row.account_status) : "active",
     active_phone_count: 1,
     primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : "",
+    admin_routing_override_phone:
+      row.admin_routing_override_phone != null ? String(row.admin_routing_override_phone) : null,
   }
 }
 
@@ -2132,6 +2194,7 @@ async function fetchIncomingRoutingFullFromDb(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
+      op.admin_routing_override_phone AS admin_routing_override_phone,
       pn.number AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
@@ -2205,6 +2268,7 @@ async function fetchIncomingRoutingFullFromDb(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
+      op.admin_routing_override_phone AS admin_routing_override_phone,
       pn.number AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
@@ -6969,12 +7033,13 @@ export async function getAccountStatusForInboundNumber(toNumber: string): Promis
   return lookup
 }
 
-/** Operator overrides: status, notes, manual DID, hard reset lines. */
+/** Operator overrides: status, notes, manual DID, admin routing override, hard reset lines. */
 export async function adminApplyUserOverride(params: {
   userId: string
   targetStatus?: string
   adminNotes?: string | null
   manualPhoneOverride?: string | null
+  adminRoutingOverridePhone?: string | null
   resetActiveLines?: boolean
 }): Promise<AdminUserOverrideResult> {
   const userId = params.userId.trim()
@@ -7089,9 +7154,35 @@ export async function adminApplyUserOverride(params: {
       }
       void syncInboundDialSnapshotForUser(userId).catch(() => {})
     }
+
+    if (params.adminRoutingOverridePhone !== undefined) {
+      let overrideE164: string | null = null
+      const rawOverride = params.adminRoutingOverridePhone
+      if (rawOverride !== null && String(rawOverride).trim().length > 0) {
+        overrideE164 = normalizePhoneNumberE164(String(rawOverride))
+        if (!isReasonablePstnDialString(overrideE164)) {
+          throw new Error("adminRoutingOverridePhone must be a valid phone number")
+        }
+      }
+      try {
+        await sql`
+          UPDATE onboarding_profiles
+          SET admin_routing_override_phone = ${overrideE164}, updated_at = now()
+          WHERE user_id = ${userId}
+        `
+      } catch (e) {
+        if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("admin_routing_override_phone")) {
+          throw new Error("Admin routing override requires scripts/072-admin-routing-override-phone.sql in Neon.")
+        }
+        throw e
+      }
+      clearIncomingRoutingCache()
+      void syncInboundDialSnapshotForUser(userId).catch(() => {})
+    }
   }
 
   const profile = await getOnboardingProfile(userId)
+  const overridePhone = await getAdminRoutingOverridePhone(userId)
   const numbers = await getPhoneNumbers(userId)
   const primary = numbers.find((p) => p.status === "active") ?? null
   return {
@@ -7100,7 +7191,29 @@ export async function adminApplyUserOverride(params: {
     custom_routing_note: profile?.custom_routing_note ?? null,
     phone_number: primary?.number ?? null,
     carrier_credit: profile?.carrier_credit ?? 0,
+    admin_routing_override_phone: overridePhone,
     reset_active_lines: params.resetActiveLines === true,
+  }
+}
+
+/** Platform-admin inbound PSTN override for a business owner (scripts/072). */
+export async function getAdminRoutingOverridePhone(userId: string): Promise<string | null> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      SELECT admin_routing_override_phone
+      FROM onboarding_profiles
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `
+    const raw = rows[0]?.admin_routing_override_phone
+    return raw != null && String(raw).trim() ? String(raw).trim() : null
+  } catch (e) {
+    if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("admin_routing_override_phone")) {
+      return null
+    }
+    if (isMissingOnboardingProfilesTableError(e) || isWrongLegacyProfilesTableError(e)) return null
+    throw e
   }
 }
 

@@ -16,6 +16,7 @@ import {
   getOrganizationSmsRegistrationStatus,
   getPhoneNumbers,
   getProfileFeatureFlags,
+  getAdminRoutingOverridePhone,
   getSmsRegistrationForOrganization,
   listOrganizationsForOwner,
   listTeamInvitesForInviter,
@@ -74,7 +75,7 @@ async function mapOrganizationControls(
 }
 
 async function loadControls(userId: string): Promise<AdminTenantControls> {
-  const [feature_flags, lines, organizations, activeReceptionists, activeFieldTechnicians, teamInvites] =
+  const [feature_flags, lines, organizations, activeReceptionists, activeFieldTechnicians, teamInvites, admin_routing_override_phone] =
     await Promise.all([
       getProfileFeatureFlags(userId),
       getPhoneNumbers(userId),
@@ -82,6 +83,7 @@ async function loadControls(userId: string): Promise<AdminTenantControls> {
       countActiveReceptionistsForOwner(userId),
       countActiveFieldTechniciansForOwner(userId),
       listTeamInvitesForInviter(userId),
+      getAdminRoutingOverridePhone(userId),
     ])
 
   const phone_lines = lines
@@ -120,6 +122,7 @@ async function loadControls(userId: string): Promise<AdminTenantControls> {
     },
     organizations: orgControls,
     pending_invites,
+    admin_routing_override_phone,
   }
 }
 

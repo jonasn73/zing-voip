@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       body.targetStatus !== undefined ||
       body.adminNotes !== undefined ||
       body.manualPhoneOverride !== undefined ||
+      body.adminRoutingOverridePhone !== undefined ||
       body.resetActiveLines === true
 
     if (!hasAnyField) {
@@ -47,6 +48,12 @@ export async function POST(req: NextRequest) {
           ? body.manualPhoneOverride === null
             ? null
             : String(body.manualPhoneOverride)
+          : undefined,
+      adminRoutingOverridePhone:
+        body.adminRoutingOverridePhone !== undefined
+          ? body.adminRoutingOverridePhone === null
+            ? null
+            : String(body.adminRoutingOverridePhone)
           : undefined,
       resetActiveLines: body.resetActiveLines === true,
     })

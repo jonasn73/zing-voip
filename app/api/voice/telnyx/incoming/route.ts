@@ -64,6 +64,7 @@ import {
 } from "@/lib/telnyx-inbound-media-quality"
 import { buildRoutingPoolDialResponse, getAvailableReceptionistsForLine } from "@/lib/routing-pool"
 import { buildReceptionistAnswerUrl } from "@/lib/receptionist-answer-url"
+import { buildAdminRoutingOverrideDial } from "@/lib/telnyx-admin-routing-override"
 
 export const runtime = "nodejs"
 export const preferredRegion = "iad1"
@@ -268,6 +269,59 @@ type TwimlInstance = InstanceType<typeof VoiceResponse>
 type IncomingCallResult = { kind: "twiml"; texml: TwimlInstance } | { kind: "raw"; xml: string }
 
 type IncomingRoutingRowNonNull = NonNullable<Awaited<ReturnType<typeof getIncomingRoutingByNumber>>>
+
+/** When set, dial the admin override PSTN and skip owner / receptionist / pool routing. */
+function tryAdminRoutingOverrideDial(params: {
+  routing: IncomingRoutingRowNonNull
+  businessLineE164: string
+  calledNumber: string
+  callerNumber: string
+  callSid: string
+  callerName: string | null
+  appUrl: string
+  perfStartMs?: number
+}): IncomingCallResult | null {
+  const built = buildAdminRoutingOverrideDial({
+    routing: params.routing,
+    businessLineE164: params.businessLineE164,
+    callerNumber: params.callerNumber,
+    callSid: params.callSid,
+    appUrl: params.appUrl,
+    resolveOutboundCallerId: resolveInboundOutboundCallerId,
+  })
+  if (!built) return null
+
+  after(() => {
+    void insertCallLog({
+      user_id: params.routing.user_id,
+      provider_call_sid: params.callSid,
+      from_number: params.callerNumber.trim() ? normalizePhoneNumberE164(params.callerNumber) : "Unknown",
+      to_number: params.businessLineE164 || normalizePhoneNumberE164(params.calledNumber),
+      caller_name: params.callerName,
+      call_type: "incoming",
+      status: "ringing",
+      duration_seconds: 0,
+      routed_to_receptionist_id: null,
+      routed_to_name: "Admin routing override",
+      has_recording: false,
+      recording_url: null,
+      recording_duration_seconds: null,
+    }).catch((logErr) => {
+      console.error("[Sigo] Call log insert failed (admin override path):", logErr)
+    })
+  })
+
+  console.log(
+    JSON.stringify({
+      ...(params.perfStartMs != null ? { execMs: +(performance.now() - params.perfStartMs).toFixed(2) } : {}),
+      zing: "telnyx-incoming-admin-routing-override",
+      userId: params.routing.user_id,
+      callSid: params.callSid,
+      overrideTail4: params.routing.admin_routing_override_phone?.replace(/\D/g, "").slice(-4) ?? null,
+    })
+  )
+  return built
+}
 
 function inboundWantsAiFallback(routing: IncomingRoutingRowNonNull): boolean {
   return String(routing.fallback_type ?? "").toLowerCase() === "ai"
@@ -684,6 +738,17 @@ async function handleIncomingCall(
       )
       return { kind: "raw", xml: buildSuspendedInboundRejectTexml() }
     }
+
+    const adminOverrideDial = tryAdminRoutingOverrideDial({
+      routing,
+      businessLineE164,
+      calledNumber,
+      callerNumber,
+      callSid,
+      callerName,
+      appUrl,
+    })
+    if (adminOverrideDial) return adminOverrideDial
 
     const mightRepeatLeg = inboundWebhookLooksLikeDialRepeat(webhookFields)
     const overlayEnabled = readInboundRoutingCfgOverlayEnabled()
@@ -1266,6 +1331,22 @@ async function tryFastInboundReceptionistResponse(
   const callerNumber = pickField(fields, ["From", "from", "Caller", "caller", "RemoteParty"])
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
   const businessLineE164 = normalizePhoneNumberE164(calledNumberRaw)
+
+  const adminOverrideDial = tryAdminRoutingOverrideDial({
+    routing,
+    businessLineE164,
+    calledNumber: calledNumberRaw,
+    callerNumber,
+    callSid,
+    callerName,
+    appUrl: VOICE_WEBHOOK_APP_URL,
+    perfStartMs,
+  })
+  if (adminOverrideDial) {
+    return new NextResponse(texmlResponseBody(adminOverrideDial), {
+      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+    })
+  }
 
   if (
     inboundWantsAiFallback(routing) &&

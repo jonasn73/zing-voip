@@ -61,6 +61,7 @@ function emptyAdminControls(): AdminTenantControls {
     team_roster: { active_receptionists: 0, active_field_technicians: 0 },
     organizations: [],
     pending_invites: [],
+    admin_routing_override_phone: null,
   }
 }
 import {
@@ -111,6 +112,7 @@ export function AdminUserManageDrawer({
   const [flagBusy, setFlagBusy] = useState<string | null>(null)
   const [releaseBusy, setReleaseBusy] = useState<string | null>(null)
   const [provisionTechOpen, setProvisionTechOpen] = useState(false)
+  const [adminRoutingOverridePhone, setAdminRoutingOverridePhone] = useState("")
 
   const loadControls = useCallback(async (userId: string) => {
     setControlsLoading(true)
@@ -119,6 +121,11 @@ export function AdminUserManageDrawer({
       const json = (await res.json().catch(() => ({}))) as { data?: AdminTenantControls; error?: string }
       if (res.ok && json.data) setControls(json.data)
       else setControls(emptyAdminControls())
+      setAdminRoutingOverridePhone(
+        res.ok && json.data?.admin_routing_override_phone
+          ? String(json.data.admin_routing_override_phone)
+          : ""
+      )
     } catch {
       setControls(emptyAdminControls())
     } finally {
@@ -224,6 +231,7 @@ export function AdminUserManageDrawer({
           targetStatus,
           adminNotes,
           manualPhoneOverride: manualPhone.trim() || null,
+          adminRoutingOverridePhone: adminRoutingOverridePhone.trim() || null,
         }),
       })
       const json = (await res.json()) as { error?: string }
@@ -406,6 +414,20 @@ export function AdminUserManageDrawer({
               >
                 + Add Tech to this Business
               </Button>
+
+              <div className="space-y-2 border-t border-slate-800 pt-3">
+                <Label className="text-slate-300">Admin Direct Forwarding Override (Phone Number)</Label>
+                <Input
+                  value={adminRoutingOverridePhone}
+                  onChange={(e) => setAdminRoutingOverridePhone(e.target.value)}
+                  placeholder="+15551234567"
+                  className="border-slate-700 bg-slate-950 font-mono text-slate-100"
+                />
+                <p className="text-xs text-slate-500">
+                  When set, inbound calls on this business&apos;s lines dial this number immediately — bypassing
+                  owner, receptionist, and Lyncr operator pool routing. Clear the field and save to remove.
+                </p>
+              </div>
             </div>
 
             {/* Active provisioned lines */}

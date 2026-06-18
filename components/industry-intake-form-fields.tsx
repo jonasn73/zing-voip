@@ -23,6 +23,9 @@ export {
   intakeFieldsFromWorkspaceContext,
 } from "@/lib/intake-form-helpers"
 
+const inputClass =
+  "w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+
 type IndustryIntakeFormFieldsProps = {
   /** Explicit field list — omit to auto-resolve from workspace context below. */
   fields?: FieldServiceFieldDef[]

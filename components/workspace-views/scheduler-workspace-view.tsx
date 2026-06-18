@@ -4,7 +4,7 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Car, Clock, LayoutGrid, Loader2, Map, MapPin, Phone, Plus, User } from "lucide-react"
+import { Car, Clock, LayoutGrid, Loader2, Map as MapIcon, MapPin, Phone, Plus, User } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import {
@@ -429,7 +429,7 @@ export function SchedulerWorkspaceView() {
           className="gap-1.5 px-3 text-xs"
           onClick={() => setViewMode("map")}
         >
-          <Map className="h-3.5 w-3.5" aria-hidden />
+          <MapIcon className="h-3.5 w-3.5" aria-hidden />
           Map Route View
         </Button>
       </div>
@@ -470,7 +470,7 @@ export function SchedulerWorkspaceView() {
             className="flex-1 gap-1 text-xs"
             onClick={() => setViewMode("map")}
           >
-            <Map className="h-3.5 w-3.5" aria-hidden />
+            <MapIcon className="h-3.5 w-3.5" aria-hidden />
             Map
           </Button>
         </div>

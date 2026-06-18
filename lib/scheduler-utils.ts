@@ -38,3 +38,76 @@ export function dayKeyLocal(d: Date): string {
   const day = String(d.getDate()).padStart(2, "0")
   return `${y}-${m}-${day}`
 }
+
+/** Hourly grid defaults for the owner scheduler day view. */
+export const SCHEDULER_GRID_START_HOUR = 7
+export const SCHEDULER_GRID_END_HOUR = 19
+export const SCHEDULER_HOUR_ROW_PX = 64
+
+/** Inclusive hour labels for the timeline (7 AM … 7 PM). */
+export function schedulerHourSlots(): number[] {
+  const slots: number[] = []
+  for (let h = SCHEDULER_GRID_START_HOUR; h <= SCHEDULER_GRID_END_HOUR; h += 1) slots.push(h)
+  return slots
+}
+
+export function formatHourLabel(hour24: number): string {
+  const h = hour24 % 24
+  const suffix = h >= 12 ? "PM" : "AM"
+  const display = h % 12 === 0 ? 12 : h % 12
+  return `${display}:00 ${suffix}`
+}
+
+/** Build a local Date on `day` at `hour24:00` (optional minutes). */
+export function dateAtLocalHour(day: Date, hour24: number, minutes = 0): Date {
+  const d = new Date(day)
+  d.setHours(hour24, minutes, 0, 0)
+  return d
+}
+
+/** Value for `<input type="datetime-local">` in local timezone. */
+export function toDatetimeLocalValue(d: Date): string {
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, "0")
+  const da = String(d.getDate()).padStart(2, "0")
+  const h = String(d.getHours()).padStart(2, "0")
+  const mi = String(d.getMinutes()).padStart(2, "0")
+  return `${y}-${mo}-${da}T${h}:${mi}`
+}
+
+/** Placement of an event block on the hourly grid (pixels from top of day column). */
+export function schedulerEventPlacement(
+  scheduledAtIso: string,
+  durationMinutes: number,
+  tentative: boolean
+): { topPx: number; heightPx: number; start: Date } {
+  const start = new Date(scheduledAtIso)
+  let hour = start.getHours()
+  let minute = start.getMinutes()
+  if (tentative && hour === 0 && minute === 0) {
+    hour = 9
+    minute = 0
+  }
+  const minutesFromGridStart = (hour - SCHEDULER_GRID_START_HOUR) * 60 + minute
+  const topPx = Math.max(0, (minutesFromGridStart / 60) * SCHEDULER_HOUR_ROW_PX)
+  const duration = Math.max(durationMinutes, 15)
+  const heightPx = Math.max(SCHEDULER_HOUR_ROW_PX / 2, (duration / 60) * SCHEDULER_HOUR_ROW_PX)
+  return { topPx, heightPx, start }
+}
+
+export const SCHEDULER_JOB_TYPES = [
+  "Lockout",
+  "Rekey",
+  "Auto Detail",
+  "Diagnostic / Repair",
+  "Emergency dispatch",
+  "Other",
+] as const
+
+export const SCHEDULER_DURATION_OPTIONS = [
+  { minutes: 30, label: "30 min" },
+  { minutes: 60, label: "1 hour" },
+  { minutes: 90, label: "1.5 hours" },
+  { minutes: 120, label: "2 hours" },
+  { minutes: 180, label: "3 hours" },
+] as const

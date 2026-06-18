@@ -102,6 +102,13 @@ export interface SchedulerEvent {
   /** True when scheduled_at was inferred from created_at (no structured time set). */
   scheduled_tentative: boolean
   created_at: string
+  /** Manual / intake job type label (e.g. Lockout, Auto Detail). */
+  job_type: string | null
+  /** Block length on the hourly grid (minutes). */
+  duration_minutes: number
+  /** Assigned field tech login user id. */
+  assigned_tech_id: string | null
+  assigned_tech_name: string | null
 }
 
 /** A field tech's last-known live position for the owner's dispatch map. */

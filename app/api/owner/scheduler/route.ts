@@ -1,11 +1,17 @@
 // ============================================
-// GET /api/owner/scheduler
+// GET /api/owner/scheduler — list calendar events
+// POST /api/owner/scheduler — create manual appointment
 // ============================================
-// Owner calendar events (BOOKED + PENDING_TIME jobs) for a date range.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { listOwnerSchedulerEvents } from "@/lib/db"
+import {
+  createOwnerSchedulerAppointment,
+  isReasonablePstnDialString,
+  listFieldTechnicians,
+  listOwnerSchedulerEvents,
+  normalizePhoneNumberE164,
+} from "@/lib/db"
 import { monthRangeUtc, parseIsoDateParam } from "@/lib/scheduler-utils"
 
 export const dynamic = "force-dynamic"
@@ -52,5 +58,72 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     console.error("[GET /api/owner/scheduler]", e)
     return NextResponse.json({ data: { events: [], from: fromIso, to: toIso }, degraded: true })
+  }
+}
+
+type CreateSchedulerBody = {
+  customer_name?: string
+  customer_phone?: string
+  job_type?: string
+  scheduled_at?: string
+  duration_minutes?: number
+  assigned_tech_id?: string | null
+  organization_id?: string | null
+}
+
+export async function POST(req: NextRequest) {
+  const userId = getUserIdFromRequest(req.headers.get("cookie"))
+  if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+
+  const body = (await req.json().catch(() => ({}))) as CreateSchedulerBody
+  const customerName = String(body.customer_name ?? "").trim()
+  const customerPhoneRaw = String(body.customer_phone ?? "").trim()
+  const jobType = String(body.job_type ?? "Other").trim() || "Other"
+  const scheduledRaw = String(body.scheduled_at ?? "").trim()
+  const durationMinutes = Number(body.duration_minutes ?? 60) || 60
+  const assignedTechId = body.assigned_tech_id?.trim() || null
+  const organizationId = body.organization_id?.trim() || null
+
+  if (!customerName) {
+    return NextResponse.json({ error: "Customer name is required" }, { status: 400 })
+  }
+  if (!customerPhoneRaw) {
+    return NextResponse.json({ error: "Customer phone is required" }, { status: 400 })
+  }
+  const customerPhoneE164 = normalizePhoneNumberE164(customerPhoneRaw)
+  if (!isReasonablePstnDialString(customerPhoneE164)) {
+    return NextResponse.json({ error: "Enter a valid phone number" }, { status: 400 })
+  }
+  if (!scheduledRaw || Number.isNaN(Date.parse(scheduledRaw))) {
+    return NextResponse.json({ error: "Start time is required" }, { status: 400 })
+  }
+  const scheduledAtIso = new Date(scheduledRaw).toISOString()
+
+  let assignedTechName: string | null = null
+  if (assignedTechId) {
+    const roster = await listFieldTechnicians(userId)
+    const match = roster.find((t) => t.portal_user_id === assignedTechId)
+    if (!match?.portal_user_id) {
+      return NextResponse.json({ error: "Selected technician is not available" }, { status: 400 })
+    }
+    assignedTechName = match.name
+  }
+
+  try {
+    const event = await createOwnerSchedulerAppointment({
+      ownerUserId: userId,
+      organizationId: organizationId && !organizationId.startsWith("legacy-") ? organizationId : null,
+      customerName,
+      customerPhoneE164,
+      jobType,
+      scheduledAtIso,
+      durationMinutes,
+      assignedTechPortalUserId: assignedTechId,
+      assignedTechName,
+    })
+    return NextResponse.json({ data: { event } })
+  } catch (e) {
+    console.error("[POST /api/owner/scheduler]", e)
+    return NextResponse.json({ error: "Failed to create appointment" }, { status: 500 })
   }
 }

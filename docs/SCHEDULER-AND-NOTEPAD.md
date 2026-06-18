@@ -66,6 +66,7 @@ Owner and receptionist are **separate apps** — receptionists never see `/dashb
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/api/owner/scheduler?from=&to=&organization_id=` | List calendar events in date range |
+| `POST` | `/api/owner/scheduler` | Create manual appointment (customer, job type, tech, start, duration) |
 | `PATCH` | `/api/owner/scheduler/[id]` | Set `{ scheduled_at: ISO8601 }` on a lead |
 
 ### Data query

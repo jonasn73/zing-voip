@@ -5572,6 +5572,11 @@ function schedulerEventFromRow(row: Record<string, unknown>): import("@/lib/type
     row.disposition != null && String(row.disposition).trim()
       ? String(row.disposition)
       : pick(["disposition"])
+  const durationRaw = collected.duration_minutes
+  const durationMinutes =
+    typeof durationRaw === "number" && Number.isFinite(durationRaw)
+      ? durationRaw
+      : parseInt(String(durationRaw ?? "60"), 10) || 60
   return {
     id: String(row.id),
     customer_name: pick(["customer_name", "name", "caller_name", "contact_name"]),
@@ -5584,6 +5589,16 @@ function schedulerEventFromRow(row: Record<string, unknown>): import("@/lib/type
     scheduled_at: scheduledAt,
     scheduled_tentative: scheduledRaw == null || String(scheduledRaw).trim() === "",
     created_at: createdAt,
+    job_type: pick(["job_type", "service_type", "service_package"]),
+    duration_minutes: durationMinutes,
+    assigned_tech_id:
+      row.assigned_tech_id != null && String(row.assigned_tech_id).trim()
+        ? String(row.assigned_tech_id)
+        : pick(["assigned_tech_id"]),
+    assigned_tech_name:
+      row.assigned_tech_name != null && String(row.assigned_tech_name).trim()
+        ? String(row.assigned_tech_name)
+        : pick(["assigned_tech_name"]),
   }
 }
 
@@ -5607,9 +5622,11 @@ export async function listOwnerSchedulerEvents(params: {
   try {
     const rows = orgId
       ? await sql`
-          SELECT id, caller_e164, collected, summary, disposition, scheduled_at, created_at
-          FROM ai_leads
-          WHERE user_id = ${params.ownerUserId}
+          SELECT l.id, l.caller_e164, l.collected, l.summary, l.disposition, l.scheduled_at, l.created_at,
+                 l.assigned_tech_id, t.name AS assigned_tech_name
+          FROM ai_leads l
+          LEFT JOIN field_technicians t ON t.portal_user_id = l.assigned_tech_id
+          WHERE l.user_id = ${params.ownerUserId}
             AND (
               disposition IN ('BOOKED', 'PENDING_TIME')
               OR collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
@@ -5621,9 +5638,11 @@ export async function listOwnerSchedulerEvents(params: {
           LIMIT ${lim}
         `
       : await sql`
-          SELECT id, caller_e164, collected, summary, disposition, scheduled_at, created_at
-          FROM ai_leads
-          WHERE user_id = ${params.ownerUserId}
+          SELECT l.id, l.caller_e164, l.collected, l.summary, l.disposition, l.scheduled_at, l.created_at,
+                 l.assigned_tech_id, t.name AS assigned_tech_name
+          FROM ai_leads l
+          LEFT JOIN field_technicians t ON t.portal_user_id = l.assigned_tech_id
+          WHERE l.user_id = ${params.ownerUserId}
             AND (
               disposition IN ('BOOKED', 'PENDING_TIME')
               OR collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
@@ -5711,6 +5730,122 @@ export async function setLeadScheduledAt(leadId: string, scheduledAtIso: string)
     if (isMissingSchedulerColumnError(e)) return
     throw e
   }
+}
+
+/** Owner manually books an appointment from the scheduler UI. */
+export async function createOwnerSchedulerAppointment(params: {
+  ownerUserId: string
+  organizationId?: string | null
+  customerName: string
+  customerPhoneE164: string
+  jobType: string
+  scheduledAtIso: string
+  durationMinutes: number
+  assignedTechPortalUserId?: string | null
+  assignedTechName?: string | null
+}): Promise<import("@/lib/types").SchedulerEvent> {
+  const sql = getSql()
+  const id = crypto.randomUUID()
+  const duration = Math.min(Math.max(params.durationMinutes, 15), 480)
+  const jobType = params.jobType.trim() || "Other"
+  const customerName = params.customerName.trim()
+  const summary = `${jobType} — ${customerName}`
+  const techId = params.assignedTechPortalUserId?.trim() || null
+  const collected = {
+    customer_name: customerName,
+    job_type: jobType,
+    duration_minutes: duration,
+    disposition: "BOOKED",
+    dispatch_status: "pending_review",
+    is_salvageable: false,
+    source: "owner_manual_scheduler",
+    ...(techId ? { assigned_tech_id: techId } : {}),
+    ...(params.assignedTechName?.trim() ? { assigned_tech_name: params.assignedTechName.trim() } : {}),
+  }
+  const collectedJson = JSON.stringify(collected)
+  const orgId = params.organizationId?.trim() || null
+
+  try {
+    if (orgId) {
+      await sql`
+        INSERT INTO ai_leads (
+          id, user_id, organization_id, caller_e164, intent_slug, collected, summary,
+          disposition, dispatch_status, is_salvageable, scheduled_at,
+          assigned_tech_id, job_status, sms_sent, sms_error, vapi_call_id, created_at
+        ) VALUES (
+          ${id}, ${params.ownerUserId}, ${orgId}::uuid, ${params.customerPhoneE164},
+          'owner_manual_scheduler', ${collectedJson}::jsonb, ${summary},
+          'BOOKED', 'pending_review', false, ${params.scheduledAtIso}::timestamptz,
+          ${techId}, ${techId ? "assigned" : null}, false, null, ${`${id}-manual`}, now()
+        )
+      `
+    } else {
+      await sql`
+        INSERT INTO ai_leads (
+          id, user_id, caller_e164, intent_slug, collected, summary,
+          disposition, dispatch_status, is_salvageable, scheduled_at,
+          assigned_tech_id, job_status, sms_sent, sms_error, vapi_call_id, created_at
+        ) VALUES (
+          ${id}, ${params.ownerUserId}, ${params.customerPhoneE164},
+          'owner_manual_scheduler', ${collectedJson}::jsonb, ${summary},
+          'BOOKED', 'pending_review', false, ${params.scheduledAtIso}::timestamptz,
+          ${techId}, ${techId ? "assigned" : null}, false, null, ${`${id}-manual`}, now()
+        )
+      `
+    }
+  } catch (e) {
+    if (isMissingSchedulerColumnError(e) || pgErrorCode(e) === "42703") {
+      await sql`
+        INSERT INTO ai_leads (
+          id, user_id, caller_e164, intent_slug, collected, summary, sms_sent, sms_error, vapi_call_id, created_at
+        ) VALUES (
+          ${id}, ${params.ownerUserId}, ${params.customerPhoneE164},
+          'owner_manual_scheduler', ${collectedJson}::jsonb, ${summary}, false, null, ${`${id}-manual`}, now()
+        )
+      `
+      await applyLeadDisposition(id, {
+        disposition: "BOOKED",
+        dispatch_status: "pending_review",
+        is_salvageable: false,
+      })
+      await setLeadScheduledAt(id, params.scheduledAtIso)
+      if (techId) await assignJobToTech(params.ownerUserId, id, techId)
+    } else {
+      throw e
+    }
+  }
+
+  if (techId) {
+    await assignJobToTech(params.ownerUserId, id, techId).catch(() => {})
+  }
+
+  const rows = await sql`
+    SELECT l.id, l.caller_e164, l.collected, l.summary, l.disposition, l.scheduled_at, l.created_at,
+           l.assigned_tech_id, t.name AS assigned_tech_name
+    FROM ai_leads l
+    LEFT JOIN field_technicians t ON t.portal_user_id = l.assigned_tech_id
+    WHERE l.id = ${id}
+    LIMIT 1
+  `
+  const row = rows[0] as Record<string, unknown> | undefined
+  if (!row) {
+    return {
+      id,
+      customer_name: customerName,
+      customer_phone: params.customerPhoneE164,
+      location: null,
+      summary,
+      disposition: "BOOKED",
+      scheduled_at: params.scheduledAtIso,
+      scheduled_tentative: false,
+      created_at: new Date().toISOString(),
+      job_type: jobType,
+      duration_minutes: duration,
+      assigned_tech_id: techId,
+      assigned_tech_name: params.assignedTechName ?? null,
+    }
+  }
+  return schedulerEventFromRow(row)
 }
 
 /** Jobs dispatched to a specific tech (their login user id). */

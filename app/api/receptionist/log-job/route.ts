@@ -5,7 +5,9 @@
 // under the owner's account (carrying the operator's notes), stamp the disposition, and broadcast
 // an alert to the owner:
 //   - BOOKED          → dispatch_status = 'pending_review'
-//   - PRICE_REJECTED  → is_salvageable = true (surfaced in the owner's Lyncr Lead Salvage queue)
+//   - PENDING_TIME    → dispatch_status = 'awaiting_time' (owner scheduler)
+//   - PRICE_REJECTED  → is_salvageable = true (Lead Salvage queue)
+//   - FAILED          → dispatch_status = 'failed'
 //
 // The disposition keys are written into ai_leads.collected (JSONB) so the owner feeds work even
 // before scripts/058 runs; applyLeadDisposition additionally fills the indexed columns when present.
@@ -19,11 +21,14 @@ import {
   applyLeadDisposition,
   assignJobToTech,
   resolveDispatchTechForOwner,
+  setCallLogDisposition,
   setLeadCoordinates,
   setLeadDispatchStatus,
+  setLeadScheduledAt,
   type LeadDisposition,
 } from "@/lib/db"
-import { dispatchStateFor } from "@/lib/call-disposition"
+import { DISPOSITION_LABEL, dispatchStateFor } from "@/lib/call-disposition"
+import { parseScheduledAtFromFields } from "@/lib/scheduler-utils"
 import { publishOwnerEvent, publishTechnicianEvent } from "@/lib/realtime/pusher-server"
 import { onJobStateChange } from "@/lib/sms-pipeline"
 import { geocodeAddress, pickAddressFromFields } from "@/lib/geocode"
@@ -40,7 +45,14 @@ type LogJobBody = {
 
 function normalizeStatus(raw: unknown): LeadDisposition | null {
   const v = String(raw ?? "").trim().toUpperCase()
-  return v === "BOOKED" || v === "PRICE_REJECTED" ? v : null
+  if (v === "BOOKED" || v === "PENDING_TIME" || v === "PRICE_REJECTED" || v === "FAILED") return v
+  return null
+}
+
+function ownerEventForDisposition(status: LeadDisposition): "job-booked" | "lead-salvageable" | "disposition-updated" {
+  if (status === "BOOKED") return "job-booked"
+  if (status === "PRICE_REJECTED") return "lead-salvageable"
+  return "disposition-updated"
 }
 
 function intentSlugFor(businessType: string): string {
@@ -72,7 +84,7 @@ export async function POST(req: NextRequest) {
     const status = normalizeStatus(body.status)
     if (!status) {
       return NextResponse.json(
-        { error: "status must be 'BOOKED' or 'PRICE_REJECTED'" },
+        { error: "status must be BOOKED, PENDING_TIME, PRICE_REJECTED, or FAILED" },
         { status: 400 }
       )
     }
@@ -81,7 +93,16 @@ export async function POST(req: NextRequest) {
     const fields = body.fields && typeof body.fields === "object" ? body.fields : {}
     const isBooked = status === "BOOKED"
     const { dispatch_status, is_salvageable } = dispatchStateFor(status)
-    const summary = body.summary?.trim() || `Job ${status.toLowerCase()} by ${ctx.receptionist.name}.`
+    const summary =
+      body.summary?.trim() ||
+      `${DISPOSITION_LABEL[status]} — logged by ${ctx.receptionist.name}.`
+
+    const callLogId = body.callLogId?.trim() || ""
+    if (callLogId) {
+      await setCallLogDisposition(callLogId, status).catch((e) =>
+        console.error("[receptionist/log-job] setCallLogDisposition failed:", e)
+      )
+    }
 
     const result = await saveCallIntake({
       user_id: ctx.owner_user_id,
@@ -96,17 +117,19 @@ export async function POST(req: NextRequest) {
         disposition: status,
         dispatch_status,
         is_salvageable,
-        ...(body.callLogId ? { call_log_id: body.callLogId } : {}),
+        ...(callLogId ? { call_log_id: callLogId } : {}),
       },
       summary,
-      vapi_call_id: body.callLogId ? `${body.callLogId}-log-job` : null,
+      vapi_call_id: callLogId ? `${callLogId}-log-job` : null,
     })
 
-    // Fill indexed columns when scripts/058 is applied (no-op otherwise).
     await applyLeadDisposition(result.id, { disposition: status, dispatch_status, is_salvageable })
 
-    // Auto-dispatch: if this is a booking and the owner has an available on-duty tech, assign it now
-    // and flip dispatch_status to DISPATCHED so it lands straight on that tech's mobile HUD.
+    const scheduledAt = parseScheduledAtFromFields(fields)
+    if (scheduledAt) {
+      await setLeadScheduledAt(result.id, scheduledAt)
+    }
+
     let assignedTechId: string | null = null
     let finalDispatchStatus = dispatch_status
     if (isBooked) {
@@ -125,9 +148,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Broadcast + customer SMS + geocoding without delaying the operator's response.
     after(async () => {
-      // Geocode the service address so the field-tech 50m arrival geofence can fire on this job.
       if (isBooked) {
         const address = pickAddressFromFields(fields)
         if (address) {
@@ -141,7 +162,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        await publishOwnerEvent(ctx.owner_user_id, isBooked ? "job-booked" : "lead-salvageable", {
+        await publishOwnerEvent(ctx.owner_user_id, ownerEventForDisposition(status), {
           leadId: result.id,
           disposition: status,
           dispatchStatus: finalDispatchStatus,
@@ -156,14 +177,12 @@ export async function POST(req: NextRequest) {
         console.error("[receptionist/log-job] owner broadcast failed:", e)
       }
 
-      // Push the new job onto the tech's device the instant it's auto-dispatched.
       if (assignedTechId) {
         await publishTechnicianEvent(assignedTechId, "job-assigned", { leadId: result.id }).catch((e) =>
           console.error("[receptionist/log-job] tech broadcast failed:", e)
         )
       }
 
-      // Booking confirmation text to the customer (gated on the owner's sms_booking_enabled toggle).
       if (isBooked) {
         await onJobStateChange("BOOKED", { leadId: result.id, expectedOwnerUserId: ctx.owner_user_id }).catch((e) =>
           console.error("[receptionist/log-job] booking SMS failed:", e)
@@ -178,6 +197,7 @@ export async function POST(req: NextRequest) {
         dispatch_status: finalDispatchStatus,
         assigned_tech_id: assignedTechId,
         is_salvageable,
+        scheduled_at: scheduledAt,
         sms_sent: result.sms_sent,
       },
     })

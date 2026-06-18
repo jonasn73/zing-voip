@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   Hash,
   ExternalLink,
+  CalendarDays,
 } from "lucide-react"
 import {
   requestOpenBuyNumberModal,
@@ -40,6 +41,7 @@ const JUMP_PAGES = [
   { id: "contacts", label: "Team", href: "/dashboard/contacts", icon: Users },
   { id: "pay", label: "Pay", href: "/dashboard/pay", icon: BarChart3 },
   { id: "settings", label: "Settings", href: "/dashboard/settings", icon: Settings },
+  { id: "scheduler", label: "Scheduler", href: "/dashboard/scheduler", icon: CalendarDays },
   { id: "help", label: "Help & feedback", href: "/dashboard/help", icon: LifeBuoy },
 ] as const
 

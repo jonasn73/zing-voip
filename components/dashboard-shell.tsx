@@ -18,7 +18,7 @@ import {
   DashboardOrganizationsBootstrap,
 } from "@/components/dashboard-header-workspace"
 
-const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "help"]
+const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "scheduler", "help"]
 
 function getActivePage(pathname: string): PageId {
   const segment = pathname.replace(/^\/dashboard\/?/, "").trim() || "dashboard"

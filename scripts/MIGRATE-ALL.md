@@ -76,6 +76,7 @@ lyncr cannot update your Neon database from Git or Vercel automatically. After p
 | 71 | `071-porting-lifecycle-statuses.sql` | **Port lifecycle statuses.** Extends **`porting_orders.status`** with `action_required`, `pending_info`, `submitted`, `pending_carrier_review` for the dashboard transfer tracker banner + interaction drawer. **Required** for amber action-required alerts. |
 | 72 | `072-admin-routing-override-phone.sql` | **Admin inbound routing override (legacy).** Adds **`onboarding_profiles.admin_routing_override_phone`** — superseded by **073** (scoped per line/workspace). |
 | 73 | `073-scoped-admin-routing-override.sql` | **Scoped admin routing override.** Adds **`phone_numbers.admin_routing_override_phone`** and **`organizations.admin_routing_override_phone`**. Line override wins; migrates legacy global override onto the reserved-number line only. **Required** for per-workspace admin forwarding. |
+| 74 | `074-scheduler-events.sql` | **Owner job scheduler.** Adds **`ai_leads.scheduled_at`** and **`ai_leads.organization_id`** for the `/dashboard/scheduler` calendar and workspace-scoped events. **Required** for structured appointment rescheduling; scheduler v1 still works without it (falls back to `created_at`). |
 
 ## Platform admin (`admin@lyncr.app`)
 

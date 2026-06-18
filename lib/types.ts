@@ -89,6 +89,21 @@ export interface DispatchJob {
   created_at: string
 }
 
+/** Owner calendar event derived from ai_leads (BOOKED / PENDING_TIME). */
+export interface SchedulerEvent {
+  id: string
+  customer_name: string | null
+  customer_phone: string | null
+  location: string | null
+  summary: string | null
+  disposition: string | null
+  /** ISO timestamp used for calendar placement. */
+  scheduled_at: string
+  /** True when scheduled_at was inferred from created_at (no structured time set). */
+  scheduled_tentative: boolean
+  created_at: string
+}
+
 /** A field tech's last-known live position for the owner's dispatch map. */
 export interface TechLiveLocation {
   tech_user_id: string

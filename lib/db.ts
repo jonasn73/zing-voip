@@ -5550,6 +5550,169 @@ export async function listOwnerBookedJobs(ownerUserId: string, limit = 50): Prom
   }
 }
 
+function schedulerEventFromRow(row: Record<string, unknown>): import("@/lib/types").SchedulerEvent {
+  const collected = (row.collected as Record<string, unknown>) || {}
+  const pick = (keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = collected[k]
+      if (typeof v === "string" && v.trim()) return v.trim()
+    }
+    return null
+  }
+  const createdAt =
+    row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? "")
+  const scheduledRaw = row.scheduled_at
+  const scheduledAt =
+    scheduledRaw instanceof Date
+      ? scheduledRaw.toISOString()
+      : scheduledRaw != null && String(scheduledRaw).trim()
+        ? String(scheduledRaw)
+        : createdAt
+  const disposition =
+    row.disposition != null && String(row.disposition).trim()
+      ? String(row.disposition)
+      : pick(["disposition"])
+  return {
+    id: String(row.id),
+    customer_name: pick(["customer_name", "name", "caller_name", "contact_name"]),
+    customer_phone:
+      pick(["callback_number", "caller_number", "phone", "callback"]) ||
+      (row.caller_e164 != null ? String(row.caller_e164) : null),
+    location: pick(["location", "service_address", "address", "job_address", "address_line1"]),
+    summary: row.summary != null ? String(row.summary) : null,
+    disposition,
+    scheduled_at: scheduledAt,
+    scheduled_tentative: scheduledRaw == null || String(scheduledRaw).trim() === "",
+    created_at: createdAt,
+  }
+}
+
+function isMissingSchedulerColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  const msg = pgErrorMessage(e)
+  return msg.includes("scheduled_at") || msg.includes("organization_id")
+}
+
+/** Calendar events for the owner scheduler (BOOKED + PENDING_TIME in date range). */
+export async function listOwnerSchedulerEvents(params: {
+  ownerUserId: string
+  fromIso: string
+  toIso: string
+  organizationId?: string | null
+  limit?: number
+}): Promise<import("@/lib/types").SchedulerEvent[]> {
+  const sql = getSql()
+  const lim = Math.min(Math.max(params.limit ?? 200, 1), 500)
+  const orgId = params.organizationId?.trim() || null
+  try {
+    const rows = orgId
+      ? await sql`
+          SELECT id, caller_e164, collected, summary, disposition, scheduled_at, created_at
+          FROM ai_leads
+          WHERE user_id = ${params.ownerUserId}
+            AND (
+              disposition IN ('BOOKED', 'PENDING_TIME')
+              OR collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
+            )
+            AND COALESCE(scheduled_at, created_at) >= ${params.fromIso}::timestamptz
+            AND COALESCE(scheduled_at, created_at) <= ${params.toIso}::timestamptz
+            AND (organization_id IS NULL OR organization_id = ${orgId}::uuid)
+          ORDER BY COALESCE(scheduled_at, created_at) ASC
+          LIMIT ${lim}
+        `
+      : await sql`
+          SELECT id, caller_e164, collected, summary, disposition, scheduled_at, created_at
+          FROM ai_leads
+          WHERE user_id = ${params.ownerUserId}
+            AND (
+              disposition IN ('BOOKED', 'PENDING_TIME')
+              OR collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
+            )
+            AND COALESCE(scheduled_at, created_at) >= ${params.fromIso}::timestamptz
+            AND COALESCE(scheduled_at, created_at) <= ${params.toIso}::timestamptz
+          ORDER BY COALESCE(scheduled_at, created_at) ASC
+          LIMIT ${lim}
+        `
+    return rows.map((r) => schedulerEventFromRow(r as Record<string, unknown>))
+  } catch (e) {
+    if (isMissingSchedulerColumnError(e)) {
+      try {
+        const rows = await sql`
+          SELECT id, caller_e164, collected, summary, disposition, created_at
+          FROM ai_leads
+          WHERE user_id = ${params.ownerUserId}
+            AND (
+              disposition IN ('BOOKED', 'PENDING_TIME')
+              OR collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
+            )
+            AND created_at >= ${params.fromIso}::timestamptz
+            AND created_at <= ${params.toIso}::timestamptz
+          ORDER BY created_at ASC
+          LIMIT ${lim}
+        `
+        return rows.map((r) => schedulerEventFromRow(r as Record<string, unknown>))
+      } catch (e2) {
+        if (isUndefinedRelationError(e2, "ai_leads")) return []
+        throw e2
+      }
+    }
+    if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("disposition")) {
+      try {
+        const rows = await sql`
+          SELECT id, caller_e164, collected, summary, created_at
+          FROM ai_leads
+          WHERE user_id = ${params.ownerUserId}
+            AND collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
+            AND created_at >= ${params.fromIso}::timestamptz
+            AND created_at <= ${params.toIso}::timestamptz
+          ORDER BY created_at ASC
+          LIMIT ${lim}
+        `
+        return rows.map((r) => schedulerEventFromRow(r as Record<string, unknown>))
+      } catch (e2) {
+        if (isUndefinedRelationError(e2, "ai_leads")) return []
+        throw e2
+      }
+    }
+    if (isUndefinedRelationError(e, "ai_leads")) return []
+    throw e
+  }
+}
+
+/** Owner sets structured appointment time on a lead (scheduler drag/reschedule). */
+export async function updateLeadScheduledAt(
+  ownerUserId: string,
+  leadId: string,
+  scheduledAtIso: string
+): Promise<boolean> {
+  const sql = getSql()
+  try {
+    const rows = await sql`
+      UPDATE ai_leads
+      SET scheduled_at = ${scheduledAtIso}::timestamptz
+      WHERE id = ${leadId} AND user_id = ${ownerUserId}
+      RETURNING id
+    `
+    return rows.length > 0
+  } catch (e) {
+    if (isMissingSchedulerColumnError(e)) return false
+    throw e
+  }
+}
+
+/** Stamp scheduled_at when receptionist intake includes a parseable preferred time. */
+export async function setLeadScheduledAt(leadId: string, scheduledAtIso: string): Promise<void> {
+  const sql = getSql()
+  try {
+    await sql`
+      UPDATE ai_leads SET scheduled_at = ${scheduledAtIso}::timestamptz WHERE id = ${leadId}
+    `
+  } catch (e) {
+    if (isMissingSchedulerColumnError(e)) return
+    throw e
+  }
+}
+
 /** Jobs dispatched to a specific tech (their login user id). */
 export async function listJobsForTech(techUserId: string, limit = 50): Promise<DispatchJob[]> {
   const sql = getSql()

@@ -22,6 +22,7 @@ import {
   Loader2,
   ChevronDown,
   Search,
+  CalendarDays,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BrandMark } from "@/components/brand-mark"
@@ -49,6 +50,7 @@ export type PageId =
   | "contacts"
   | "pay"
   | "settings"
+  | "scheduler"
   | "help"
 
 /** Primary tabs only — fewer taps; Help stays in the account menu and ⌘K jump palette. */
@@ -75,6 +77,7 @@ const PAGE_HREF: Record<PageId, string> = {
   contacts: "/dashboard/contacts",
   pay: "/dashboard/pay",
   settings: "/dashboard/settings",
+  scheduler: "/dashboard/scheduler",
   help: "/dashboard/help",
 }
 
@@ -268,6 +271,12 @@ const HeaderAccountMenu = memo(function HeaderAccountMenu({ name, email }: { nam
           <Link href="/dashboard/settings" className="cursor-pointer">
             <Settings className="size-4" />
             Settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard/scheduler" className="cursor-pointer">
+            <CalendarDays className="size-4" />
+            Scheduler
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

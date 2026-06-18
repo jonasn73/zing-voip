@@ -4,7 +4,7 @@
 // Driven by the real-time `call-connected` payload; fields swap by business type.
 
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, PhoneCall, Check, X } from "lucide-react"
+import { Loader2, PhoneCall, Check, X, Clock, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { WorkspacePanel } from "@/components/dashboard-workspace-ui"
 
@@ -119,6 +119,19 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
 const inputClass =
   "w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 
+function intakeDraftKey(callLogId: string): string {
+  return `lyncr-intake-draft-${callLogId}`
+}
+
+type JobDisposition = "BOOKED" | "PENDING_TIME" | "PRICE_REJECTED" | "FAILED"
+
+const DISPOSITION_MESSAGES: Record<JobDisposition, string> = {
+  BOOKED: "Booked — the owner has been notified.",
+  PENDING_TIME: "Pending time — added to the owner scheduler.",
+  PRICE_REJECTED: "Logged as price-rejected — sent to the owner's salvage queue.",
+  FAILED: "Logged as failed — the owner has been notified.",
+}
+
 export function ReceptionistLiveIntake({
   session,
   callerNameFallback,
@@ -136,6 +149,26 @@ export function ReceptionistLiveIntake({
 
   const callerName = session.callerName || callerNameFallback || null
   const callerNumber = session.callerNumber || null
+  const draftKey = intakeDraftKey(session.callLogId)
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(draftKey)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Record<string, string | boolean>
+      if (parsed && typeof parsed === "object") setValues(parsed)
+    } catch {
+      /* ignore corrupt draft */
+    }
+  }, [draftKey])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify(values))
+    } catch {
+      /* quota / private mode */
+    }
+  }, [draftKey, values])
 
   const setField = (name: string, value: string | boolean) =>
     setValues((prev) => ({ ...prev, [name]: value }))
@@ -158,8 +191,8 @@ export function ReceptionistLiveIntake({
     )
   }
 
-  // Job disposition → owner pipeline (BOOKED routes for review, PRICE_REJECTED goes to salvage).
-  async function logJob(status: "BOOKED" | "PRICE_REJECTED") {
+  // Job disposition → owner pipeline (BOOKED, PENDING_TIME, PRICE_REJECTED, FAILED).
+  async function logJob(status: JobDisposition) {
     setSaving(true)
     setError(null)
     try {
@@ -179,11 +212,12 @@ export function ReceptionistLiveIntake({
       })
       const json = (await res.json()) as { error?: string }
       if (!res.ok) throw new Error(json.error ?? "Could not log job")
-      setSavedMsg(
-        status === "BOOKED"
-          ? "Booked — the owner has been notified."
-          : "Logged as price-rejected — sent to the owner's salvage queue."
-      )
+      try {
+        sessionStorage.removeItem(draftKey)
+      } catch {
+        /* ignore */
+      }
+      setSavedMsg(DISPOSITION_MESSAGES[status])
       window.setTimeout(() => onDismiss("saved"), 1100)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error logging job")
@@ -218,6 +252,11 @@ export function ReceptionistLiveIntake({
       })
       const json = (await res.json()) as { error?: string; data?: { sms_sent: boolean; sms_error: string | null } }
       if (!res.ok) throw new Error(json.error ?? "Could not save intake")
+      try {
+        sessionStorage.removeItem(draftKey)
+      } catch {
+        /* ignore */
+      }
       setSavedMsg(
         json.data?.sms_sent
           ? json.data.sms_error
@@ -243,7 +282,7 @@ export function ReceptionistLiveIntake({
             <PhoneCall className="relative h-5 w-5" aria-hidden />
           </span>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300/80">Live call connected</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300/80">Call notepad / lead dispatcher</p>
             <p className="text-lg font-semibold text-foreground">
               {callerName || (callerNumber ? formatPhoneDisplay(callerNumber) : "Incoming caller")}
             </p>
@@ -350,12 +389,30 @@ export function ReceptionistLiveIntake({
             </button>
             <button
               type="button"
+              onClick={() => void logJob("PENDING_TIME")}
+              disabled={saving || Boolean(savedMsg)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Clock className="h-4 w-4" aria-hidden />
+              Pending time
+            </button>
+            <button
+              type="button"
               onClick={() => void logJob("PRICE_REJECTED")}
               disabled={saving || Boolean(savedMsg)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <X className="h-4 w-4" aria-hidden />
               Price rejected
+            </button>
+            <button
+              type="button"
+              onClick={() => void logJob("FAILED")}
+              disabled={saving || Boolean(savedMsg)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-500/40 bg-zinc-500/10 px-3 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              Failed
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">

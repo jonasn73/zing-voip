@@ -108,8 +108,8 @@ async function respond(req: NextRequest): Promise<NextResponse> {
   if (isGate) {
     const digit = await readPressedDigit(req)
     const texml = new VoiceResponse()
-    if (digit === "1") {
-      // Accepted → pop the HUD and return empty TeXML so Telnyx bridges the caller.
+    if (digit.length > 0) {
+      // Accepted (any key) → pop the HUD when a receptionist id is present, then bridge the caller.
       broadcastConnected(req)
       return xmlResponse(texml)
     }
@@ -139,7 +139,7 @@ async function respond(req: NextRequest): Promise<NextResponse> {
   })
   gather.say(
     getTexmlSayVoiceAttributes(),
-    `Lyncr Alert. Incoming call for ${businessName}. Press 1 to connect.`
+    `Incoming call for ${businessName}. Press any key to connect.`
   )
   // No key within the window → hang up this leg only (caller continues down the fallback chain).
   texmlSayWhisperPlain(texml, "No input received. Goodbye.")

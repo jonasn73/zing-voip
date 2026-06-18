@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import type { PhoneNumberRoutingSummary, RoutingStrategy } from "@/lib/types"
 import { DashboardRoutingWithSheets } from "@/components/dashboard-routing-with-sheets"
@@ -39,7 +39,7 @@ export function DashboardPage() {
   }, [activeOrganizationId])
 
   const mapNumbersResponse = useCallback(
-    (data: { numbers?: unknown[] }) => {
+    (data: { numbers?: unknown[]; reserved_number?: string | null }) => {
       if (!Array.isArray(data.numbers)) return
       const active = data.numbers
         .filter((n: { status: string }) => isDashboardVisibleLineStatus(String(n.status)))
@@ -50,10 +50,16 @@ export function DashboardPage() {
           organization_id: n.organization_id != null ? String(n.organization_id) : null,
           source_provider: n.source_provider === "external" ? "external" as const : "telnyx" as const,
           routing_summary: n.routing_summary as PhoneNumberRoutingSummary | undefined,
+          admin_routing_override_phone:
+            n.admin_routing_override_phone != null ? String(n.admin_routing_override_phone) : null,
         }))
       setBusinessNumbers(active)
+      const reserved = data.reserved_number?.trim() || null
       setActiveLine((prev) => {
         if (prev && active.some((x: DashboardBusinessNumber) => businessNumbersMatch(x.number, prev))) return prev
+        if (reserved && active.some((x: DashboardBusinessNumber) => businessNumbersMatch(x.number, reserved))) {
+          return reserved
+        }
         return active[0]?.number ?? null
       })
     },
@@ -71,7 +77,6 @@ export function DashboardPage() {
   /** Hybrid-network routing (migrations 048/049) — drives the Call flow "Lyncr Network Pool" step. */
   const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>("private_only")
   const [allowLyncrNetworkFallback, setAllowLyncrNetworkFallback] = useState(false)
-  const [adminRoutingOverridePhone, setAdminRoutingOverridePhone] = useState<string | null>(null)
 
   // AI assistant state
   const [hasTelnyxAiAssistant, setHasTelnyxAiAssistant] = useState(false)
@@ -88,6 +93,14 @@ export function DashboardPage() {
   const quickSetupDecided =
     sessionFetchDone && receptionistsFetchDone && numbersRoutingFetchDone
 
+  // Platform-admin inbound override for the active line only (scoped per workspace / DID — not global).
+  const adminRoutingOverridePhone = useMemo(() => {
+    if (!activeLine) return null
+    const row = businessNumbers.find((b) => businessNumbersMatch(b.number, activeLine))
+    const raw = row?.admin_routing_override_phone?.trim()
+    return raw || null
+  }, [businessNumbers, activeLine])
+
   // Session bootstrap (once).
   useEffect(() => {
     let cancelled = false
@@ -99,24 +112,6 @@ export function DashboardPage() {
       .catch(() => {})
       .finally(() => {
         if (!cancelled) setSessionFetchDone(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // Platform-admin inbound override (read-only notice on Call flow).
-  useEffect(() => {
-    let cancelled = false
-    fetch("/api/onboarding/profile", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json: { data?: { admin_routing_override_phone?: string | null } } | null) => {
-        if (cancelled) return
-        const raw = json?.data?.admin_routing_override_phone
-        setAdminRoutingOverridePhone(raw?.trim() ? String(raw).trim() : null)
-      })
-      .catch(() => {
-        if (!cancelled) setAdminRoutingOverridePhone(null)
       })
     return () => {
       cancelled = true
@@ -351,18 +346,10 @@ export function DashboardPage() {
           }
         }
         // Refresh per-number labels (AI fallback live, etc.) from the server.
-        void fetch("/api/numbers/mine", { credentials: "include" })
+        void fetch(numbersMineUrl(), { credentials: "include" })
           .then((r) => (r.ok ? r.json() : null))
           .then((mine) => {
-            if (!mine?.numbers || !Array.isArray(mine.numbers)) return
-            const next = mine.numbers
-              .filter((n: { status: string }) => isDashboardVisibleLineStatus(String(n.status)))
-              .map((n: Record<string, unknown>) => ({
-                number: String(n.number),
-                status: String(n.status),
-                routing_summary: n.routing_summary as PhoneNumberRoutingSummary | undefined,
-              }))
-            setBusinessNumbers(next)
+            if (mine) mapNumbersResponse(mine)
           })
           .catch(() => {})
       })
@@ -376,7 +363,7 @@ export function DashboardPage() {
         }
       })
   },
-    [businessNumbers, activeLine, toast]
+    [businessNumbers, activeLine, toast, numbersMineUrl, mapNumbersResponse]
   )
 
   const selectReceptionist = useCallback(

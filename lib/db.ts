@@ -8,7 +8,7 @@
 import { neon } from "@neondatabase/serverless"
 import { unstable_cache, revalidateTag } from "next/cache"
 import { resolveNeonDatabaseUrl } from "@/lib/neon-database-url"
-import { formatAdminRoutingOverridePhoneForTelnyx } from "@/lib/phone-e164"
+import { formatAdminRoutingOverridePhoneForTelnyx, resolveScopedAdminRoutingOverrideE164 } from "@/lib/phone-e164"
 import { SITE_NAME } from "@/lib/brand"
 import { parseRoutingPoolMode, parseSkillsArray, normalizeRoutingPoolSkillTag, routingSkillTagFromCertCode } from "@/lib/routing-pool-skills"
 import type {
@@ -98,6 +98,14 @@ function isWrongLegacyProfilesTableError(e: unknown): boolean {
 function onboardingProfilesMigrationHint(): string {
   return "Run scripts/025-onboarding-profiles-table.sql in Neon (see scripts/MIGRATE-ALL.md step 25)."
 }
+
+/** Missing scoped admin override columns (scripts/073). */
+function isMissingPhoneLineAdminOverrideColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  const msg = pgErrorMessage(e).toLowerCase()
+  return msg.includes("admin_routing_override_phone")
+}
+
 
 /** Missing optional onboarding_profiles column (e.g. before scripts/027). */
 function isMissingOnboardingProfileColumnError(e: unknown): boolean {
@@ -276,6 +284,8 @@ export type IncomingRoutingRow = {
   primary_phone_number: string
   /** Platform-admin PSTN override — bypasses owner/receptionist/pool when set (072). */
   admin_routing_override_phone: string | null
+  /** Workspace display name (`organizations.name`) for branded greeting + dispatch SMS. */
+  organization_name: string
 }
 
 // L1: in-memory per serverless instance. L2: Vercel Data Cache (unstable_cache) shared across instances.
@@ -382,11 +392,16 @@ async function fetchInboundDialSnapshotSql(
         COALESCE(pn.inbound_ring_timeout_seconds, 30) AS ring_timeout_seconds,
         COALESCE(pn.inbound_ai_ring_owner_first, false) AS ai_ring_owner_first,
         COALESCE(pn.inbound_account_status, 'active') AS account_status,
-        op.admin_routing_override_phone AS admin_routing_override_phone,
+        COALESCE(
+          NULLIF(trim(pn.admin_routing_override_phone), ''),
+          NULLIF(trim(org.admin_routing_override_phone), '')
+        ) AS admin_routing_override_phone,
+        COALESCE(NULLIF(trim(org.name), ''), '') AS organization_name,
         -- to_jsonb(pn)->>'col' reads a column that may not exist yet (pre-050) without erroring.
         to_jsonb(pn) ->> 'inbound_routing_endpoint' AS inbound_routing_endpoint,
         to_jsonb(pn) ->> 'inbound_sip_username' AS inbound_sip_username
       FROM phone_numbers pn
+      LEFT JOIN organizations org ON org.id = pn.organization_id
       LEFT JOIN onboarding_profiles op ON op.user_id = pn.user_id
       WHERE pn.status = 'active'
         AND (
@@ -429,6 +444,7 @@ async function fetchInboundDialSnapshotSql(
       primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : normalized,
       admin_routing_override_phone:
         row.admin_routing_override_phone != null ? String(row.admin_routing_override_phone) : null,
+      organization_name: row.organization_name != null ? String(row.organization_name) : "",
     }
   } catch (e) {
     if (isMissingInboundDialSnapshotColumnError(e)) return null
@@ -487,6 +503,7 @@ async function fetchInboundDialSnapshotSql(
           active_phone_count: 1,
           primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : normalized,
           admin_routing_override_phone: null,
+          organization_name: "",
         }
       } catch (inner) {
         if (isMissingInboundDialSnapshotColumnError(inner)) return null
@@ -2050,6 +2067,7 @@ function mapIncomingRoutingRowFromDb(row: Record<string, unknown>): IncomingRout
     primary_phone_number: row.primary_phone_number != null ? String(row.primary_phone_number) : "",
     admin_routing_override_phone:
       row.admin_routing_override_phone != null ? String(row.admin_routing_override_phone) : null,
+    organization_name: row.organization_name != null ? String(row.organization_name) : "",
   }
 }
 
@@ -2238,11 +2256,16 @@ async function fetchIncomingRoutingByReservedNumberFromDb(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
-      op.admin_routing_override_phone AS admin_routing_override_phone,
+      COALESCE(
+        NULLIF(trim(pn.admin_routing_override_phone), ''),
+        NULLIF(trim(org.admin_routing_override_phone), '')
+      ) AS admin_routing_override_phone,
+      COALESCE(NULLIF(trim(org.name), ''), '') AS organization_name,
       COALESCE(NULLIF(trim(pn.number), ''), op.reserved_number, '') AS primary_phone_number
     FROM onboarding_profiles op
     JOIN users u ON u.id = op.user_id
     LEFT JOIN phone_numbers pn ON pn.user_id = u.id AND pn.status = 'active'
+    LEFT JOIN organizations org ON org.id = pn.organization_id
     LEFT JOIN LATERAL (
       SELECT rc.*
       FROM routing_config rc
@@ -2313,11 +2336,16 @@ async function fetchIncomingRoutingByReservedNumberFromDb(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
-      op.admin_routing_override_phone AS admin_routing_override_phone,
+      COALESCE(
+        NULLIF(trim(pn.admin_routing_override_phone), ''),
+        NULLIF(trim(org.admin_routing_override_phone), '')
+      ) AS admin_routing_override_phone,
+      COALESCE(NULLIF(trim(org.name), ''), '') AS organization_name,
       COALESCE(NULLIF(trim(pn.number), ''), op.reserved_number, '') AS primary_phone_number
     FROM onboarding_profiles op
     JOIN users u ON u.id = op.user_id
     LEFT JOIN phone_numbers pn ON pn.user_id = u.id AND pn.status = 'active'
+    LEFT JOIN organizations org ON org.id = pn.organization_id
     LEFT JOIN LATERAL (
       SELECT rc.*
       FROM routing_config rc
@@ -2405,10 +2433,15 @@ async function fetchIncomingRoutingFullFromDb(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
-      op.admin_routing_override_phone AS admin_routing_override_phone,
+      COALESCE(
+        NULLIF(trim(pn.admin_routing_override_phone), ''),
+        NULLIF(trim(org.admin_routing_override_phone), '')
+      ) AS admin_routing_override_phone,
+      COALESCE(NULLIF(trim(org.name), ''), '') AS organization_name,
       pn.number AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
+    LEFT JOIN organizations org ON org.id = pn.organization_id
     LEFT JOIN onboarding_profiles op ON op.user_id = u.id
     LEFT JOIN LATERAL (
       SELECT rc.*
@@ -2479,10 +2512,15 @@ async function fetchIncomingRoutingFullFromDb(
       COALESCE(NULLIF(trim(pn.label), ''), 'Main Line') AS phone_line_label,
       COALESCE(pn.friendly_name, '') AS phone_line_friendly_name,
       COALESCE(op.account_status, 'active') AS account_status,
-      op.admin_routing_override_phone AS admin_routing_override_phone,
+      COALESCE(
+        NULLIF(trim(pn.admin_routing_override_phone), ''),
+        NULLIF(trim(org.admin_routing_override_phone), '')
+      ) AS admin_routing_override_phone,
+      COALESCE(NULLIF(trim(org.name), ''), '') AS organization_name,
       pn.number AS primary_phone_number
     FROM phone_numbers pn
     JOIN users u ON u.id = pn.user_id
+    LEFT JOIN organizations org ON org.id = pn.organization_id
     LEFT JOIN onboarding_profiles op ON op.user_id = u.id
     LEFT JOIN LATERAL (
       SELECT rc.*
@@ -2557,7 +2595,7 @@ function getIncomingRoutingFromDataCache(
 ): Promise<IncomingRoutingByNumber> {
   const run = unstable_cache(
     async () => fetchIncomingRoutingByNumberFromDb(normalized, digitKey),
-    ["incoming-routing-v5", normalized, digitKey],
+    ["incoming-routing-v6", normalized, digitKey],
     {
       revalidate: 120,
       tags: [INCOMING_ROUTING_DATA_TAG, `incoming-routing-${normalized}`],
@@ -3622,6 +3660,12 @@ export async function upsertCustomerForUser(params: {
 
 function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {
   const sourceRaw = row.source_provider != null ? String(row.source_provider).toLowerCase() : "telnyx"
+  const lineOverride =
+    row.admin_routing_override_phone != null ? String(row.admin_routing_override_phone).trim() || null : null
+  const orgOverride =
+    row.organization_admin_routing_override_phone != null
+      ? String(row.organization_admin_routing_override_phone).trim() || null
+      : null
   return {
     id: String(row.id),
     user_id: String(row.user_id),
@@ -3637,6 +3681,8 @@ function parsePhoneNumberRow(row: Record<string, unknown>): PhoneNumber {
     industry_tag:
       row.industry_tag != null && String(row.industry_tag).trim() !== "" ? String(row.industry_tag).trim() : null,
     routing_pool_mode: parseRoutingPoolMode(row.routing_pool_mode),
+    admin_routing_override_phone: lineOverride,
+    organization_admin_routing_override_phone: orgOverride,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   }
 }
@@ -3655,6 +3701,9 @@ function parseOrganizationRow(row: Record<string, unknown>): Organization {
       org.sms_registration_status = s as Organization["sms_registration_status"]
     }
   }
+  if (row.admin_routing_override_phone != null && String(row.admin_routing_override_phone).trim()) {
+    org.admin_routing_override_phone = String(row.admin_routing_override_phone).trim()
+  }
   return org
 }
 
@@ -3671,7 +3720,7 @@ export async function listOrganizationsForOwner(ownerUserId: string): Promise<Or
   try {
     try {
       const rows = await sql`
-        SELECT id, owner_user_id, name, is_default, created_at, sms_registration_status
+        SELECT id, owner_user_id, name, is_default, created_at, sms_registration_status, admin_routing_override_phone
         FROM organizations
         WHERE owner_user_id = ${ownerUserId}
         ORDER BY is_default DESC, created_at ASC
@@ -4363,6 +4412,123 @@ export async function createOrganizationForOwner(
   return parseOrganizationRow(rows[0] as Record<string, unknown>)
 }
 
+/** Rename a workspace the owner controls (`065`). */
+export async function updateOrganizationNameForOwner(
+  organizationId: string,
+  ownerUserId: string,
+  name: string
+): Promise<Organization> {
+  if (organizationId.startsWith("legacy-")) {
+    throw new Error("This workspace cannot be renamed until multi-business migration is applied")
+  }
+  const trimmed = name.trim()
+  if (trimmed.length < 2) throw new Error("Business name must be at least 2 characters")
+  const sql = getSql()
+  const rows = await sql`
+    UPDATE organizations
+    SET name = ${trimmed}
+    WHERE id = ${organizationId} AND owner_user_id = ${ownerUserId}
+    RETURNING id, owner_user_id, name, is_default, created_at
+  `
+  if (!rows[0]) throw new Error("Workspace not found")
+  return parseOrganizationRow(rows[0] as Record<string, unknown>)
+}
+
+/** Release one line (any in-use status) and strip inbound snapshot fields. */
+async function releasePhoneLineInWorkspace(phoneNumberId: string, userId: string): Promise<void> {
+  const sql = getSql()
+  await sql`
+    UPDATE phone_numbers
+    SET
+      status = 'released',
+      inbound_dial_e164 = NULL,
+      inbound_receptionist_id = NULL,
+      inbound_receptionist_name = NULL,
+      inbound_fallback_type = NULL,
+      inbound_ring_timeout_seconds = NULL,
+      inbound_account_status = NULL,
+      inbound_ai_ring_owner_first = false,
+      inbound_routing_updated_at = NULL
+    WHERE id = ${phoneNumberId}
+      AND user_id = ${userId}
+      AND status IN ('active', 'porting', 'pending')
+  `
+}
+
+/**
+ * Delete a workspace: release its lines, remove per-number routing rows, delete the org.
+ * Returns the workspace id the UI should activate next.
+ */
+export async function deleteOrganizationForOwner(
+  organizationId: string,
+  ownerUserId: string
+): Promise<{ deleted_id: string; fallback_organization_id: string }> {
+  if (organizationId.startsWith("legacy-")) {
+    throw new Error("This workspace cannot be deleted")
+  }
+
+  const orgs = await listOrganizationsForOwner(ownerUserId)
+  const realOrgs = orgs.filter((o) => !o.id.startsWith("legacy-"))
+  if (realOrgs.length <= 1) {
+    throw new Error("You must keep at least one business workspace")
+  }
+
+  const target = realOrgs.find((o) => o.id === organizationId)
+  if (!target) throw new Error("Workspace not found")
+
+  const sql = getSql()
+  const lines = await getPhoneNumbers(ownerUserId, organizationId)
+
+  for (const line of lines) {
+    if (line.status === "active" || line.status === "porting" || line.status === "pending") {
+      await releasePhoneLineInWorkspace(line.id, ownerUserId)
+    }
+    const normalized = normalizePhoneNumberE164(line.number)
+    const digitKey = phoneDigitsKey(line.number)
+    if (normalized) {
+      await sql`
+        DELETE FROM routing_config
+        WHERE user_id = ${ownerUserId}
+          AND business_number IS NOT NULL
+          AND (
+            business_number = ${normalized}
+            OR regexp_replace(business_number, '\\D', '', 'g') = ${digitKey}
+          )
+      `
+    }
+  }
+
+  const remaining = realOrgs.filter((o) => o.id !== organizationId)
+  if (target.is_default && remaining.length > 0) {
+    const nextDefault = remaining[0]!
+    await sql`
+      UPDATE organizations SET is_default = false WHERE owner_user_id = ${ownerUserId}
+    `
+    await sql`
+      UPDATE organizations SET is_default = true WHERE id = ${nextDefault.id} AND owner_user_id = ${ownerUserId}
+    `
+  }
+
+  const deleted = await sql`
+    DELETE FROM organizations
+    WHERE id = ${organizationId} AND owner_user_id = ${ownerUserId}
+    RETURNING id
+  `
+  if (!deleted[0]) throw new Error("Workspace not found")
+
+  const refreshed = await listOrganizationsForOwner(ownerUserId)
+  const fallback =
+    refreshed.find((o) => o.is_default && !o.id.startsWith("legacy-")) ??
+    refreshed.find((o) => !o.id.startsWith("legacy-")) ??
+    null
+  if (!fallback) throw new Error("No workspace remains after delete")
+
+  clearIncomingRoutingCache()
+  void syncInboundDialSnapshotForUser(ownerUserId).catch(() => {})
+
+  return { deleted_id: organizationId, fallback_organization_id: fallback.id }
+}
+
 /** First active line linked to Telnyx (has provider SID) — usable as outbound SMS "from". */
 export async function getProviderLinkedActiveNumber(userId?: string): Promise<string | null> {
   const sql = getSql()
@@ -4425,37 +4591,46 @@ export async function getPhoneNumbers(userId: string, organizationId?: string | 
   const mapRows = (rows: unknown[]) => rows.map((r) => parsePhoneNumberRow(r as Record<string, unknown>))
   try {
     if (orgFilter) {
-      // Include lines stamped for this org plus legacy rows with no org (admin backfill / pre-065).
-      let rows = await sql`
+      const rows = await sql`
+        SELECT pn.id, pn.user_id, pn.organization_id, pn.provider_number_sid, pn.twilio_sid, pn.number, pn.friendly_name,
+          pn.label, pn.type, pn.status, pn.industry_tag, pn.routing_pool_mode, pn.source_provider, pn.external_verified,
+          pn.created_at, pn.admin_routing_override_phone,
+          org.admin_routing_override_phone AS organization_admin_routing_override_phone
+        FROM phone_numbers pn
+        LEFT JOIN organizations org ON org.id = pn.organization_id
+        WHERE pn.user_id = ${userId}
+          AND pn.organization_id = ${orgFilter}
+        ORDER BY pn.created_at ASC
+      `
+      return mapRows(rows)
+    }
+    const rows = await sql`
+      SELECT pn.id, pn.user_id, pn.organization_id, pn.provider_number_sid, pn.twilio_sid, pn.number, pn.friendly_name,
+        pn.label, pn.type, pn.status, pn.industry_tag, pn.routing_pool_mode, pn.source_provider, pn.external_verified,
+        pn.created_at, pn.admin_routing_override_phone,
+        org.admin_routing_override_phone AS organization_admin_routing_override_phone
+      FROM phone_numbers pn
+      LEFT JOIN organizations org ON org.id = pn.organization_id
+      WHERE pn.user_id = ${userId}
+      ORDER BY pn.created_at ASC
+    `
+    return mapRows(rows)
+  } catch (e) {
+    if (!isMissingPhoneLineAdminOverrideColumnError(e) && !isMissingOrganizationsSchemaError(e)) throw e
+    if (orgFilter) {
+      const rows = await sql`
         SELECT id, user_id, organization_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status,
           industry_tag, routing_pool_mode, source_provider, external_verified, created_at
         FROM phone_numbers
         WHERE user_id = ${userId}
-          AND (organization_id = ${orgFilter} OR organization_id IS NULL)
+          AND organization_id = ${orgFilter}
         ORDER BY created_at ASC
       `
-      // Empty workspace (e.g. "Key Squad 502 Main" with no lines yet) — show all account lines so Call flow is not blank.
-      if (rows.length === 0) {
-        rows = await sql`
-          SELECT id, user_id, organization_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status,
-            industry_tag, routing_pool_mode, source_provider, external_verified, created_at
-          FROM phone_numbers
-          WHERE user_id = ${userId}
-          ORDER BY created_at ASC
-        `
-      }
       return mapRows(rows)
     }
     const rows = await sql`
       SELECT id, user_id, organization_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status,
         industry_tag, routing_pool_mode, source_provider, external_verified, created_at
-      FROM phone_numbers WHERE user_id = ${userId} ORDER BY created_at ASC
-    `
-    return mapRows(rows)
-  } catch (e) {
-    if (!isMissingOrganizationsSchemaError(e)) throw e
-    const rows = await sql`
-      SELECT id, user_id, provider_number_sid, twilio_sid, number, friendly_name, label, type, status, created_at
       FROM phone_numbers WHERE user_id = ${userId} ORDER BY created_at ASC
     `
     return mapRows(rows)
@@ -6209,6 +6384,68 @@ export async function getCallCellHandoffInfo(providerCallSid: string): Promise<C
   }
 }
 
+export interface CallAdminOverrideDispatchInfo {
+  id: string
+  user_id: string
+  from_number: string | null
+  override_phone: string
+  workspace_name: string
+}
+
+/** Call row + override technician phone for post-call dispatch SMS (admin override path). */
+export async function getCallAdminOverrideDispatchInfo(
+  providerCallSid: string
+): Promise<CallAdminOverrideDispatchInfo | null> {
+  const sid = providerCallSid.trim()
+  if (!sid) return null
+  const sql = getSql()
+  let rows: Record<string, unknown>[]
+  try {
+    rows = await sql`
+      SELECT
+        cl.id,
+        cl.user_id,
+        cl.from_number,
+        cl.to_number,
+        COALESCE(
+          NULLIF(trim(pn.admin_routing_override_phone), ''),
+          NULLIF(trim(org.admin_routing_override_phone), '')
+        ) AS override_phone,
+        COALESCE(
+          NULLIF(trim(org.name), ''),
+          NULLIF(trim(u.business_name), ''),
+          'Your business'
+        ) AS workspace_name
+      FROM call_logs cl
+      JOIN users u ON u.id = cl.user_id
+      LEFT JOIN phone_numbers pn ON pn.status = 'active'
+        AND (
+          pn.number = cl.to_number
+          OR regexp_replace(pn.number, '\\D', '', 'g') = regexp_replace(COALESCE(cl.to_number, ''), '\\D', '', 'g')
+        )
+      LEFT JOIN organizations org ON org.id = pn.organization_id
+      WHERE (cl.provider_call_sid = ${sid} OR cl.twilio_call_sid = ${sid})
+        AND cl.routed_to_name = 'Admin routing override'
+      ORDER BY cl.created_at DESC
+      LIMIT 1
+    `
+  } catch (e) {
+    if (pgErrorCode(e) !== "42703") throw e
+    return null
+  }
+  const row = rows[0]
+  if (!row) return null
+  const overridePhone = row.override_phone != null ? String(row.override_phone).trim() : ""
+  if (!overridePhone) return null
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    from_number: row.from_number != null ? String(row.from_number) : null,
+    override_phone: overridePhone,
+    workspace_name: row.workspace_name != null ? String(row.workspace_name) : "Your business",
+  }
+}
+
 /**
  * Record that we texted a receptionist's cell for a call outcome. Idempotent per call
  * (`provider_call_sid` unique) — returns the new row id, or null when one already existed
@@ -7311,7 +7548,13 @@ export async function adminApplyUserOverride(params: {
   targetStatus?: string
   adminNotes?: string | null
   manualPhoneOverride?: string | null
+  /** Set/clear override on one phone line (requires phoneLineId). */
   adminRoutingOverridePhone?: string | null
+  phoneLineId?: string | null
+  /** Set/clear override for every line in a workspace when line override is unset. */
+  organizationId?: string | null
+  /** Batch line overrides from the admin drawer. */
+  phoneLineRoutingOverrides?: { phoneLineId: string; adminRoutingOverridePhone: string | null }[]
   resetActiveLines?: boolean
 }): Promise<AdminUserOverrideResult> {
   const userId = params.userId.trim()
@@ -7427,35 +7670,76 @@ export async function adminApplyUserOverride(params: {
       void syncInboundDialSnapshotForUser(userId).catch(() => {})
     }
 
-    if (params.adminRoutingOverridePhone !== undefined) {
-      let overrideE164: string | null = null
-      const rawOverride = params.adminRoutingOverridePhone
-      if (rawOverride !== null && String(rawOverride).trim().length > 0) {
-        overrideE164 = formatAdminRoutingOverridePhoneForTelnyx(String(rawOverride))
-        if (!overrideE164) {
-          throw new Error("adminRoutingOverridePhone must be a valid phone number")
+    if (
+      params.adminRoutingOverridePhone !== undefined ||
+      (params.phoneLineRoutingOverrides && params.phoneLineRoutingOverrides.length > 0)
+    ) {
+      const batch = params.phoneLineRoutingOverrides ?? []
+      if (params.adminRoutingOverridePhone !== undefined) {
+        const phoneLineId = params.phoneLineId?.trim()
+        const organizationId = params.organizationId?.trim()
+        if (!phoneLineId && !organizationId) {
+          throw new Error("phoneLineId or organizationId is required when setting adminRoutingOverridePhone")
+        }
+        batch.push({
+          phoneLineId: phoneLineId ?? "",
+          adminRoutingOverridePhone: params.adminRoutingOverridePhone,
+          organizationId: organizationId ?? null,
+        } as { phoneLineId: string; adminRoutingOverridePhone: string | null; organizationId?: string | null })
+      }
+
+      for (const item of batch) {
+        const orgId = (item as { organizationId?: string | null }).organizationId?.trim()
+        const lineId = item.phoneLineId?.trim()
+        let overrideE164: string | null = null
+        const rawOverride = item.adminRoutingOverridePhone
+        if (rawOverride !== null && String(rawOverride).trim().length > 0) {
+          overrideE164 = formatAdminRoutingOverridePhoneForTelnyx(String(rawOverride))
+          if (!overrideE164) {
+            throw new Error("adminRoutingOverridePhone must be a valid phone number")
+          }
+        }
+
+        if (orgId && !lineId) {
+          const orgRows = await sql`
+            UPDATE organizations
+            SET admin_routing_override_phone = ${overrideE164}
+            WHERE id = ${orgId} AND owner_user_id = ${userId}
+            RETURNING id
+          `
+          if (!orgRows[0]) throw new Error("Workspace not found for this owner")
+          const orgLines = await getPhoneNumbers(userId, orgId)
+          await Promise.all(
+            orgLines.filter((l) => l.status === "active").map((l) => syncInboundDialSnapshotForNumber(l.number))
+          )
+          continue
+        }
+
+        if (!lineId) continue
+        try {
+          const updated = await sql`
+            UPDATE phone_numbers
+            SET admin_routing_override_phone = ${overrideE164}
+            WHERE id = ${lineId} AND user_id = ${userId}
+            RETURNING number
+          `
+          if (!updated[0]) throw new Error("Phone line not found for this owner")
+          const lineNumber = String((updated[0] as { number?: string }).number ?? "")
+          if (lineNumber) await syncInboundDialSnapshotForNumber(lineNumber)
+        } catch (e) {
+          if (isMissingPhoneLineAdminOverrideColumnError(e)) {
+            throw new Error("Admin routing override requires scripts/073-scoped-admin-routing-override.sql in Neon.")
+          }
+          throw e
         }
       }
-      try {
-        await sql`
-          UPDATE onboarding_profiles
-          SET admin_routing_override_phone = ${overrideE164}, updated_at = now()
-          WHERE user_id = ${userId}
-        `
-      } catch (e) {
-        if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("admin_routing_override_phone")) {
-          throw new Error("Admin routing override requires scripts/072-admin-routing-override-phone.sql in Neon.")
-        }
-        throw e
-      }
+
       clearIncomingRoutingCache()
-      await ensureActivePhoneNumberFromReserved(userId)
       void syncInboundDialSnapshotForUser(userId).catch(() => {})
     }
   }
 
   const profile = await getOnboardingProfile(userId)
-  const overridePhone = await getAdminRoutingOverridePhone(userId)
   const numbers = await getPhoneNumbers(userId)
   const primary = numbers.find((p) => p.status === "active") ?? null
   return {
@@ -7464,30 +7748,23 @@ export async function adminApplyUserOverride(params: {
     custom_routing_note: profile?.custom_routing_note ?? null,
     phone_number: primary?.number ?? null,
     carrier_credit: profile?.carrier_credit ?? 0,
-    admin_routing_override_phone: overridePhone,
     reset_active_lines: params.resetActiveLines === true,
   }
 }
 
-/** Platform-admin inbound PSTN override for a business owner (scripts/072). */
-export async function getAdminRoutingOverridePhone(userId: string): Promise<string | null> {
-  const sql = getSql()
-  try {
-    const rows = await sql`
-      SELECT admin_routing_override_phone
-      FROM onboarding_profiles
-      WHERE user_id = ${userId}
-      LIMIT 1
-    `
-    const raw = rows[0]?.admin_routing_override_phone
-    return raw != null && String(raw).trim() ? String(raw).trim() : null
-  } catch (e) {
-    if (pgErrorCode(e) === "42703" && pgErrorMessage(e).includes("admin_routing_override_phone")) {
-      return null
-    }
-    if (isMissingOnboardingProfilesTableError(e) || isWrongLegacyProfilesTableError(e)) return null
-    throw e
-  }
+/** Effective PSTN override for one line (line-level wins over workspace). */
+export function effectiveAdminRoutingOverrideForPhoneLine(
+  line: Pick<PhoneNumber, "admin_routing_override_phone" | "organization_admin_routing_override_phone">
+): string | null {
+  return resolveScopedAdminRoutingOverrideE164(
+    line.admin_routing_override_phone,
+    line.organization_admin_routing_override_phone
+  )
+}
+
+/** @deprecated Global owner override removed in 073 — always returns null. */
+export async function getAdminRoutingOverridePhone(_userId: string): Promise<string | null> {
+  return null
 }
 
 export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {

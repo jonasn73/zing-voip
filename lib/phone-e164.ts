@@ -20,6 +20,16 @@ export function toE164(raw: string): string {
  * Sanitize platform-admin `admin_routing_override_phone` for Telnyx inbound `<Number>` dial.
  * Strips spaces/dashes, then ensures a leading '+' (US +1 when the admin omitted country code).
  */
+/** Line-level override wins; workspace org override applies when the line has none. */
+export function resolveScopedAdminRoutingOverrideE164(
+  lineOverride: string | null | undefined,
+  organizationOverride: string | null | undefined
+): string | null {
+  const fromLine = formatAdminRoutingOverridePhoneForTelnyx(lineOverride)
+  if (fromLine) return fromLine
+  return formatAdminRoutingOverridePhoneForTelnyx(organizationOverride)
+}
+
 export function formatAdminRoutingOverridePhoneForTelnyx(
   admin_routing_override_phone: string | null | undefined
 ): string | null {

@@ -12,11 +12,11 @@ import {
   ADMIN_FEATURE_FLAGS,
   countActiveFieldTechniciansForOwner,
   countActiveReceptionistsForOwner,
+  effectiveAdminRoutingOverrideForPhoneLine,
   getMessaging10DlcRegistration,
   getOrganizationSmsRegistrationStatus,
   getPhoneNumbers,
   getProfileFeatureFlags,
-  getAdminRoutingOverridePhone,
   getSmsRegistrationForOrganization,
   listOrganizationsForOwner,
   listTeamInvitesForInviter,
@@ -54,6 +54,7 @@ async function mapOrganizationControls(
     id: org.id,
     name: org.name,
     is_default: org.is_default,
+    admin_routing_override_phone: org.admin_routing_override_phone ?? null,
     sms_registration_status: normalizeOrgSmsStatus(orgStatus ?? org.sms_registration_status ?? "NONE"),
     sms_registration: smsReg
       ? {
@@ -75,7 +76,7 @@ async function mapOrganizationControls(
 }
 
 async function loadControls(userId: string): Promise<AdminTenantControls> {
-  const [feature_flags, lines, organizations, activeReceptionists, activeFieldTechnicians, teamInvites, admin_routing_override_phone] =
+  const [feature_flags, lines, organizations, activeReceptionists, activeFieldTechnicians, teamInvites] =
     await Promise.all([
       getProfileFeatureFlags(userId),
       getPhoneNumbers(userId),
@@ -83,7 +84,6 @@ async function loadControls(userId: string): Promise<AdminTenantControls> {
       countActiveReceptionistsForOwner(userId),
       countActiveFieldTechniciansForOwner(userId),
       listTeamInvitesForInviter(userId),
-      getAdminRoutingOverridePhone(userId),
     ])
 
   const phone_lines = lines
@@ -94,6 +94,9 @@ async function loadControls(userId: string): Promise<AdminTenantControls> {
       label: l.label || "Line",
       status: l.status,
       type: l.type,
+      organization_id: l.organization_id,
+      admin_routing_override_phone: l.admin_routing_override_phone ?? null,
+      effective_admin_routing_override_phone: effectiveAdminRoutingOverrideForPhoneLine(l),
     }))
 
   const orgControls = await Promise.all(organizations.map((org) => mapOrganizationControls(userId, org)))
@@ -122,7 +125,6 @@ async function loadControls(userId: string): Promise<AdminTenantControls> {
     },
     organizations: orgControls,
     pending_invites,
-    admin_routing_override_phone,
   }
 }
 

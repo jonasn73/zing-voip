@@ -1,4 +1,5 @@
 import { getAppUrl } from "@/lib/telnyx"
+import { prependInboundCallerGreetingToResponseTexml } from "@/lib/inbound-branded-greeting"
 
 /** G.711 μ-law (PCMU) — best PSTN clarity; comma-list allows Telnyx to offer only these codecs. */
 export function readInboundDialPreferredCodecs(): string {
@@ -247,6 +248,8 @@ export function buildFastReceptionistDialTexml(opts: {
   receptionistE164: string
   /** Telnyx fetches this on the callee leg the instant they answer (whisper + realtime HUD trigger). */
   answerUrl?: string
+  /** Optional branded `<Say>` played to the caller before `<Dial>`. */
+  callerGreeting?: string
 }): string {
   const dialAttrs = buildInboundPstnDialAttributes({
     ...(opts.callerId ? { callerId: opts.callerId } : {}),
@@ -262,12 +265,16 @@ export function buildFastReceptionistDialTexml(opts: {
   const dialAttrStr = serializeTexmlAttrs(dialAttrs)
   const numberAttrStr = serializeTexmlAttrs(numberAttrs)
   const phone = opts.receptionistE164.trim()
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial ${dialAttrStr}>
     <Number ${numberAttrStr}>${phone}</Number>
   </Dial>
 </Response>`
+  if (opts.callerGreeting?.trim()) {
+    xml = prependInboundCallerGreetingToResponseTexml(xml, opts.callerGreeting.trim())
+  }
+  return xml
 }
 
 /**
@@ -305,6 +312,8 @@ export function buildFastReceptionistDialWebRtcTexml(opts: {
   sipUri: string
   /** Telnyx fetches this on the callee leg the instant they answer (whisper + realtime HUD trigger). */
   answerUrl?: string
+  /** Optional branded `<Say>` played to the caller before `<Dial>`. */
+  callerGreeting?: string
 }): string {
   // Same Dial-level attributes as a cell forward: ringback, bridge timing, and the fallback action URL.
   const dialAttrs = buildInboundPstnDialAttributes({
@@ -319,12 +328,16 @@ export function buildFastReceptionistDialWebRtcTexml(opts: {
   const sipAttrStr = serializeTexmlAttrs(sipAttrs)
   const uri = escapeXmlAttr(opts.sipUri.trim())
   const sipOpen = sipAttrStr ? `<Sip ${sipAttrStr}>` : "<Sip>"
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial ${dialAttrStr}>
     ${sipOpen}${uri}</Sip>
   </Dial>
 </Response>`
+  if (opts.callerGreeting?.trim()) {
+    xml = prependInboundCallerGreetingToResponseTexml(xml, opts.callerGreeting.trim())
+  }
+  return xml
 }
 
 /**
@@ -339,6 +352,8 @@ export function buildRoutingPoolDialTexml(opts: {
   mode: "sequential" | "simultaneous"
   /** Optional per-number `url` (whisper + realtime HUD trigger), keyed by E.164. */
   answerUrlByE164?: Record<string, string>
+  /** Optional branded `<Say>` played to the caller before `<Dial>`. */
+  callerGreeting?: string
 }): string {
   const phones = opts.receptionistE164List.map((p) => p.trim()).filter((p) => p.length > 0)
   if (phones.length === 0) {
@@ -361,12 +376,16 @@ export function buildRoutingPoolDialTexml(opts: {
       return `    <Number ${serializeTexmlAttrs(attrs)}>${phone}</Number>`
     })
     .join("\n")
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial ${dialAttrStr}>
 ${numberTags}
   </Dial>
 </Response>`
+  if (opts.callerGreeting?.trim()) {
+    xml = prependInboundCallerGreetingToResponseTexml(xml, opts.callerGreeting.trim())
+  }
+  return xml
 }
 
 /** Inject Telnyx media attributes onto `<Dial>` and `<Number>` tags in generated TeXML. */

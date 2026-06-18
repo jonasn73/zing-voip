@@ -65,6 +65,9 @@ export function DashboardWorkspaceProvider({ children }: { children: ReactNode }
   const setActiveOrganizationId = useCallback((id: string | null) => {
     setActiveOrganizationIdState(id)
     writeActiveOrganizationId(id)
+    // Clear lines immediately so the previous business's numbers do not linger in the UI.
+    setBusinessNumbers([])
+    setActiveLine(null)
   }, [])
 
   useEffect(() => {

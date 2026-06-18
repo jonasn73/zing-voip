@@ -14,7 +14,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { SITE_NAME } from "@/lib/brand"
 import { texmlSayNatural } from "@/lib/texml-say-voice"
-import { buildInboundLineWhisperPhrase } from "@/lib/inbound-line-whisper"
+import {
+  buildInboundCallerGreetingText,
+  resolveWorkspaceDisplayName,
+} from "@/lib/inbound-branded-greeting"
 import { buildTelnyxDialFromDisplayName } from "@/lib/telnyx-caller-display"
 import {
   getIncomingRoutingForVoiceWebhook,
@@ -75,15 +78,6 @@ const VOICE_WEBHOOK_APP_URL = getAppUrl()
 
 // Warm Neon pool on cold start so the first real inbound call skips connection setup latency.
 void warmDatabasePool()
-
-/** Set to `0` / `false` / `no` to skip the short line-ID whisper on the callee leg. */
-const INBOUND_RECEPTIONIST_WHISPER_DISABLED = ["0", "false", "no"].includes(
-  (process.env.ZING_INBOUND_RECEPTIONIST_WHISPER || "").trim().toLowerCase()
-)
-
-function receptionistWhisperScreenUrl(phrase: string): string {
-  return `${getAppUrl()}/api/voice/telnyx/receptionist-screen?p=${encodeURIComponent(phrase)}`
-}
 
 /**
  * After this many `/incoming` POSTs, optionally emit `<Connect><AIAssistant>` once on `/incoming`.
@@ -287,6 +281,7 @@ function tryAdminRoutingOverrideDial(params: {
     businessLineE164: params.businessLineE164,
     callerNumber: params.callerNumber,
     callSid: params.callSid,
+    callerName: params.callerName,
     appUrl: params.appUrl,
     resolveOutboundCallerId: resolveInboundOutboundCallerId,
   })
@@ -437,20 +432,22 @@ function tryFastInboundPstnDial(params: {
   const ownerLegQuery = hasReceptionist ? "" : "&primary=owner&leg=owner-first"
   const action = `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${modeQuery}${ownerLegQuery}${origFromQuery}`
 
+  const workspaceName = resolveWorkspaceDisplayName(routing)
+  const callerGreeting = buildInboundCallerGreetingText(workspaceName)
+
   // When dialing a known platform receptionist, hand Telnyx a per-leg answer URL so
   // their HUD pops the live intake form the instant their cell phone connects.
-  const answerUrl =
-    hasReceptionist && routing.selected_receptionist_id
-      ? buildReceptionistAnswerUrl({
-          appUrl,
-          receptionistId: routing.selected_receptionist_id,
-          callSid,
-          businessType: "generic",
-          callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
-          callerName,
-          businessName: routing.business_name?.trim() || routing.phone_line_label?.trim() || null,
-        })
-      : undefined
+  const answerUrl = buildReceptionistAnswerUrl({
+    appUrl,
+    ...(hasReceptionist && routing.selected_receptionist_id
+      ? { receptionistId: routing.selected_receptionist_id }
+      : {}),
+    callSid,
+    businessType: "generic",
+    callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
+    callerName,
+    businessName: workspaceName,
+  })
 
   // Endpoint multiplexing (050): a receptionist set to 'WEB' rings their registered browser over
   // Telnyx WebRTC/SIP. We only take the SIP path when a sip_username actually resolves to a URI;
@@ -470,7 +467,8 @@ function tryFastInboundPstnDial(params: {
         timeout: dialTimeoutSec,
         action,
         sipUri: webSipUri,
-        ...(answerUrl ? { answerUrl } : {}),
+        answerUrl,
+        callerGreeting,
       })
     : buildFastReceptionistDialTexml({
         ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
@@ -478,7 +476,8 @@ function tryFastInboundPstnDial(params: {
         timeout: dialTimeoutSec,
         action,
         receptionistE164: dialE164,
-        ...(answerUrl ? { answerUrl } : {}),
+        answerUrl,
+        callerGreeting,
       })
 
   after(() => {
@@ -560,17 +559,21 @@ async function tryRoutingPoolInboundDial(params: {
   const networkAlreadyTriedQuery = match.matched_scope === "network" ? "&networkAlreadyTried=true" : ""
   const action = `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${modeQuery}&pool=1${networkAlreadyTriedQuery}${origFromQuery}`
 
+  const workspaceName = resolveWorkspaceDisplayName(routing)
+  const callerGreeting = buildInboundCallerGreetingText(workspaceName)
+
   const xml = buildRoutingPoolDialResponse({
     match,
     ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
     timeout: dialTimeoutSec,
     action,
+    callerGreeting,
     answer: {
       appUrl,
       callSid,
       callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
       callerName,
-      businessName: line.label ?? null,
+      businessName: workspaceName,
     },
   })
 
@@ -1226,23 +1229,16 @@ async function handleIncomingCall(
         })
       )
     }
-    const whisperOffUser = routing.inbound_receptionist_whisper_enabled === false
-    const whisperPhrase =
-      INBOUND_RECEPTIONIST_WHISPER_DISABLED || whisperOffUser
-        ? ""
-        : buildInboundLineWhisperPhrase(
-            routing.phone_line_label,
-            routing.phone_line_friendly_name,
-            businessLineE164
-          )
-
-    // Outbound CNAM hint: prefer **line label** when set (not default "Main Line"); else account business name.
+    // Outbound CNAM hint: prefer line label when set (not default "Main Line"); else account business name.
     const lineLbl = routing.phone_line_label.trim()
     const fromDisplaySource =
       lineLbl && lineLbl.toLowerCase() !== "main line" ? lineLbl : routing.business_name
     const fromDisplayName = buildTelnyxDialFromDisplayName(fromDisplaySource)
 
     const pstnNumberAttrs = buildInboundPstnNumberAttributes()
+
+    const workspaceName = resolveWorkspaceDisplayName(routing)
+    texmlSayNatural(texml, buildInboundCallerGreetingText(workspaceName))
 
     if (hasReceptionist) {
       const recPhone = receptionistDialE164
@@ -1256,7 +1252,7 @@ async function handleIncomingCall(
           method: "POST",
         }) as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0]
       )
-      // Screen the agent's cell leg ("Press 1 to connect") + pop their HUD on answer.
+      // Screen the agent's cell leg ("Press any key to connect") + pop their HUD on answer.
       const recvAnswerUrl = selectedReceptionistId
         ? buildReceptionistAnswerUrl({
             appUrl,
@@ -1265,10 +1261,17 @@ async function handleIncomingCall(
             businessType: "generic",
             callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
             callerName,
-            businessName: routing.business_name?.trim() || routing.phone_line_label?.trim() || null,
+            businessName: workspaceName,
           })
-        : undefined
-      dial.number({ ...pstnNumberAttrs, ...(recvAnswerUrl ? { url: recvAnswerUrl } : {}) }, recPhone)
+        : buildReceptionistAnswerUrl({
+            appUrl,
+            callSid,
+            businessType: "generic",
+            callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
+            callerName,
+            businessName: workspaceName,
+          })
+      dial.number({ ...pstnNumberAttrs, url: recvAnswerUrl }, recPhone)
     } else {
       const ownerPhone = normalizePhoneNumberE164(routing.owner_phone)
       if (debug) console.log(`[Sigo] No receptionist assigned, routing to owner: ${ownerPhone}`)
@@ -1282,11 +1285,15 @@ async function handleIncomingCall(
           method: "POST",
         }) as Parameters<InstanceType<typeof VoiceResponse>["dial"]>[0]
       )
-      if (whisperPhrase.trim()) {
-        dial.number({ ...pstnNumberAttrs, url: receptionistWhisperScreenUrl(whisperPhrase) }, ownerPhone)
-      } else {
-        dial.number(pstnNumberAttrs, ownerPhone)
-      }
+      const ownerAnswerUrl = buildReceptionistAnswerUrl({
+        appUrl,
+        callSid,
+        businessType: "generic",
+        callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
+        callerName,
+        businessName: workspaceName,
+      })
+      dial.number({ ...pstnNumberAttrs, url: ownerAnswerUrl }, ownerPhone)
     }
   } catch (error) {
     console.error("[Telnyx] Error in incoming webhook:", error)

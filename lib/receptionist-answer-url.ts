@@ -6,7 +6,8 @@ import type { ReceptionistBusinessType } from "@/lib/business-type"
 
 export function buildReceptionistAnswerUrl(params: {
   appUrl: string
-  receptionistId: string
+  /** Optional — omit for admin override / owner legs (press-1 screen only, no HUD broadcast). */
+  receptionistId?: string | null
   callSid: string
   businessType: ReceptionistBusinessType
   callerNumber?: string | null
@@ -17,7 +18,7 @@ export function buildReceptionistAnswerUrl(params: {
 }): string {
   const base = params.appUrl.replace(/\/+$/, "")
   const qs = new URLSearchParams()
-  qs.set("r", params.receptionistId)
+  if (params.receptionistId?.trim()) qs.set("r", params.receptionistId.trim())
   if (params.callSid) qs.set("cl", params.callSid)
   qs.set("bt", params.businessType)
   if (params.callerNumber) qs.set("from", params.callerNumber)

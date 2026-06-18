@@ -61,7 +61,6 @@ function emptyAdminControls(): AdminTenantControls {
     team_roster: { active_receptionists: 0, active_field_technicians: 0 },
     organizations: [],
     pending_invites: [],
-    admin_routing_override_phone: null,
   }
 }
 import {
@@ -112,7 +111,7 @@ export function AdminUserManageDrawer({
   const [flagBusy, setFlagBusy] = useState<string | null>(null)
   const [releaseBusy, setReleaseBusy] = useState<string | null>(null)
   const [provisionTechOpen, setProvisionTechOpen] = useState(false)
-  const [adminRoutingOverridePhone, setAdminRoutingOverridePhone] = useState("")
+  const [lineOverrideDrafts, setLineOverrideDrafts] = useState<Record<string, string>>({})
 
   const loadControls = useCallback(async (userId: string) => {
     setControlsLoading(true)
@@ -121,11 +120,11 @@ export function AdminUserManageDrawer({
       const json = (await res.json().catch(() => ({}))) as { data?: AdminTenantControls; error?: string }
       if (res.ok && json.data) setControls(json.data)
       else setControls(emptyAdminControls())
-      setAdminRoutingOverridePhone(
-        res.ok && json.data?.admin_routing_override_phone
-          ? String(json.data.admin_routing_override_phone)
-          : ""
-      )
+      const drafts: Record<string, string> = {}
+      for (const line of json.data?.phone_lines ?? []) {
+        drafts[line.id] = line.admin_routing_override_phone ?? ""
+      }
+      setLineOverrideDrafts(drafts)
     } catch {
       setControls(emptyAdminControls())
     } finally {
@@ -231,7 +230,10 @@ export function AdminUserManageDrawer({
           targetStatus,
           adminNotes,
           manualPhoneOverride: manualPhone.trim() || null,
-          adminRoutingOverridePhone: adminRoutingOverridePhone.trim() || null,
+          phoneLineRoutingOverrides: (controls?.phone_lines ?? []).map((line) => ({
+            phoneLineId: line.id,
+            adminRoutingOverridePhone: lineOverrideDrafts[line.id]?.trim() || null,
+          })),
         }),
       })
       const json = (await res.json()) as { error?: string }
@@ -416,16 +418,10 @@ export function AdminUserManageDrawer({
               </Button>
 
               <div className="space-y-2 border-t border-slate-800 pt-3">
-                <Label className="text-slate-300">Admin Direct Forwarding Override (Phone Number)</Label>
-                <Input
-                  value={adminRoutingOverridePhone}
-                  onChange={(e) => setAdminRoutingOverridePhone(e.target.value)}
-                  placeholder="+15551234567"
-                  className="border-slate-700 bg-slate-950 font-mono text-slate-100"
-                />
+                <Label className="text-slate-300">Direct forwarding override (per line)</Label>
                 <p className="text-xs text-slate-500">
-                  When set, inbound calls on this business&apos;s lines dial this number immediately — bypassing
-                  owner, receptionist, and Lyncr operator pool routing. Clear the field and save to remove.
+                  Set a PSTN number for each business line. Overrides apply only to that line&apos;s workspace —
+                  other businesses on this account keep standard routing.
                 </p>
               </div>
             </div>
@@ -447,28 +443,41 @@ export function AdminUserManageDrawer({
                   {controls.phone_lines.map((line) => (
                     <li
                       key={line.id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-900/50 px-3 py-2"
+                      className="flex flex-col gap-2 rounded-md border border-slate-800 bg-slate-900/50 px-3 py-2"
                     >
-                      <div className="min-w-0">
-                        <p className="truncate font-mono text-sm text-slate-200">{line.number}</p>
-                        <p className="truncate text-[11px] text-slate-500">
-                          {line.label} · <span className="capitalize">{line.status}</span> · {line.type}
-                        </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-sm text-slate-200">{line.number}</p>
+                          <p className="truncate text-[11px] text-slate-500">
+                            {line.label} · <span className="capitalize">{line.status}</span> · {line.type}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 border-red-900/60 bg-red-950/30 text-red-200 hover:bg-red-900/40"
+                          disabled={releaseBusy === line.id || line.status !== "active"}
+                          onClick={() => void releaseLine(line.id)}
+                        >
+                          {releaseBusy === line.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            "Release"
+                          )}
+                        </Button>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0 border-red-900/60 bg-red-950/30 text-red-200 hover:bg-red-900/40"
-                        disabled={releaseBusy === line.id || line.status !== "active"}
-                        onClick={() => void releaseLine(line.id)}
-                      >
-                        {releaseBusy === line.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                        ) : (
-                          "Release"
-                        )}
-                      </Button>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-slate-400">Admin override for this line</Label>
+                        <Input
+                          value={lineOverrideDrafts[line.id] ?? ""}
+                          onChange={(e) =>
+                            setLineOverrideDrafts((prev) => ({ ...prev, [line.id]: e.target.value }))
+                          }
+                          placeholder="+15551234567"
+                          className="border-slate-700 bg-slate-950 font-mono text-xs text-slate-100"
+                        />
+                      </div>
                     </li>
                   ))}
                 </ul>

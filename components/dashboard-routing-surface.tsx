@@ -81,6 +81,7 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
           lineCount={businessNumbers.length}
           activeLineDisplay={activeLineDisplay}
           routingStrategy={routingStrategy}
+          businessNumbers={businessNumbers}
           className="lg:sticky lg:top-24"
         />
         <div className="min-w-0 flex-1 space-y-8 sm:space-y-10">

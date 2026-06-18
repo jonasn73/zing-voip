@@ -436,7 +436,9 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
   lineCarrierLive: boolean
   routingStrategy: RoutingStrategy
 }) {
+  const activeRow = businessNumbers.find((b) => businessNumbersMatch(b.number, activeLine))
   const display = formatPhoneDisplay(activeLine)
+  const label = activeRow?.label?.trim() || "Business Line"
   const multi = businessNumbers.length > 1
   const activeLineFieldClass =
     "w-full rounded-lg border border-zinc-800 bg-zinc-900/50 text-sm font-semibold text-foreground transition-colors duration-200 hover:border-primary/30 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
@@ -449,7 +451,7 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
           activeLineFieldClass
         )}
       >
-        <span className="text-xs font-medium text-zinc-400">Active line</span>
+        <span className="text-xs font-medium text-zinc-400">{label}</span>
         <span className="text-base text-foreground">{display}</span>
         <LineRoutingStatus
           routingStrategy={routingStrategy}
@@ -464,7 +466,7 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
     <label className={cn("relative block w-full max-w-md", activeLineFieldClass)}>
         <span className="sr-only">Active business line</span>
         <div className="pointer-events-none flex flex-col items-center gap-1 px-4 py-3 pr-10">
-          <span className="text-xs font-medium text-zinc-400">Active line</span>
+          <span className="text-xs font-medium text-zinc-400">{label}</span>
           <span className="text-base font-semibold text-foreground">{display}</span>
           <LineRoutingStatus
             routingStrategy={routingStrategy}
@@ -484,9 +486,10 @@ const ActiveLinePicker = memo(function ActiveLinePicker({
               : subscriptionActive
                 ? "Activating line"
                 : "Inactive (Pending Payment)"
+            const lineLabel = bn.label?.trim() || "Business Line"
             return (
               <option key={bn.number} value={bn.number}>
-                {formatPhoneDisplay(bn.number)} — {link}
+                {lineLabel} · {formatPhoneDisplay(bn.number)} — {link}
               </option>
             )
           })}

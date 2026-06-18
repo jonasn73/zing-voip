@@ -5,13 +5,21 @@ import { ChevronRight, Hash, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDashboardNumbersModal } from "@/components/dashboard-numbers-modal-context"
 import { useDashboardActivationOptional } from "@/components/dashboard-activation-context"
+import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { LineRoutingStatus } from "@/components/line-routing-status"
+import {
+  businessNumbersMatch,
+  formatPhoneDisplay,
+  isDashboardVisibleLineStatus,
+  type DashboardBusinessNumber,
+} from "@/lib/dashboard-routing-utils"
 import type { RoutingStrategy } from "@/lib/types"
 
 export const DashboardRoutingSidebar = memo(function DashboardRoutingSidebar({
   lineCount,
   activeLineDisplay,
   routingStrategy,
+  businessNumbers,
   className,
 }: {
   lineCount: number
@@ -19,13 +27,17 @@ export const DashboardRoutingSidebar = memo(function DashboardRoutingSidebar({
   activeLineDisplay: string | null
   // Drives the "Routing to Pool" status + the violet accent on the active-line card.
   routingStrategy: RoutingStrategy
+  // Every visible business line so owners can see and tap each number (not just the active one).
+  businessNumbers: DashboardBusinessNumber[]
   className?: string
 }) {
   const { openBuyModal, openManageModal } = useDashboardNumbersModal()
+  const { activeLine, setActiveLine } = useDashboardWorkspace()
   const activation = useDashboardActivationOptional()
   const subscriptionActive = activation?.subscriptionActive === true
   const lineCarrierLive = activation?.lineCarrierLive === true
   const poolRouting = routingStrategy === "lyncr_only"
+  const visibleLines = businessNumbers.filter((b) => isDashboardVisibleLineStatus(b.status))
 
   return (
     <aside
@@ -57,7 +69,58 @@ export const DashboardRoutingSidebar = memo(function DashboardRoutingSidebar({
         + Add business number
       </button>
 
-      {activeLineDisplay ? (
+      {visibleLines.length > 0 ? (
+        <ul className="mt-4 flex flex-col gap-2" aria-label="Your business lines">
+          {visibleLines.map((line) => {
+            const isActive =
+              activeLine != null && businessNumbersMatch(line.number, activeLine)
+            const label = line.label?.trim() || "Business Line"
+            return (
+              <li key={line.number}>
+                <button
+                  type="button"
+                  onClick={() => setActiveLine(line.number)}
+                  className={cn(
+                    "relative w-full rounded-xl border px-3 py-3 text-left transition-colors",
+                    isActive
+                      ? poolRouting
+                        ? "border-violet-500/45 bg-violet-500/5 ring-1 ring-violet-500/15"
+                        : "border-primary/40 bg-primary/5 ring-1 ring-primary/15"
+                      : "border-border/70 bg-background/40 hover:border-primary/25 hover:bg-muted/30"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider",
+                      isActive
+                        ? poolRouting
+                          ? "text-violet-300/85"
+                          : "text-primary/80"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {label}
+                  </span>
+                  <p className="mt-0.5 truncate text-sm font-semibold text-foreground">
+                    {formatPhoneDisplay(line.number)}
+                  </p>
+                  {line.status === "porting" ? (
+                    <p className="mt-0.5 text-[10px] font-medium text-amber-400/90">Transfer in progress</p>
+                  ) : null}
+                  {isActive ? (
+                    <LineRoutingStatus
+                      routingStrategy={routingStrategy}
+                      subscriptionActive={subscriptionActive}
+                      lineCarrierLive={lineCarrierLive}
+                      className="mt-1"
+                    />
+                  ) : null}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      ) : activeLineDisplay ? (
         <div
           className={cn(
             "relative mt-4 rounded-xl border px-3 py-3 transition-colors",
@@ -81,30 +144,6 @@ export const DashboardRoutingSidebar = memo(function DashboardRoutingSidebar({
             lineCarrierLive={lineCarrierLive}
             className="mt-1"
           />
-
-          {/* Connector → Call flow: tells the owner this line drives the rule chain on the right. */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute right-0 top-1/2 hidden -translate-y-1/2 translate-x-full items-center pl-1 lg:flex"
-          >
-            <div
-              className={cn(
-                "h-[2px] w-9 rounded-full xl:w-12",
-                poolRouting
-                  ? "bg-gradient-to-r from-violet-500/20 via-violet-400 to-violet-300"
-                  : "bg-gradient-to-r from-primary/20 via-primary to-primary"
-              )}
-              style={{ boxShadow: "var(--electric-glow)" }}
-            />
-            <div
-              className={cn(
-                "h-2 w-2 -translate-x-1 rotate-45 border-r-2 border-t-2",
-                poolRouting
-                  ? "border-violet-300 shadow-[0_0_10px_rgb(167_139_250)]"
-                  : "border-primary shadow-[0_0_10px_var(--primary)]"
-              )}
-            />
-          </div>
         </div>
       ) : null}
 

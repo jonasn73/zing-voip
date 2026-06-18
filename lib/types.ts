@@ -349,11 +349,27 @@ export interface AdminCallHistoryRow {
   created_at: string
 }
 
+/** One provisioned DID in the admin tenant drawer. */
+export type AdminTenantControlPhoneLine = {
+  id: string
+  number: string
+  label: string
+  status: string
+  type: string
+  organization_id: string | null
+  /** Line-level admin override (`073`). */
+  admin_routing_override_phone: string | null
+  /** Effective override (line, else workspace). */
+  effective_admin_routing_override_phone: string | null
+}
+
 /** One workspace row in the admin Business Owner control hub. */
 export interface AdminTenantControlOrganization {
   id: string
   name: string
   is_default: boolean
+  /** Workspace-level admin inbound PSTN override (`073`). */
+  admin_routing_override_phone?: string | null
   sms_registration_status: SmsRegistrationOrgStatus
   sms_registration: {
     id: string
@@ -383,7 +399,7 @@ export interface AdminTenantControlPendingInvite {
 /** Tenant feature overrides + provisioned lines shown in the admin tenant drawer. */
 export interface AdminTenantControls {
   feature_flags: Record<string, boolean>
-  phone_lines: { id: string; number: string; label: string; status: string; type: string }[]
+  phone_lines: AdminTenantControlPhoneLine[]
   /** True when the owner has more than one workspace in `organizations`. */
   is_multi_workspace: boolean
   team_roster: {
@@ -392,8 +408,6 @@ export interface AdminTenantControls {
   }
   organizations: AdminTenantControlOrganization[]
   pending_invites: AdminTenantControlPendingInvite[]
-  /** Platform-admin PSTN override — inbound calls dial here first (072). */
-  admin_routing_override_phone: string | null
 }
 
 /** One row in the receptionist payout ledger view. */
@@ -717,6 +731,8 @@ export interface Organization {
   created_at: string
   /** Carrier SMS compliance status for this workspace (`067-sms-registrations.sql`). */
   sms_registration_status?: SmsRegistrationOrgStatus | null
+  /** Workspace-level admin inbound PSTN override (`073`). */
+  admin_routing_override_phone?: string | null
 }
 
 export type SmsRegistrationStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED"
@@ -780,6 +796,10 @@ export interface PhoneNumber {
   industry_tag: string | null
   /** How matched receptionists are dialed — sequential or simultaneous (`042`). */
   routing_pool_mode: "sequential" | "simultaneous"
+  /** Line-level admin inbound PSTN override (`073`). */
+  admin_routing_override_phone?: string | null
+  /** Workspace-level override when line override is unset (`073`). */
+  organization_admin_routing_override_phone?: string | null
   created_at: string
 }
 

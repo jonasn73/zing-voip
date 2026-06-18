@@ -1,7 +1,13 @@
 // Platform-admin PSTN override — bypasses owner / receptionist / operator pool on inbound.
 
 import { isReasonablePstnDialString } from "@/lib/db"
+import {
+  buildInboundCallerGreetingText,
+  resolveWorkspaceDisplayName,
+  type InboundWorkspaceRoutingLike,
+} from "@/lib/inbound-branded-greeting"
 import { formatAdminRoutingOverridePhoneForTelnyx } from "@/lib/phone-e164"
+import { buildReceptionistAnswerUrl } from "@/lib/receptionist-answer-url"
 import {
   buildFastReceptionistDialTexml,
   resolveInboundForwardDialTimeoutSeconds,
@@ -11,7 +17,7 @@ import {
   resolvePstnDialCallerIdForInboundForward,
 } from "@/lib/telnyx-pstn-dial-callerid"
 
-export type AdminRoutingOverrideRoutingLike = {
+export type AdminRoutingOverrideRoutingLike = InboundWorkspaceRoutingLike & {
   user_id: string
   fallback_type?: string | null
   ring_timeout_seconds?: number | null
@@ -35,10 +41,17 @@ export function buildAdminRoutingOverrideDial(params: {
   callerNumber: string
   callSid: string
   appUrl: string
-  resolveOutboundCallerId: (routing: AdminRoutingOverrideRoutingLike & { primary_phone_number?: string; active_phone_count?: number }, businessLineE164: string) => string
+  callerName?: string | null
+  resolveOutboundCallerId: (
+    routing: AdminRoutingOverrideRoutingLike & { primary_phone_number?: string; active_phone_count?: number },
+    businessLineE164: string
+  ) => string
 }): AdminRoutingOverrideDialResult | null {
   const overrideE164 = resolveAdminRoutingOverrideE164(params.routing)
   if (!overrideE164) return null
+
+  const workspaceName = resolveWorkspaceDisplayName(params.routing)
+  const callerGreeting = buildInboundCallerGreetingText(workspaceName)
 
   const wantsAiAfterNoAnswer = String(params.routing.fallback_type ?? "").toLowerCase() === "ai"
   const effectiveRingTimeout = Number(params.routing.ring_timeout_seconds ?? 30) || 30
@@ -61,12 +74,23 @@ export function buildAdminRoutingOverrideDial(params: {
   })
   const action = `${fallbackPathBase}?callSid=${encodeURIComponent(params.callSid)}${bnQuery}${fbQuery}${modeQuery}&adminOverride=1&primary=owner&leg=owner-first${origFromQuery}`
 
+  const answerUrl = buildReceptionistAnswerUrl({
+    appUrl: params.appUrl,
+    callSid: params.callSid,
+    businessType: "generic",
+    callerNumber: params.callerNumber.trim() || null,
+    callerName: params.callerName ?? null,
+    businessName: workspaceName,
+  })
+
   const xml = buildFastReceptionistDialTexml({
     ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
     answerOnBridge: true,
     timeout: dialTimeoutSec,
     action,
     receptionistE164: overrideE164,
+    answerUrl,
+    callerGreeting,
   })
 
   return { kind: "raw", xml }

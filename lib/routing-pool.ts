@@ -133,6 +133,8 @@ export function buildRoutingPoolDialResponse(params: {
     callerName?: string | null
     businessName?: string | null
   }
+  /** Branded caller greeting spoken before `<Dial>`. */
+  callerGreeting?: string
 }): string {
   let answerUrlByE164: Record<string, string> | undefined
   if (params.answer) {
@@ -160,6 +162,7 @@ export function buildRoutingPoolDialResponse(params: {
     receptionistE164List: params.match.dial_targets,
     mode: params.match.routing_pool_mode,
     ...(answerUrlByE164 ? { answerUrlByE164 } : {}),
+    ...(params.callerGreeting?.trim() ? { callerGreeting: params.callerGreeting.trim() } : {}),
   })
   return finalizeInboundTexmlXml(xml)
 }

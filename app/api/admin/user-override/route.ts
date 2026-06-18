@@ -23,11 +23,25 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const phoneLineRoutingOverrides = Array.isArray(body.phoneLineRoutingOverrides)
+      ? body.phoneLineRoutingOverrides.map((row) => {
+          const o = row && typeof row === "object" ? (row as Record<string, unknown>) : {}
+          return {
+            phoneLineId: String(o.phoneLineId ?? o.phone_line_id ?? "").trim(),
+            adminRoutingOverridePhone:
+              o.adminRoutingOverridePhone === null || o.adminRoutingOverridePhone === undefined
+                ? null
+                : String(o.adminRoutingOverridePhone),
+          }
+        })
+      : undefined
+
     const hasAnyField =
       body.targetStatus !== undefined ||
       body.adminNotes !== undefined ||
       body.manualPhoneOverride !== undefined ||
       body.adminRoutingOverridePhone !== undefined ||
+      (phoneLineRoutingOverrides && phoneLineRoutingOverrides.length > 0) ||
       body.resetActiveLines === true
 
     if (!hasAnyField) {
@@ -55,6 +69,15 @@ export async function POST(req: NextRequest) {
             ? null
             : String(body.adminRoutingOverridePhone)
           : undefined,
+      phoneLineId:
+        body.phoneLineId != null || body.phone_line_id != null
+          ? String(body.phoneLineId ?? body.phone_line_id ?? "").trim() || null
+          : undefined,
+      organizationId:
+        body.organizationId != null || body.organization_id != null
+          ? String(body.organizationId ?? body.organization_id ?? "").trim() || null
+          : undefined,
+      phoneLineRoutingOverrides,
       resetActiveLines: body.resetActiveLines === true,
     })
 

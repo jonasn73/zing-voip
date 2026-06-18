@@ -22,6 +22,8 @@ export interface DashboardBusinessNumber {
   organization_id?: string | null
   source_provider?: "telnyx" | "external"
   routing_summary?: PhoneNumberRoutingSummary
+  /** Effective admin PSTN override for this line (line-level, else workspace-level). */
+  admin_routing_override_phone?: string | null
 }
 
 export type FallbackOption = "owner" | "ai" | "voicemail"

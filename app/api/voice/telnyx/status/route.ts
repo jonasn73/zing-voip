@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { recordCallStatusEvent, updateCallLog } from "@/lib/db"
 import { evaluateLowCarrierCreditFromCallUsage } from "@/lib/carrier-credit-alerts"
 import { maybeSendPostCallDispositionSms } from "@/lib/post-call-disposition-sms"
+import { maybeSendAdminOverrideDispatchSms } from "@/lib/admin-override-dispatch-sms"
 import type { CallType } from "@/lib/types"
 
 export const runtime = "nodejs"
@@ -59,6 +60,11 @@ export async function POST(req: NextRequest) {
           await maybeSendPostCallDispositionSms(callSid, callStatus)
         } catch (smsErr) {
           console.error("[Telnyx] Post-call disposition SMS failed:", smsErr)
+        }
+        try {
+          await maybeSendAdminOverrideDispatchSms(callSid, callStatus)
+        } catch (dispatchErr) {
+          console.error("[Telnyx] Admin override dispatch SMS failed:", dispatchErr)
         }
       })
     }

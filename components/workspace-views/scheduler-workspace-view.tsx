@@ -384,6 +384,10 @@ export function SchedulerWorkspaceView() {
     loadPool()
   }, [loadPool])
 
+  useEffect(() => {
+    if (viewMode === "map") loadPool()
+  }, [viewMode, loadPool])
+
   const refreshSchedulerData = useCallback(() => {
     load()
     loadPool()

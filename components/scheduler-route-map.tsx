@@ -14,7 +14,7 @@ import {
   isActiveMapJob,
   schedulerLifecyclePhase,
 } from "@/lib/scheduler-job-status"
-import { expandBoundsForPins, spreadOverlappingPins } from "@/lib/map-pin-spread"
+import { distanceMeters, expandBoundsForPins, ensureUniquePoolPinPositions, spreadOverlappingPins } from "@/lib/map-pin-spread"
 import type { SchedulerEvent, UnassignedPoolJob } from "@/lib/types"
 
 type LeafletModule = typeof import("leaflet")
@@ -101,9 +101,10 @@ export function SchedulerRouteMap({
       .filter((j) => typeof j.latitude === "number" && typeof j.longitude === "number")
       .map((j, idx) => ({ job: j, lat: j.latitude!, lng: j.longitude!, poolIndex: idx + 1 }))
 
-    return spreadOverlappingPins(mapped.map((p) => ({ lat: p.lat, lng: p.lng, data: p }))).map(
-      (spread) => spread.data
+    const spread = spreadOverlappingPins(mapped.map((p) => ({ lat: p.lat, lng: p.lng, data: p }))).map(
+      (item) => item.data
     )
+    return ensureUniquePoolPinPositions(spread)
   }, [poolJobs])
 
   const scheduledPins = useMemo(() => {
@@ -199,7 +200,12 @@ export function SchedulerRouteMap({
 
     if (latLngs.length > 0) {
       const bounds = L.latLngBounds(expandBoundsForPins(latLngs))
-      map.fitBounds(bounds, { padding: [56, 56], maxZoom: poolPins.length > 1 && stops.length === 0 ? 12 : 14 })
+      let maxZoom = 14
+      if (poolPins.length > 1 && stops.length === 0) {
+        const spanM = distanceMeters(poolPins[0].lat, poolPins[0].lng, poolPins[1].lat, poolPins[1].lng)
+        maxZoom = spanM > 3000 ? 11 : 12
+      }
+      map.fitBounds(bounds, { padding: [56, 56], maxZoom })
     } else {
       map.setView([LOUISVILLE_MAP_CENTER.lat, LOUISVILLE_MAP_CENTER.lng], LOUISVILLE_DEFAULT_ZOOM)
     }

@@ -132,3 +132,53 @@ export function expandBoundsForPins(
     [centerLat - padDeg, centerLng - padDeg],
   ]
 }
+
+/** Last-resort nudge when DB stored identical coords for different hopper jobs. */
+export function ensureUniquePoolPinPositions<
+  T extends { lat: number; lng: number; poolIndex: number },
+>(pins: T[]): T[] {
+  if (pins.length <= 1) return pins
+  const used = new Map<string, number>()
+  return pins.map((pin) => {
+    const key = `${pin.lat.toFixed(5)},${pin.lng.toFixed(5)}`
+    const n = used.get(key) ?? 0
+    used.set(key, n + 1)
+    if (n === 0) return pin
+    return {
+      ...pin,
+      lng: pin.lng + n * 0.009,
+      lat: pin.lat + (n % 2) * 0.004,
+    }
+  })
+}
+
+/** Best geocode query for a hopper job (prefers ZIP/neighborhood label on the card). */
+export function geocodeQueryForPoolJob(job: {
+  location?: string | null
+  neighborhood?: string | null
+}): string | null {
+  const neighborhood = job.neighborhood?.trim()
+  const location = job.location?.trim()
+  if (neighborhood && /^\d{5}/.test(neighborhood)) {
+    return geocodeQueryForPoolLocation(neighborhood)
+  }
+  if (location) return geocodeQueryForPoolLocation(location)
+  return null
+}
+
+function coordKey(lat: number, lng: number): string {
+  return `${lat.toFixed(5)},${lng.toFixed(5)}`
+}
+
+/** True when the job's map pin should be re-resolved from its address/ZIP. */
+export function poolJobNeedsGeocode(
+  job: { latitude?: number | null; longitude?: number | null; location?: string | null; neighborhood?: string | null },
+  duplicateCoords: boolean
+): boolean {
+  if (job.latitude == null || job.longitude == null) return true
+  if (duplicateCoords) return true
+  const area = job.neighborhood?.trim() || job.location?.trim() || ""
+  return /^\d{5}(-\d{4})?$/.test(area) || (area.length <= 6 && /^\d+$/.test(area))
+}
+
+export { coordKey as poolCoordKey }

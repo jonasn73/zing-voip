@@ -45,13 +45,18 @@ export const SCHEDULER_STATUS_LABEL: Record<SchedulerLifecyclePhase, string> = {
 
 /** Pin fill color for numbered route stops on the map. */
 export const SCHEDULER_MAP_PIN_COLOR: Record<SchedulerLifecyclePhase, string> = {
-  unassigned: "#eab308",
+  unassigned: "#f97316",
   scheduled: "#14b8a6",
   en_route: "#38bdf8",
-  on_site: "#fb923c",
-  completed: "#71717a",
+  on_site: "#fbbf24",
+  completed: "#22c55e",
 }
 
 export function isActiveMapJob(phase: SchedulerLifecyclePhase): boolean {
   return phase !== "completed"
+}
+
+/** Completed jobs render as a faint checkmark instead of a route stop. */
+export function isCompletedMapJob(phase: SchedulerLifecyclePhase): boolean {
+  return phase === "completed"
 }

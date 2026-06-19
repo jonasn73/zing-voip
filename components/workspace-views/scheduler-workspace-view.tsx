@@ -400,28 +400,42 @@ export function SchedulerWorkspaceView() {
     const channel = pusher.subscribe(`owner-${ownerUserId}`)
 
     const onJobStatus = (payload: { leadId?: string; status?: string }) => {
-      if (payload?.leadId && payload?.status) {
-        setEvents((prev) =>
-          prev.map((ev) =>
-            ev.id === payload.leadId ? { ...ev, job_status: payload.status ?? ev.job_status } : ev
-          )
+      if (!payload?.leadId || !payload?.status) return
+      setEvents((prev) =>
+        prev.map((ev) =>
+          ev.id === payload.leadId
+            ? {
+                ...ev,
+                job_status: payload.status ?? ev.job_status,
+                dispatch_status:
+                  payload.status === "assigned" || payload.status === "en_route"
+                    ? "DISPATCHED"
+                    : ev.dispatch_status,
+              }
+            : ev
         )
+      )
+    }
+
+    const onJobAssigned = (payload: { leadId?: string; techUserId?: string }) => {
+      if (payload?.leadId) {
+        setPoolJobs((prev) => prev.filter((j) => j.id !== payload.leadId))
       }
-      refreshSchedulerData()
+      void load()
     }
 
     channel.bind("job-status-updated", onJobStatus)
     channel.bind("job-booked", refreshSchedulerData)
-    channel.bind("job-assigned", refreshSchedulerData)
+    channel.bind("job-assigned", onJobAssigned)
     channel.bind("disposition-updated", refreshSchedulerData)
     return () => {
       channel.unbind("job-status-updated", onJobStatus)
       channel.unbind("job-booked", refreshSchedulerData)
-      channel.unbind("job-assigned", refreshSchedulerData)
+      channel.unbind("job-assigned", onJobAssigned)
       channel.unbind("disposition-updated", refreshSchedulerData)
       pusher.unsubscribe(`owner-${ownerUserId}`)
     }
-  }, [ownerUserId, refreshSchedulerData])
+  }, [ownerUserId, refreshSchedulerData, load])
 
   useEffect(() => {
     fetch("/api/technicians", { credentials: "include", cache: "no-store" })
@@ -564,8 +578,17 @@ export function SchedulerWorkspaceView() {
       if (!res.ok) throw new Error(json.error ?? "Could not schedule job")
       const event = json.data?.event
       if (!event) throw new Error("No event returned")
+      const techName =
+        assignableTechs.find((t) => t.portal_user_id === poolScheduleTechId)?.name ??
+        event.assigned_tech_name
       setPoolJobs((prev) => prev.filter((j) => j.id !== poolScheduleJob.id))
-      handleAppointmentCreated(event)
+      handleAppointmentCreated({
+        ...event,
+        dispatch_status: "DISPATCHED",
+        job_status: "assigned",
+        assigned_tech_id: poolScheduleTechId,
+        assigned_tech_name: techName ?? null,
+      })
       setPoolScheduleOpen(false)
       setPoolScheduleJob(null)
       loadPool()

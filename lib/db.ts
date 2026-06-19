@@ -5624,6 +5624,14 @@ function schedulerEventFromRow(row: Record<string, unknown>): import("@/lib/type
     job_notes: pick(["job_notes", "notes", "symptoms"]),
     latitude: latitude != null && Number.isFinite(latitude) ? latitude : null,
     longitude: longitude != null && Number.isFinite(longitude) ? longitude : null,
+    job_status:
+      row.job_status != null && String(row.job_status).trim()
+        ? String(row.job_status)
+        : pick(["job_status"]),
+    dispatch_status:
+      row.dispatch_status != null && String(row.dispatch_status).trim()
+        ? String(row.dispatch_status)
+        : pick(["dispatch_status"]),
   }
 }
 
@@ -5711,6 +5719,8 @@ function syntheticSchedulerEventFromCreate(params: {
     job_notes: params.jobNotes,
     latitude: null,
     longitude: null,
+    job_status: params.techId ? "assigned" : null,
+    dispatch_status: params.techId ? "DISPATCHED" : "unassigned_pool",
   }
 }
 
@@ -5729,7 +5739,7 @@ export async function listOwnerSchedulerEvents(params: {
     const rows = orgId
       ? await sql`
           SELECT l.id, l.caller_e164, l.collected, l.summary, l.disposition, l.scheduled_at, l.created_at,
-                 l.assigned_tech_id, t.name AS assigned_tech_name
+                 l.assigned_tech_id, l.job_status, l.dispatch_status, t.name AS assigned_tech_name
           FROM ai_leads l
           LEFT JOIN field_technicians t ON t.portal_user_id = l.assigned_tech_id
           WHERE l.user_id = ${params.ownerUserId}
@@ -5745,7 +5755,7 @@ export async function listOwnerSchedulerEvents(params: {
         `
       : await sql`
           SELECT l.id, l.caller_e164, l.collected, l.summary, l.disposition, l.scheduled_at, l.created_at,
-                 l.assigned_tech_id, t.name AS assigned_tech_name
+                 l.assigned_tech_id, l.job_status, l.dispatch_status, t.name AS assigned_tech_name
           FROM ai_leads l
           LEFT JOIN field_technicians t ON t.portal_user_id = l.assigned_tech_id
           WHERE l.user_id = ${params.ownerUserId}

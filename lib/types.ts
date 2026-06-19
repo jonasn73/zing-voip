@@ -119,6 +119,10 @@ export interface SchedulerEvent {
   latitude: number | null
   /** Geocoded job site longitude (from collected.customer_lng). */
   longitude: number | null
+  /** Field progress: assigned | en_route | arrived | completed */
+  job_status: string | null
+  /** Dispatch pipeline: unassigned_pool | DISPATCHED | pending_review */
+  dispatch_status: string | null
 }
 
 /** Job waiting in the unassigned pool (no tech yet). */

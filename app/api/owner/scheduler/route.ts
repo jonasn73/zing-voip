@@ -15,6 +15,7 @@ import {
 } from "@/lib/db"
 import { geocodeAddress } from "@/lib/geocode"
 import { persistLeadAddressFromFields } from "@/lib/geocode-persist"
+import { resolveLeadCoordinates } from "@/lib/resolve-lead-coordinates"
 import { monthRangeUtc, parseIsoDateParam } from "@/lib/scheduler-utils"
 import {
   isCompleteStructuredAddress,
@@ -63,10 +64,10 @@ export async function GET(req: NextRequest) {
       toIso,
       organizationId: organizationId && !organizationId.startsWith("legacy-") ? organizationId : null,
     })
-    return NextResponse.json({ data: { events, from: fromIso, to: toIso } })
+    return NextResponse.json({ data: { events, from: fromIso, to: toIso, ownerUserId: userId } })
   } catch (e) {
     console.error("[GET /api/owner/scheduler]", e)
-    return NextResponse.json({ data: { events: [], from: fromIso, to: toIso }, degraded: true })
+    return NextResponse.json({ data: { events: [], from: fromIso, to: toIso, ownerUserId: userId }, degraded: true })
   }
 }
 
@@ -136,6 +137,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    let coords = await resolveLeadCoordinates({
+      structuredAddress,
+      extraFields: extraCollected,
+    })
+
+    let addressForSave = structuredAddress
+    if (structuredAddress && coords && (structuredAddress.lat == null || structuredAddress.lng == null)) {
+      addressForSave = { ...structuredAddress, lat: coords.lat, lng: coords.lng }
+    }
+
     let event = await createOwnerSchedulerAppointment({
       ownerUserId: userId,
       organizationId: organizationId && !organizationId.startsWith("legacy-") ? organizationId : null,
@@ -149,24 +160,27 @@ export async function POST(req: NextRequest) {
       vehicleYear,
       vehicleMake,
       vehicleModel,
-      jobAddress: structuredAddress?.formatted ?? null,
+      jobAddress: addressForSave?.formatted ?? null,
       jobNotes,
-      structuredAddress,
+      structuredAddress: addressForSave,
       extraCollected,
     })
 
-    if (structuredAddress) {
-      let lat = structuredAddress.lat
-      let lng = structuredAddress.lng
+    if (addressForSave) {
+      let lat = addressForSave.lat ?? coords?.lat ?? null
+      let lng = addressForSave.lng ?? coords?.lng ?? null
       if (lat == null || lng == null) {
-        const coords = await geocodeAddress(structuredAddress.formatted)
-        if (coords) {
-          lat = coords.lat
-          lng = coords.lng
+        const geocoded = await resolveLeadCoordinates({
+          structuredAddress: addressForSave,
+          extraFields: extraCollected,
+        })
+        if (geocoded) {
+          lat = geocoded.lat
+          lng = geocoded.lng
         }
       }
       try {
-        await setLeadStructuredAddress(event.id, { ...structuredAddress, lat, lng })
+        await setLeadStructuredAddress(event.id, { ...addressForSave, lat, lng })
         if (lat != null && lng != null) {
           event = { ...event, latitude: lat, longitude: lng } satisfies SchedulerEvent
         }
@@ -176,6 +190,12 @@ export async function POST(req: NextRequest) {
     } else {
       try {
         await persistLeadAddressFromFields(event.id, extraCollected)
+        if (!coords) {
+          coords = await resolveLeadCoordinates({ extraFields: extraCollected })
+        }
+        if (coords) {
+          event = { ...event, latitude: coords.lat, longitude: coords.lng } satisfies SchedulerEvent
+        }
       } catch (addrErr) {
         console.warn("[POST /api/owner/scheduler] geocode persist skipped:", addrErr)
       }

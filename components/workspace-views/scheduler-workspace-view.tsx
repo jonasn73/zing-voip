@@ -5,6 +5,7 @@
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Car, Clock, LayoutGrid, Loader2, Map as MapIcon, MapPin, Phone, Plus, User } from "lucide-react"
+import { getPusherClient } from "@/lib/realtime/pusher-client"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,6 +43,11 @@ import {
   schedulerHourSlots,
   toDatetimeLocalValue,
 } from "@/lib/scheduler-utils"
+import {
+  SCHEDULER_CARD_STYLE,
+  SCHEDULER_STATUS_LABEL,
+  schedulerLifecyclePhase,
+} from "@/lib/scheduler-job-status"
 import { HOPPER_DRAG_MIME } from "@/components/scheduler/job-pool-card"
 import { JobDetailDrawer } from "@/components/scheduler/job-detail-drawer"
 import { JobPoolTray } from "@/components/scheduler/job-pool-tray"
@@ -105,9 +111,14 @@ function formatVehicle(ev: SchedulerEvent): string | null {
   return parts.length ? parts.join(" ") : null
 }
 
-const DISPOSITION_STYLE: Record<string, string> = {
-  BOOKED: "border-emerald-500/50 bg-emerald-500/15 text-emerald-100",
-  PENDING_TIME: "border-amber-500/50 bg-amber-500/15 text-amber-100",
+
+function eventCardStyle(ev: SchedulerEvent): string {
+  const phase = schedulerLifecyclePhase({
+    job_status: ev.job_status,
+    dispatch_status: ev.dispatch_status,
+    assigned_tech_id: ev.assigned_tech_id,
+  })
+  return SCHEDULER_CARD_STYLE[phase]
 }
 
 function sortEventsByTime(a: SchedulerEvent, b: SchedulerEvent): number {
@@ -129,6 +140,11 @@ function AppointmentBlock({
     ev.duration_minutes,
     ev.scheduled_tentative
   )
+  const phase = schedulerLifecyclePhase({
+    job_status: ev.job_status,
+    dispatch_status: ev.dispatch_status,
+    assigned_tech_id: ev.assigned_tech_id,
+  })
   return (
     <div
       role={onSelect ? "button" : undefined}
@@ -148,12 +164,15 @@ function AppointmentBlock({
         "absolute left-2 right-2 z-10 overflow-hidden rounded-lg border px-2 py-1.5 shadow-md",
         onSelect ? "pointer-events-auto cursor-pointer" : "pointer-events-none",
         highlighted && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-        DISPOSITION_STYLE[ev.disposition ?? ""] ?? "border-primary/40 bg-primary/15 text-foreground"
+        eventCardStyle(ev)
       )}
       style={{ top: topPx, height: heightPx, minHeight: 36 }}
     >
       <p className="truncate text-xs font-semibold">
         {ev.customer_name || formatPhone(ev.customer_phone) || "Customer"}
+        <span className="ml-1 text-[9px] font-medium uppercase opacity-75">
+          · {SCHEDULER_STATUS_LABEL[phase]}
+        </span>
       </p>
       <p className="truncate text-[10px] opacity-90">
         {vehicle || ev.job_type || ev.summary || "Appointment"}
@@ -181,12 +200,23 @@ function DayRouteList({ events }: { events: SchedulerEvent[] }) {
       {sorted.map((ev, idx) => {
         const vehicle = formatVehicle(ev)
         const hasCoords = typeof ev.latitude === "number" && typeof ev.longitude === "number"
+        const phase = schedulerLifecyclePhase({
+          job_status: ev.job_status,
+          dispatch_status: ev.dispatch_status,
+          assigned_tech_id: ev.assigned_tech_id,
+        })
         return (
-          <li key={ev.id} className="flex gap-3 px-4 py-3">
+          <li
+            key={ev.id}
+            className={cn(
+              "flex gap-3 border-l-[3px] px-4 py-3 transition-colors",
+              eventCardStyle(ev)
+            )}
+          >
             <span
               className={cn(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-                hasCoords ? "bg-emerald-500/20 text-emerald-200" : "bg-muted text-zinc-500"
+                hasCoords ? "bg-teal-500/25 text-teal-100" : "bg-muted text-zinc-500"
               )}
             >
               {idx + 1}
@@ -194,6 +224,9 @@ function DayRouteList({ events }: { events: SchedulerEvent[] }) {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-foreground">
                 {formatBlockTime(ev.scheduled_at)}
+                <span className="ml-2 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] font-medium uppercase">
+                  {SCHEDULER_STATUS_LABEL[phase]}
+                </span>
                 <span className="ml-2 font-normal text-zinc-400">
                   {ev.customer_name || formatPhone(ev.customer_phone)}
                 </span>
@@ -252,6 +285,7 @@ export function SchedulerWorkspaceView() {
   const [poolScheduleSaving, setPoolScheduleSaving] = useState(false)
   const [poolScheduleError, setPoolScheduleError] = useState<string | null>(null)
   const [dragOverHour, setDragOverHour] = useState<number | null>(null)
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(null)
 
   const monthKey = `${visibleMonth.getFullYear()}-${String(visibleMonth.getMonth() + 1).padStart(2, "0")}`
   const orgId =
@@ -320,8 +354,9 @@ export function SchedulerWorkspaceView() {
       cache: "no-store",
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("load"))))
-      .then((j: { data?: { events?: SchedulerEvent[] } }) => {
+      .then((j: { data?: { events?: SchedulerEvent[]; ownerUserId?: string } }) => {
         setEvents(Array.isArray(j.data?.events) ? j.data!.events! : [])
+        if (j.data?.ownerUserId) setOwnerUserId(j.data.ownerUserId)
       })
       .catch(() => setEvents([]))
       .finally(() => setLoading(false))
@@ -348,6 +383,41 @@ export function SchedulerWorkspaceView() {
   useEffect(() => {
     loadPool()
   }, [loadPool])
+
+  const refreshSchedulerData = useCallback(() => {
+    load()
+    loadPool()
+  }, [load, loadPool])
+
+  useEffect(() => {
+    if (!ownerUserId) return
+    const pusher = getPusherClient()
+    if (!pusher) return
+    const channel = pusher.subscribe(`owner-${ownerUserId}`)
+
+    const onJobStatus = (payload: { leadId?: string; status?: string }) => {
+      if (payload?.leadId && payload?.status) {
+        setEvents((prev) =>
+          prev.map((ev) =>
+            ev.id === payload.leadId ? { ...ev, job_status: payload.status ?? ev.job_status } : ev
+          )
+        )
+      }
+      refreshSchedulerData()
+    }
+
+    channel.bind("job-status-updated", onJobStatus)
+    channel.bind("job-booked", refreshSchedulerData)
+    channel.bind("job-assigned", refreshSchedulerData)
+    channel.bind("disposition-updated", refreshSchedulerData)
+    return () => {
+      channel.unbind("job-status-updated", onJobStatus)
+      channel.unbind("job-booked", refreshSchedulerData)
+      channel.unbind("job-assigned", refreshSchedulerData)
+      channel.unbind("disposition-updated", refreshSchedulerData)
+      pusher.unsubscribe(`owner-${ownerUserId}`)
+    }
+  }, [ownerUserId, refreshSchedulerData])
 
   useEffect(() => {
     fetch("/api/technicians", { credentials: "include", cache: "no-store" })
@@ -812,7 +882,14 @@ export function SchedulerWorkspaceView() {
                 <DayRouteList events={dayEvents} />
               </div>
               <div className="min-h-[320px] md:min-h-0">
-                <SchedulerRouteMap events={dayEvents} selectedDayLabel={selectedDayLabel} />
+                <SchedulerRouteMap
+                  events={dayEvents}
+                  poolJobs={poolJobs}
+                  selectedDayLabel={selectedDayLabel}
+                  highlightId={highlightId}
+                  onSelectEvent={openScheduledJobDrawer}
+                  onSelectPoolJob={openPoolJobDrawer}
+                />
               </div>
             </div>
           )}

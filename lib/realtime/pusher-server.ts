@@ -72,6 +72,7 @@ export async function publishTechnicianEvent(
 
 export type OwnerChannelEvent =
   | "job-booked"
+  | "job-assigned"
   | "lead-salvageable"
   | "disposition-updated"
   | "job-status-updated"

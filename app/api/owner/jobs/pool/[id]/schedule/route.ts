@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { listFieldTechnicians, schedulePoolJobAndAssign } from "@/lib/db"
-import { publishTechnicianEvent } from "@/lib/realtime/pusher-server"
+import { publishOwnerEvent, publishTechnicianEvent } from "@/lib/realtime/pusher-server"
 
 export const dynamic = "force-dynamic"
 
@@ -46,6 +46,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!event) return NextResponse.json({ error: "Job not found or already assigned" }, { status: 404 })
 
     await publishTechnicianEvent(tech.portal_user_id, "job-assigned", { leadId: leadId.trim() }).catch(() => {})
+    await publishOwnerEvent(userId, "job-assigned", {
+      leadId: leadId.trim(),
+      techUserId: tech.portal_user_id,
+    }).catch(() => {})
     return NextResponse.json({ data: { event } })
   } catch (e) {
     console.error("[POST /api/owner/jobs/pool/[id]/schedule]", e)

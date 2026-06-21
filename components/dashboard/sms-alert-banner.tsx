@@ -4,46 +4,30 @@ import { useCallback, useEffect, useState } from "react"
 import { MessageSquareWarning, X } from "lucide-react"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { openCarrierRegistrationModal } from "@/lib/settings-modals-events"
+import {
+  fetchSmsComplianceView,
+  resolveSmsNoticeState,
+  smsDismissStorageKey,
+  smsNoticeMessage,
+  type SmsComplianceView,
+} from "@/lib/sms-registration-notice"
 import { readActiveOrganizationId } from "@/lib/workspace-organizations"
-
-type BannerView = {
-  sms_ready?: boolean
-  pending_approval?: boolean
-  organization_status?: string
-  registration?: { status?: string } | null
-}
-
-function dismissStorageKey(organizationId: string | null): string {
-  const orgKey =
-    organizationId && !organizationId.startsWith("legacy-") ? organizationId : "default"
-  return `lyncr_10dlc_nudge_dismissed_${orgKey}`
-}
-
-function build10DlcUrl(organizationId: string | null): string {
-  if (organizationId && !organizationId.startsWith("legacy-")) {
-    return `/api/settings/10dlc?organization_id=${encodeURIComponent(organizationId)}`
-  }
-  return "/api/settings/10dlc"
-}
 
 export function SmsAlertBanner() {
   const { activeOrganizationId } = useDashboardWorkspace()
-  const [view, setView] = useState<BannerView | null>(null)
+  const [view, setView] = useState<SmsComplianceView | null>(null)
   const [dismissed, setDismissed] = useState(true)
 
   const loadCompliance = useCallback(async (organizationId: string | null) => {
-    const dismissKey = dismissStorageKey(organizationId)
+    const dismissKey = smsDismissStorageKey(organizationId)
     if (typeof window !== "undefined") {
       setDismissed(window.localStorage.getItem(dismissKey) === "1")
     }
-
-    try {
-      const res = await fetch(build10DlcUrl(organizationId), { credentials: "include" })
-      const json = res.ok ? await res.json() : null
-      if (json?.data) setView(json.data as BannerView)
-      else setView(null)
-    } catch {
-      setView(null)
+    const data = await fetchSmsComplianceView(organizationId)
+    setView(data)
+    if (data && resolveSmsNoticeState(data) === "rejected" && typeof window !== "undefined") {
+      window.localStorage.removeItem(dismissKey)
+      setDismissed(false)
     }
   }, [])
 
@@ -61,21 +45,16 @@ export function SmsAlertBanner() {
 
   if (!view || view.sms_ready) return null
 
-  const regStatus = view.registration?.status ?? ""
-  const orgPending = view.organization_status === "PENDING_APPROVAL"
-  const isPending =
-    view.pending_approval === true ||
-    orgPending ||
-    regStatus === "PENDING_APPROVAL" ||
-    ["paid", "submitted", "pending_review"].includes(regStatus)
-  const needsAttention = regStatus === "REJECTED" || view.organization_status === "REJECTED"
+  const smsState = resolveSmsNoticeState(view)
+  const isPending = smsState === "pending"
+  const needsAttention = smsState === "rejected"
 
   if (isPending && dismissed && !needsAttention) return null
 
   const dismiss = () => {
     setDismissed(true)
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(dismissStorageKey(activeOrganizationId), "1")
+      window.localStorage.setItem(smsDismissStorageKey(activeOrganizationId), "1")
     }
   }
 
@@ -85,16 +64,10 @@ export function SmsAlertBanner() {
       ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
       : "border-violet-500/30 bg-violet-500/10 text-violet-100"
 
-  const message = needsAttention
-    ? "Your SMS registration needs attention — lead-alert texts can't send until it's resolved."
-    : isPending
-      ? "⏳ Your SMS business registration is currently undergoing carrier review. Alerts will unlock shortly."
-      : "Heads up: SMS lead alerts won't reach your phone until you register your business (one-time carrier requirement)."
-
   return (
     <div className={`flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 ${tone}`}>
       <MessageSquareWarning className="h-5 w-5 shrink-0" aria-hidden />
-      <p className="min-w-0 flex-1 text-sm">{message}</p>
+      <p className="min-w-0 flex-1 text-sm">{smsNoticeMessage(view, smsState)}</p>
       <button
         type="button"
         onClick={openCarrierRegistrationModal}

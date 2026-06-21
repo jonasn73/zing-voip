@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   AlertTriangle,
   Bell,
@@ -25,11 +25,18 @@ import {
 } from "@/lib/porting-lifecycle"
 import { orderPinSavedAwaitingCarrierReview, orderRequiresPinCorrection } from "@/lib/porting-pin-correction"
 import { storedPortingPinForDesk } from "@/lib/porting-desk-validation"
-import { organizationQueryString, readActiveOrganizationId } from "@/lib/workspace-organizations"
 import {
   CARRIER_REGISTRATION_UPDATED_EVENT,
   openCarrierRegistrationModal,
 } from "@/lib/settings-modals-events"
+import {
+  fetchSmsComplianceView,
+  resolveSmsNoticeState,
+  smsDismissStorageKey,
+  smsNoticeMessage,
+  type SmsComplianceView,
+} from "@/lib/sms-registration-notice"
+import { organizationQueryString, readActiveOrganizationId } from "@/lib/workspace-organizations"
 import type { PortingOrder } from "@/lib/types"
 
 type NotificationTone = "critical" | "warning" | "info" | "success"
@@ -46,73 +53,6 @@ type NotificationCenterItem = {
 }
 
 type PortingOrderRow = PortingOrder & { unread_notification_count?: number }
-
-type BannerView = {
-  sms_ready?: boolean
-  pending_approval?: boolean
-  organization_status?: string
-  registration?: { status?: string } | null
-  legacy_registration?: { status?: string; status_detail?: string | null } | null
-  submission_summary?: {
-    lifecycle_stage?: string
-    telnyx_status?: string | null
-    rejection_reason?: string | null
-  } | null
-}
-
-function truncateNotice(text: string, max = 140): string {
-  const t = text.trim()
-  if (t.length <= max) return t
-  return `${t.slice(0, max - 1)}…`
-}
-
-/** Match the carrier registration modal — failed/rejected beats generic "pending review". */
-function resolveSmsNoticeState(view: BannerView): "ready" | "rejected" | "pending" | "setup" {
-  if (view.sms_ready) return "ready"
-  const telnyxStatus = (
-    view.submission_summary?.telnyx_status ??
-    view.legacy_registration?.status ??
-    ""
-  )
-    .trim()
-    .toLowerCase()
-  const regStatus = view.registration?.status ?? ""
-  const orgStatus = view.organization_status ?? ""
-  const stage = view.submission_summary?.lifecycle_stage ?? ""
-
-  if (
-    stage === "rejected" ||
-    regStatus === "REJECTED" ||
-    orgStatus === "REJECTED" ||
-    telnyxStatus === "failed" ||
-    telnyxStatus === "rejected"
-  ) {
-    return "rejected"
-  }
-
-  const isPending =
-    view.pending_approval === true ||
-    orgStatus === "PENDING_APPROVAL" ||
-    regStatus === "PENDING_APPROVAL" ||
-    stage === "carrier_review" ||
-    ["paid", "submitted", "pending_review"].includes(telnyxStatus)
-
-  if (isPending) return "pending"
-  return "setup"
-}
-
-function dismissStorageKey(organizationId: string | null): string {
-  const orgKey =
-    organizationId && !organizationId.startsWith("legacy-") ? organizationId : "default"
-  return `lyncr_10dlc_nudge_dismissed_${orgKey}`
-}
-
-function build10DlcUrl(organizationId: string | null): string {
-  if (organizationId && !organizationId.startsWith("legacy-")) {
-    return `/api/settings/10dlc?organization_id=${encodeURIComponent(organizationId)}`
-  }
-  return "/api/settings/10dlc"
-}
 
 function portingMessage(order: PortingOrderRow, phase: PortingBannerPhase): string {
   const phone = formatPhoneDisplay(order.phone_number)
@@ -167,7 +107,7 @@ export const NotificationCenter = memo(function NotificationCenter() {
   const [viewingEmail, setViewingEmail] = useState<string | null>(null)
   const [exitingImpersonation, setExitingImpersonation] = useState(false)
   const [portingOrders, setPortingOrders] = useState<PortingOrderRow[]>([])
-  const [smsView, setSmsView] = useState<BannerView | null>(null)
+  const [smsView, setSmsView] = useState<SmsComplianceView | null>(null)
   const [smsDismissed, setSmsDismissed] = useState(true)
 
   const loadSession = useCallback(() => {
@@ -197,16 +137,15 @@ export const NotificationCenter = memo(function NotificationCenter() {
   }, [activeOrganizationId])
 
   const loadSms = useCallback(async (organizationId: string | null) => {
-    const dismissKey = dismissStorageKey(organizationId)
+    const dismissKey = smsDismissStorageKey(organizationId)
     if (typeof window !== "undefined") {
       setSmsDismissed(window.localStorage.getItem(dismissKey) === "1")
     }
-    try {
-      const res = await fetch(build10DlcUrl(organizationId), { credentials: "include" })
-      const json = res.ok ? await res.json() : null
-      setSmsView(json?.data ? (json.data as BannerView) : null)
-    } catch {
-      setSmsView(null)
+    const view = await fetchSmsComplianceView(organizationId)
+    setSmsView(view)
+    if (view && resolveSmsNoticeState(view) === "rejected" && typeof window !== "undefined") {
+      window.localStorage.removeItem(dismissKey)
+      setSmsDismissed(false)
     }
   }, [])
 
@@ -215,6 +154,11 @@ export const NotificationCenter = memo(function NotificationCenter() {
     void refreshPorting()
     void loadSms(activeOrganizationId)
   }, [loadSession, refreshPorting, loadSms, activeOrganizationId])
+
+  useEffect(() => {
+    if (!open) return
+    void loadSms(readActiveOrganizationId() ?? activeOrganizationId)
+  }, [open, loadSms, activeOrganizationId])
 
   useEffect(() => {
     const onChanged = () => {
@@ -308,10 +252,6 @@ export const NotificationCenter = memo(function NotificationCenter() {
 
     if (smsView && !smsView.sms_ready) {
       const smsState = resolveSmsNoticeState(smsView)
-      const rejectionReason =
-        smsView.submission_summary?.rejection_reason?.trim() ||
-        smsView.legacy_registration?.status_detail?.trim() ||
-        null
       const isPending = smsState === "pending"
       const needsAttention = smsState === "rejected"
 
@@ -321,13 +261,7 @@ export const NotificationCenter = memo(function NotificationCenter() {
           tone: needsAttention ? "critical" : isPending ? "warning" : "info",
           icon: MessageSquareWarning,
           title: needsAttention ? "SMS registration failed" : "SMS registration",
-          message: needsAttention
-            ? rejectionReason
-              ? truncateNotice(`Carrier rejection: ${rejectionReason}`)
-              : "Your 10DLC registration failed at the carrier. Update and resubmit to unlock business texts."
-            : isPending
-              ? "SMS business registration is undergoing carrier review. Alerts will unlock shortly."
-              : "Register your business for SMS lead alerts (one-time carrier requirement).",
+          message: smsNoticeMessage(smsView, smsState),
           actionLabel: needsAttention ? "Fix registration" : isPending ? "View status" : "Set up SMS",
           onAction: () => {
             setOpen(false)
@@ -352,7 +286,7 @@ export const NotificationCenter = memo(function NotificationCenter() {
   const dismissSmsPending = () => {
     setSmsDismissed(true)
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(dismissStorageKey(activeOrganizationId), "1")
+      window.localStorage.setItem(smsDismissStorageKey(activeOrganizationId), "1")
     }
   }
 

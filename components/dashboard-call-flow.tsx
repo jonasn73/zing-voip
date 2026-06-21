@@ -23,6 +23,7 @@ import {
   type DashboardBusinessNumber,
 } from "@/lib/dashboard-routing-utils"
 import { DRAWER_SHEET_GPU } from "@/lib/workspace-sheet-classes"
+import { AdminRoutingOverrideNotice } from "@/components/dashboard/admin-routing-override-notice"
 import {
   CallFlowLinePickerSkeleton,
   CallFlowStepsSkeleton,
@@ -257,23 +258,6 @@ export function buildCallFlowNodes(params: {
   return nodes
 }
 
-function AdminRoutingOverrideNotice({ phone }: { phone: string }) {
-  return (
-    <div
-      role="status"
-      className="rounded-xl border border-purple-500/50 bg-purple-950/40 px-4 py-3 text-sm leading-relaxed text-purple-100"
-    >
-      <p>
-        <span aria-hidden>⚠️ </span>
-        <span className="font-semibold text-purple-50">System Notice:</span> Platform Admin has configured
-        direct routing override to{" "}
-        <span className="font-mono font-semibold text-purple-50">{formatPhoneDisplay(phone)}</span>. Standard
-        routing rules are temporarily bypassed.
-      </p>
-    </div>
-  )
-}
-
 export const DashboardCallFlow = memo(function DashboardCallFlow({
   businessNumbers,
   routingBusinessNumber,
@@ -387,9 +371,10 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
           </div>
         ) : (
           <div className="space-y-4">
-            {adminOverrideActive ? (
-              <AdminRoutingOverrideNotice phone={adminRoutingOverridePhone!.trim()} />
-            ) : null}
+            <AdminRoutingOverrideNotice
+              active={adminOverrideActive}
+              phone={adminRoutingOverridePhone?.trim() ?? ""}
+            />
             <div
               className={cn(
                 "sigo-bloom-in-stagger flex flex-col gap-4 lg:flex-row lg:items-stretch",

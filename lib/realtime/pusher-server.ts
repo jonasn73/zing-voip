@@ -77,6 +77,8 @@ export type OwnerChannelEvent =
   | "disposition-updated"
   | "job-status-updated"
   | "tech-location-updated"
+  | "call-initiated"
+  | "call-completed"
 
 /** Publish an event to a business owner's channel (e.g. live booking alerts). Safe no-op when unconfigured. */
 export async function publishOwnerEvent(

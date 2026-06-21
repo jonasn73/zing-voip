@@ -8,6 +8,7 @@ import { after } from "next/server"
 import { NextRequest, NextResponse } from "next/server"
 import { recordCallStatusEvent, updateCallLog } from "@/lib/db"
 import { evaluateLowCarrierCreditFromCallUsage } from "@/lib/carrier-credit-alerts"
+import { broadcastCallCompletedBySid } from "@/lib/call-telemetry-realtime"
 import { maybeSendPostCallDispositionSms } from "@/lib/post-call-disposition-sms"
 import { maybeSendAdminOverrideDispatchSms } from "@/lib/admin-override-dispatch-sms"
 import type { CallType } from "@/lib/types"
@@ -54,8 +55,12 @@ export async function POST(req: NextRequest) {
       void evaluateLowCarrierCreditFromCallUsage(callSid).catch((walletErr) => {
         console.error("[Telnyx] Low carrier credit evaluation failed:", walletErr)
       })
-      // Text the answering receptionist an outcome-code prompt (after the 200, never blocks Telnyx).
       after(async () => {
+        try {
+          await broadcastCallCompletedBySid(callSid)
+        } catch (telemetryErr) {
+          console.warn("[Telnyx] call-completed telemetry broadcast failed:", telemetryErr)
+        }
         try {
           await maybeSendPostCallDispositionSms(callSid, callStatus)
         } catch (smsErr) {

@@ -2873,6 +2873,7 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
         ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}, now()
       )
     `
+    void notifyInboundCallInitiatedTelemetry(log, sid, fromNum, toNum)
     return
   } catch (e) {
     const code = pgErrorCode(e)
@@ -2890,6 +2891,7 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
           ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}
         )
       `
+      void notifyInboundCallInitiatedTelemetry(log, sid, fromNum, toNum)
       return
     }
     // Legacy DB: twilio_call_sid NOT NULL — duplicate sid into both columns
@@ -2906,6 +2908,7 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
             ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}, now()
           )
         `
+        void notifyInboundCallInitiatedTelemetry(log, sid, fromNum, toNum)
         return
       } catch (e2) {
         const m2 = pgErrorMessage(e2)
@@ -2921,12 +2924,35 @@ export async function insertCallLog(log: Omit<CallLog, "id" | "created_at">): Pr
               ${log.routed_to_name}, ${log.has_recording}, ${log.recording_url}, ${log.recording_duration_seconds}
             )
           `
+          void notifyInboundCallInitiatedTelemetry(log, sid, fromNum, toNum)
           return
         }
         throw e2
       }
     }
     throw e
+  }
+}
+
+/** Push a realtime HUD tick when a new inbound call row is created. */
+async function notifyInboundCallInitiatedTelemetry(
+  log: Omit<CallLog, "id" | "created_at">,
+  sid: string,
+  fromNum: string,
+  toNum: string
+): Promise<void> {
+  if (log.call_type !== "incoming" || log.status !== "ringing") return
+  try {
+    const { publishOwnerEvent } = await import("@/lib/realtime/pusher-server")
+    const line = await getActivePhoneNumberByE164(toNum).catch(() => null)
+    await publishOwnerEvent(log.user_id, "call-initiated", {
+      call_sid: sid,
+      from_number: fromNum,
+      to_number: toNum,
+      organization_id: line?.organization_id ?? null,
+    })
+  } catch (e) {
+    console.warn("[db] call-initiated telemetry publish failed:", e)
   }
 }
 
@@ -3257,6 +3283,77 @@ export async function getCallQualitySummary(userId: string, days = 7): Promise<{
       p95_setup_ms: row.p95_setup_ms == null ? null : Number(row.p95_setup_ms),
       avg_post_dial_delay_ms: row.avg_post_dial_delay_ms == null ? null : Number(row.avg_post_dial_delay_ms),
     }
+  }
+}
+
+/** Today's call HUD metrics for the routing strip (workspace-scoped via business line DIDs). */
+export async function getDailyCallTelemetryForOwner(
+  ownerUserId: string,
+  organizationId?: string | null
+): Promise<{ daily_calls: number; missed_calls: number; avg_talk_seconds: number }> {
+  const sql = getSql()
+  const orgUuid =
+    organizationId && !organizationId.startsWith("legacy-") ? organizationId.trim() : null
+
+  let lineNumbers: string[] | null = null
+  if (orgUuid) {
+    const lines = await getPhoneNumbers(ownerUserId, orgUuid)
+    lineNumbers = [
+      ...new Set(
+        lines
+          .map((line) => normalizePhoneNumberE164(line.number))
+          .filter((n) => n.length >= 10)
+      ),
+    ]
+    if (lineNumbers.length === 0) {
+      return { daily_calls: 0, missed_calls: 0, avg_talk_seconds: 0 }
+    }
+  }
+
+  const rows = lineNumbers
+    ? await sql`
+        SELECT
+          COUNT(*)::int AS daily_calls,
+          COUNT(*) FILTER (
+            WHERE call_type = 'missed'
+              OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+          )::int AS missed_calls,
+          COALESCE(
+            AVG(duration_seconds) FILTER (
+              WHERE duration_seconds > 0
+                AND status IN ('completed', 'answered', 'in-progress')
+            ),
+            0
+          )::float8 AS avg_talk_seconds
+        FROM call_logs
+        WHERE user_id = ${ownerUserId}
+          AND created_at >= date_trunc('day', now())
+          AND to_number = ANY(${lineNumbers}::text[])
+      `
+    : await sql`
+        SELECT
+          COUNT(*)::int AS daily_calls,
+          COUNT(*) FILTER (
+            WHERE call_type = 'missed'
+              OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+          )::int AS missed_calls,
+          COALESCE(
+            AVG(duration_seconds) FILTER (
+              WHERE duration_seconds > 0
+                AND status IN ('completed', 'answered', 'in-progress')
+            ),
+            0
+          )::float8 AS avg_talk_seconds
+        FROM call_logs
+        WHERE user_id = ${ownerUserId}
+          AND created_at >= date_trunc('day', now())
+      `
+
+  const row = rows[0] as Record<string, unknown> | undefined
+  return {
+    daily_calls: Number(row?.daily_calls ?? 0),
+    missed_calls: Number(row?.missed_calls ?? 0),
+    avg_talk_seconds: Number(row?.avg_talk_seconds ?? 0),
   }
 }
 

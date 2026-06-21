@@ -240,7 +240,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
         <p className="rounded-xl border border-amber-500/35 bg-amber-950/35 px-4 py-3 text-sm text-foreground/90">
           Your subscription is active, but your line is not live yet. Add at least{" "}
           {billing?.telnyx_number_purchase_label ?? "$2.00"} carrier credit below — then we will purchase and wire
-          your number on Telnyx automatically.
+          your number automatically.
         </p>
       ) : null}
 
@@ -328,7 +328,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
             <h2 className="text-sm font-semibold text-foreground">Add carrier credit</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {needsCarrierCredit
-                ? "Required next step: prepaid balance activates your reserved number on Telnyx."
+                ? "Required next step: prepaid balance activates your reserved number on the network."
                 : "Prepaid balance funds your phone number"}{" "}
               ({billing?.telnyx_number_purchase_label ?? "$2.00"} per line) and call usage. After payment, your prepaid
               balance updates automatically.

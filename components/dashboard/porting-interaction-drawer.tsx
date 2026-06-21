@@ -14,6 +14,7 @@ import {
 import { dedupePortingConversationItems } from "@/lib/porting-conversation-dedupe"
 import { buildCarrierLookupBanner } from "@/lib/porting-carrier-lookup-guide"
 import { toast } from "sonner"
+import { displayUserFacingMessage } from "@/lib/porting-display"
 import { CarrierTransferDesk } from "@/components/dashboard/carrier-transfer-desk"
 import { dispatchPortingOrdersChanged } from "@/components/dashboard-numbers-modal-context"
 import { cn } from "@/lib/utils"
@@ -228,11 +229,12 @@ export function PortingInteractionDrawer({ orderId, open, onOpenChange }: Props)
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || "Send failed")
-      const successText =
+      const successText = displayUserFacingMessage(
         json.message ||
-        (payload.pin
-          ? "PIN saved on your port order. Telnyx is re-reviewing your transfer."
-          : "Carrier desk received your update for this line.")
+          (payload.pin
+            ? "PIN saved on your port order. The carrier network is re-reviewing your transfer."
+            : "Carrier desk received your update for this line.")
+      )
       setSubmitSuccessMessage(successText)
       toast.success(payload.pin ? "PIN saved to carrier" : "Correction submitted", {
         description: successText,
@@ -241,7 +243,7 @@ export function PortingInteractionDrawer({ orderId, open, onOpenChange }: Props)
       await loadDesk()
     } catch (e) {
       toast.error("Could not send correction", {
-        description: e instanceof Error ? e.message : "Try again.",
+        description: displayUserFacingMessage(e instanceof Error ? e.message : "Try again."),
       })
     } finally {
       setSending(false)

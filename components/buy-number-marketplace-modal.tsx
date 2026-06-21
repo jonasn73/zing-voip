@@ -69,7 +69,7 @@ async function fetchTelnyxLines(
     error?: string
   }
   if (!res.ok) {
-    throw new Error(data.error || "Could not search Telnyx inventory")
+    throw new Error(data.error || "Could not search available lines")
   }
   if (!Array.isArray(data.numbers)) return { lines: [], meta: data.meta as SearchMeta | null }
   const lines = data.numbers.map((n) => ({
@@ -108,7 +108,7 @@ function InventoryRow({
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
               <Zap className="h-3 w-3" aria-hidden />
-              Live Telnyx inventory
+              Live line inventory
             </span>
             <span className="text-xs font-medium text-zinc-400">$2.00 / mo</span>
           </div>
@@ -327,7 +327,7 @@ export function BuyNumberMarketplaceModal({
         <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5 text-left">
           <DialogTitle className="text-xl font-semibold tracking-tight">Buy a number</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Search live Telnyx inventory by area code — only real, purchasable lines are shown.
+            Search live inventory by area code — only real, purchasable lines are shown.
           </DialogDescription>
         </DialogHeader>
 

@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
+import { displayUserFacingMessage } from "@/lib/porting-display"
 import { fetchOnboardingProfile } from "@/lib/onboarding-profile-client"
 import { formatBillingCycleDate } from "@/lib/format-billing-cycle"
 import { dispatchBusinessNumbersChanged, dispatchPortingOrdersChanged } from "@/components/dashboard-numbers-modal-context"
@@ -107,7 +108,7 @@ function PortPinCorrectionForm({
       if (!res.ok) throw new Error(data.error || "Could not resubmit port")
       toast({
         title: "Port resubmitted",
-        description: data.message || "Carrier is reviewing your corrected PIN.",
+        description: displayUserFacingMessage(data.message || "Carrier is reviewing your corrected PIN."),
       })
       onResubmitted()
       dispatchPortingOrdersChanged()
@@ -115,7 +116,7 @@ function PortPinCorrectionForm({
       toast({
         variant: "destructive",
         title: "Resubmit failed",
-        description: e instanceof Error ? e.message : "Try again or contact support.",
+        description: displayUserFacingMessage(e instanceof Error ? e.message : "Try again or contact support."),
       })
     } finally {
       setSubmitting(false)

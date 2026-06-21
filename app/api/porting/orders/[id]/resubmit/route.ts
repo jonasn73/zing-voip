@@ -97,7 +97,7 @@ async function handleResubmit(req: NextRequest, id: string) {
         title: "PIN correction submitted",
         body: telnyx.pin_confirmed_on_carrier
           ? "✅ PIN saved and sent back to the carrier for review."
-          : "✅ PIN saved on your port order. Telnyx is re-reviewing — the portal may still show red until they process it.",
+          : "✅ PIN saved on your port order. The carrier is re-reviewing — status may still show pending until they process it.",
         rawPayload: { pin_saved: true, telnyx_status: telnyx.telnyxStatus },
       })
     }
@@ -120,7 +120,7 @@ async function handleResubmit(req: NextRequest, id: string) {
       success: true,
       message: pinSaved
         ? pinSavedPendingReview
-          ? "PIN saved on your port order. Telnyx is re-reviewing — you may still see a red warning in their portal for a few minutes."
+          ? "PIN saved on your port order. The carrier is re-reviewing — status may still show pending for a few minutes."
           : "PIN saved and sent back to the carrier. Your transfer is moving forward."
         : "Correction submitted to the carrier desk for this line.",
       data: {

@@ -44,7 +44,7 @@ function bannerTone(phase: PortingBannerPhase): string {
 function buildDisplayMessage(order: PortingOrderRow, phase: PortingBannerPhase): string {
   const phone = formatPhoneDisplay(order.phone_number)
   if (orderPinSavedAwaitingCarrierReview(order) && storedPortingPinForDesk(order)) {
-    return `✅ PIN submitted for ${phone} — carrier is re-reviewing your transfer (Telnyx may still show red briefly).`
+    return `✅ PIN submitted for ${phone} — carrier is re-reviewing your transfer (status may still show pending briefly).`
   }
   if (orderRequiresPinCorrection(order)) {
     return `🔴 PIN Required: Carrier rejected correction for ${phone} — enter your 4–8 digit transfer PIN in the transfer desk.`

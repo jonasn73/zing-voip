@@ -205,7 +205,7 @@ export async function submitTelnyxPortingPinCorrection(
 
   if (!pinSaved) {
     throw new Error(
-      "Telnyx did not save your PIN — the carrier API rejected the value. Double-check the transfer PIN from your losing carrier and try again."
+      "The carrier network did not save your PIN — double-check the transfer PIN from your losing carrier and try again."
     )
   }
 

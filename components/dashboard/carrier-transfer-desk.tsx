@@ -107,7 +107,7 @@ export function CarrierTransferDesk({
             PIN on file — carrier is re-reviewing your transfer
           </p>
           <p className="text-[11px] leading-snug text-emerald-200/80">
-            Telnyx may still show a red PIN warning for a few minutes while they process your correction.
+            Status may still show as pending for a few minutes while the carrier processes your correction.
             You do not need to submit again unless the carrier rejects a different PIN.
           </p>
           <button
@@ -171,7 +171,7 @@ export function CarrierTransferDesk({
         </label>
       ) : (
         <p className="text-[11px] leading-snug text-amber-200/90">
-          Submit Correction sends your PIN to the carrier via Telnyx — not as a chat comment — so the
+          Submit Correction sends your PIN directly to the carrier network — not as a chat comment — so the
           exception clears.
         </p>
       )}

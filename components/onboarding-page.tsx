@@ -283,7 +283,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
     }
     if (!simulationMode && bufferedLine.method === "buy" && bufferedLine.fromTelnyx === false) {
       setLaunchError(
-        "That number was only a preview. Search your area code again, pick a line from Telnyx inventory, then launch."
+        "That number was only a preview. Search your area code again, pick a line from available inventory, then launch."
       )
       return
     }
@@ -469,7 +469,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs text-muted-foreground">
                           {inventorySource === "telnyx"
-                            ? `Available in (${areaCode}) — real numbers from Telnyx`
+                            ? `Available in (${areaCode}) — real numbers ready to purchase`
                             : `Preview numbers in (${areaCode})`}
                         </p>
                         <div className="flex items-center gap-3">
@@ -879,7 +879,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   </p>
                 </div>
                 <SheetFooter className="border-t border-border/70 bg-secondary/15 px-4 py-3">
-                  <p className="text-[11px] text-muted-foreground">Demo steps here may not call real Telnyx APIs until you add numbers in Settings.</p>
+                  <p className="text-[11px] text-muted-foreground">Demo steps here may not purchase real lines until you add numbers in Settings.</p>
                 </SheetFooter>
               </>
             )

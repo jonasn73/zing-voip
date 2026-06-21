@@ -73,9 +73,9 @@ export function SmsRegistrationStatusView({ summary, loading, onRefresh, onEdit,
 
   const referenceLabel =
     summary.carrier_reference_kind === "campaign"
-      ? "Telnyx campaign ID"
+      ? "Campaign ID"
       : summary.carrier_reference_kind === "brand"
-        ? "Telnyx brand ID"
+        ? "Brand ID"
         : "Carrier reference ID"
 
   return (
@@ -177,7 +177,7 @@ export function SmsRegistrationStatusView({ summary, loading, onRefresh, onEdit,
             <SummaryRow label="Dashboard status" value={summary.registration_status.replace(/_/g, " ")} />
           ) : null}
           {summary.telnyx_status ? (
-            <SummaryRow label="Telnyx status" value={summary.telnyx_status.replace(/_/g, " ")} />
+            <SummaryRow label="Carrier status" value={summary.telnyx_status.replace(/_/g, " ")} />
           ) : null}
         </dl>
       </div>

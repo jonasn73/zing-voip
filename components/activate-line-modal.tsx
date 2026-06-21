@@ -48,7 +48,7 @@ export function ActivateLineModal({
           <DialogTitle>Activate Your Live Business Line</DialogTitle>
           <DialogDescription>
             Complete secure checkout to subscribe to the Lyncr Starter plan ($49/month) and provision your line on
-            Telnyx. You will also need carrier credit on the Pay tab (at least $2) to purchase your number.
+            the carrier network. You will also need carrier credit on the Pay tab (at least $2) to purchase your number.
             {reservedDisplay ? (
               <>
                 {" "}
@@ -66,7 +66,7 @@ export function ActivateLineModal({
             </div>
             <p className="text-sm leading-relaxed text-muted-foreground">
               You skipped billing during signup. Stripe will collect your payment method and start your subscription.
-              After payment succeeds, we purchase your reserved number on Telnyx automatically.
+              After payment succeeds, we purchase your reserved number and activate it automatically.
             </p>
             <p className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground">
               <Lock className="h-3 w-3 shrink-0" aria-hidden />

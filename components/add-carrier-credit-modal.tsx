@@ -69,7 +69,7 @@ export function AddCarrierCreditModal() {
           <DialogTitle>Add carrier credit</DialogTitle>
           <DialogDescription>
             {message ??
-              "Each new business line uses a small prepaid balance on Telnyx."}
+              "Each new business line uses a small prepaid carrier balance."}
           </DialogDescription>
         </DialogHeader>
 

@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { SheetInfoTrigger } from "@/components/sheet-info-trigger"
 import { DashboardCallFlow } from "@/components/dashboard-call-flow"
 import { DashboardRoutingSidebar } from "@/components/dashboard-routing-sidebar"
+import { RoutingTelemetryStrip } from "@/components/dashboard/routing-telemetry-strip"
 import { useDashboardNumbersModal } from "@/components/dashboard-numbers-modal-context"
 import {
   businessNumbersMatch,
@@ -83,6 +84,7 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
           routingStrategy={routingStrategy}
           businessNumbers={businessNumbers}
           className="lg:sticky lg:top-24"
+          onConfigureRouting={() => setWhoAnswersOpen(true)}
         />
         <div className="min-w-0 flex-1 space-y-8 sm:space-y-10">
       {quickSetupDecided && !isSetupComplete ? (
@@ -178,6 +180,8 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
           </div>
         </section>
       ) : null}
+
+      <RoutingTelemetryStrip businessNumbers={businessNumbers} />
 
       <DashboardCallFlow
         businessNumbers={businessNumbers}

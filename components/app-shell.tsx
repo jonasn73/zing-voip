@@ -37,6 +37,7 @@ import { AppNavCommandPalette } from "@/components/app-nav-command-palette"
 import { CommandDock } from "@/components/layout/command-dock"
 import { NotificationCenter } from "@/components/layout/notification-center"
 import { DASHBOARD_PAGE_HREF, type PageId } from "@/lib/dashboard-nav"
+import { SHELL_ACRYLIC_SURFACE } from "@/lib/shell-chrome-styles"
 
 export type { PageId }
 
@@ -69,7 +70,12 @@ const AppShellHeader = memo(function AppShellHeader({
   headerCenter?: ReactNode
 }) {
   return (
-    <header className="sticky top-0 z-40 flex shrink-0 items-center gap-2 border-b border-border/70 bg-background/80 px-3 py-3 backdrop-blur-md sm:px-5 sm:py-3.5">
+    <header
+      className={cn(
+        "sticky top-0 z-40 flex shrink-0 items-center gap-2 border-b px-3 py-3 sm:px-5 sm:py-3.5",
+        SHELL_ACRYLIC_SURFACE
+      )}
+    >
       {useLinks ? (
         <Link
           href="/dashboard"

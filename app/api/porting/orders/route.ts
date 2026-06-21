@@ -22,10 +22,15 @@ export async function GET(req: NextRequest) {
   }
 
   const orgId = req.nextUrl.searchParams.get("organization_id")?.trim() || null
+  const activeOnly = req.nextUrl.searchParams.get("active") === "1"
 
   try {
+    // Banner + workspace widgets must not leak ports from other businesses.
+    if (activeOnly && !orgId) {
+      return NextResponse.json({ data: { orders: [] } })
+    }
+
     const orders = await listPortingOrdersForOwner(userId, orgId)
-    const activeOnly = req.nextUrl.searchParams.get("active") === "1"
     const filtered = activeOnly ? orders.filter(isActivePortingOrder) : orders
 
     const syncedOrders = activeOnly

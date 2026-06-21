@@ -15,20 +15,25 @@ import {
 } from "@/lib/porting-lifecycle"
 import { orderPinSavedAwaitingCarrierReview, orderRequiresPinCorrection } from "@/lib/porting-pin-correction"
 import { storedPortingPinForDesk } from "@/lib/porting-desk-validation"
-import { organizationQueryString } from "@/lib/workspace-organizations"
+import { organizationQueryString, readActiveOrganizationId } from "@/lib/workspace-organizations"
 import type { PortingOrder } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type PortingOrderRow = PortingOrder & { unread_notification_count?: number }
 
 async function fetchActivePortingOrders(organizationId: string | null): Promise<PortingOrderRow[]> {
-  const orgQs = organizationQueryString(organizationId)
+  const orgId = organizationId ?? readActiveOrganizationId()
+  const orgQs = organizationQueryString(orgId)
   const sep = orgQs ? "&" : "?"
   const res = await fetch(`/api/porting/orders${orgQs}${sep}active=1`, { credentials: "include" })
   if (!res.ok) return []
   const json = (await res.json().catch(() => ({}))) as { data?: { orders?: PortingOrderRow[] } }
   const orders = Array.isArray(json.data?.orders) ? json.data.orders : []
-  return orders.filter(isActivePortingOrder)
+  const scoped =
+    orgId && !orgId.startsWith("legacy-")
+      ? orders.filter((o) => (o.organization_id ?? null) === orgId)
+      : orders
+  return scoped.filter(isActivePortingOrder)
 }
 
 function bannerTone(phase: PortingBannerPhase): string {
@@ -63,8 +68,9 @@ export function PortingStatusBanner() {
   const [orders, setOrders] = useState<PortingOrderRow[]>([])
 
   const refresh = useCallback(async () => {
+    const orgId = readActiveOrganizationId() ?? activeOrganizationId
     try {
-      const rows = await fetchActivePortingOrders(activeOrganizationId)
+      const rows = await fetchActivePortingOrders(orgId)
       const unreadMap: Record<string, number> = {}
       for (const o of rows) {
         const id = o.telnyx_order_id?.trim()
@@ -77,8 +83,9 @@ export function PortingStatusBanner() {
   }, [activeOrganizationId])
 
   useEffect(() => {
+    setOrders([])
     void refresh()
-  }, [refresh])
+  }, [activeOrganizationId, refresh])
 
   useEffect(() => {
     const onChanged = () => void refresh()

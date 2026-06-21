@@ -4142,9 +4142,21 @@ export async function listPortingOrdersForOwner(
     const rows =
       organizationId && !organizationId.startsWith("legacy-")
         ? await sql`
-            SELECT * FROM porting_orders
-            WHERE owner_user_id = ${ownerUserId} AND organization_id = ${organizationId}
-            ORDER BY created_at DESC
+            SELECT po.* FROM porting_orders po
+            WHERE po.owner_user_id = ${ownerUserId}
+              AND (
+                po.organization_id = ${organizationId}
+                OR (
+                  po.organization_id IS NULL
+                  AND EXISTS (
+                    SELECT 1 FROM phone_numbers pn
+                    WHERE pn.user_id = ${ownerUserId}
+                      AND pn.organization_id = ${organizationId}
+                      AND pn.number = po.phone_number
+                  )
+                )
+              )
+            ORDER BY po.created_at DESC
             LIMIT 20
           `
         : await sql`

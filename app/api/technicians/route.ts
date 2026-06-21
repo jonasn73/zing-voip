@@ -26,8 +26,9 @@ export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   try {
-    const technicians = await listFieldTechnicians(userId)
-    return NextResponse.json({ data: technicians })
+    const orgParam = req.nextUrl.searchParams.get("organization_id")?.trim() || null
+    const technicians = await listFieldTechnicians(userId, orgParam)
+    return NextResponse.json({ data: technicians, organization_id: orgParam })
   } catch (e) {
     console.error("[GET /api/technicians] failed:", e)
     return NextResponse.json({ error: "Failed to list technicians" }, { status: 500 })
@@ -116,8 +117,9 @@ export async function POST(req: NextRequest) {
         ownerBusinessName: owner.business_name,
         name,
         phone,
+        organizationId: targetWorkspaceId,
       })
-      const technicians = await listFieldTechnicians(ownerUserId)
+      const technicians = await listFieldTechnicians(ownerUserId, targetWorkspaceId)
       const technician =
         (await getFieldTechnicianByIdForOwner(ownerUserId, rosterId)) ??
         technicians.find((t) => t.id === rosterId) ??
@@ -146,6 +148,7 @@ export async function POST(req: NextRequest) {
       phone,
       token,
       expiresAt,
+      organizationId: targetWorkspaceId,
     })
 
     const baseUrl = resolveAppBaseUrl(req.nextUrl.origin)
@@ -165,7 +168,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const technicians = await listFieldTechnicians(ownerUserId)
+    const technicians = await listFieldTechnicians(ownerUserId, targetWorkspaceId)
     const technician =
       technicians.find((t) => t.portal_user_id === portalUserId) ?? technicians[0] ?? null
     const inviteBase = {

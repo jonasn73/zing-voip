@@ -36,6 +36,8 @@ export interface FieldTechnician {
   id: string
   /** The business owner this tech works for. */
   owner_user_id: string
+  /** Workspace this tech belongs to (`078-field-technicians-organization.sql`). */
+  organization_id: string | null
   /** The tech's login user (users.id, account_role=field_tech). Null until linked. */
   portal_user_id: string | null
   name: string

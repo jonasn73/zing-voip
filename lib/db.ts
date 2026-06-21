@@ -5517,10 +5517,17 @@ function isMissingAssignedTechColumnError(e: unknown): boolean {
   return msg.includes("assigned_tech_id") || msg.includes("job_status")
 }
 
+function isMissingFieldTechOrganizationColumnError(e: unknown): boolean {
+  if (pgErrorCode(e) !== "42703") return false
+  const msg = pgErrorMessage(e)
+  return msg.includes("organization_id") && msg.includes("field_technicians")
+}
+
 function parseFieldTechnicianRow(row: Record<string, unknown>): FieldTechnician {
   return {
     id: String(row.id),
     owner_user_id: String(row.user_id),
+    organization_id: row.organization_id != null ? String(row.organization_id) : null,
     portal_user_id: row.portal_user_id != null ? String(row.portal_user_id) : null,
     name: String(row.name ?? ""),
     phone: String(row.phone ?? ""),
@@ -5531,8 +5538,88 @@ function parseFieldTechnicianRow(row: Record<string, unknown>): FieldTechnician 
   }
 }
 
-/** All technicians on an owner's roster (joins the linked login email). Empty until scripts/061 runs. */
-export async function listFieldTechnicians(ownerUserId: string): Promise<FieldTechnician[]> {
+/** All technicians on an owner's roster (optionally scoped to one workspace). */
+export async function listFieldTechnicians(
+  ownerUserId: string,
+  organizationId?: string | null
+): Promise<FieldTechnician[]> {
+  const sql = getSql()
+  const orgFilter =
+    organizationId && !organizationId.startsWith("legacy-") ? organizationId : null
+  try {
+    if (orgFilter) {
+      const realOrgCount = await countRealOrganizationsForOwner(ownerUserId)
+      const rows =
+        realOrgCount > 1
+          ? await sql`
+              SELECT ft.id, ft.user_id, ft.organization_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
+                     u.email AS email, u.invite_status AS invite_status
+              FROM field_technicians ft
+              LEFT JOIN users u ON u.id = ft.portal_user_id
+              WHERE ft.user_id = ${ownerUserId}
+                AND ft.organization_id = ${orgFilter}
+              ORDER BY ft.created_at DESC
+            `
+          : await sql`
+              SELECT ft.id, ft.user_id, ft.organization_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
+                     u.email AS email, u.invite_status AS invite_status
+              FROM field_technicians ft
+              LEFT JOIN users u ON u.id = ft.portal_user_id
+              WHERE ft.user_id = ${ownerUserId}
+                AND (ft.organization_id = ${orgFilter} OR ft.organization_id IS NULL)
+              ORDER BY ft.created_at DESC
+            `
+      return rows.map(parseFieldTechnicianRow)
+    }
+    const rows = await sql`
+      SELECT ft.id, ft.user_id, ft.organization_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
+             u.email AS email, u.invite_status AS invite_status
+      FROM field_technicians ft
+      LEFT JOIN users u ON u.id = ft.portal_user_id
+      WHERE ft.user_id = ${ownerUserId}
+      ORDER BY ft.created_at DESC
+    `
+    return rows.map(parseFieldTechnicianRow)
+  } catch (e) {
+    if (isMissingFieldTechTableError(e)) return []
+    if (isMissingFieldTechOrganizationColumnError(e)) {
+      return listFieldTechniciansLegacy(ownerUserId)
+    }
+    // invite_status missing (pre-054/064) → retry without it.
+    if (pgErrorCode(e) === "42703") {
+      try {
+        const rows = orgFilter
+          ? await sql`
+              SELECT ft.id, ft.user_id, ft.organization_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
+                     u.email AS email
+              FROM field_technicians ft
+              LEFT JOIN users u ON u.id = ft.portal_user_id
+              WHERE ft.user_id = ${ownerUserId}
+                AND ft.organization_id = ${orgFilter}
+              ORDER BY ft.created_at DESC
+            `
+          : await sql`
+              SELECT ft.id, ft.user_id, ft.organization_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
+                     u.email AS email
+              FROM field_technicians ft
+              LEFT JOIN users u ON u.id = ft.portal_user_id
+              WHERE ft.user_id = ${ownerUserId}
+              ORDER BY ft.created_at DESC
+            `
+        return rows.map(parseFieldTechnicianRow)
+      } catch (e2) {
+        if (isMissingFieldTechTableError(e2)) return []
+        if (isMissingFieldTechOrganizationColumnError(e2)) {
+          return listFieldTechniciansLegacy(ownerUserId)
+        }
+        throw e2
+      }
+    }
+    throw e
+  }
+}
+
+async function listFieldTechniciansLegacy(ownerUserId: string): Promise<FieldTechnician[]> {
   const sql = getSql()
   try {
     const rows = await sql`
@@ -5546,23 +5633,6 @@ export async function listFieldTechnicians(ownerUserId: string): Promise<FieldTe
     return rows.map(parseFieldTechnicianRow)
   } catch (e) {
     if (isMissingFieldTechTableError(e)) return []
-    // invite_status missing (pre-054/064) → retry without it.
-    if (pgErrorCode(e) === "42703") {
-      try {
-        const rows = await sql`
-          SELECT ft.id, ft.user_id, ft.portal_user_id, ft.name, ft.phone, ft.is_active, ft.created_at,
-                 u.email AS email
-          FROM field_technicians ft
-          LEFT JOIN users u ON u.id = ft.portal_user_id
-          WHERE ft.user_id = ${ownerUserId}
-          ORDER BY ft.created_at DESC
-        `
-        return rows.map(parseFieldTechnicianRow)
-      } catch (e2) {
-        if (isMissingFieldTechTableError(e2)) return []
-        throw e2
-      }
-    }
     throw e
   }
 }
@@ -5603,16 +5673,30 @@ export async function insertFieldTechnician(params: {
   portal_user_id: string
   name: string
   phone: string
+  organization_id?: string | null
 }): Promise<FieldTechnician> {
   const sql = getSql()
   const id = crypto.randomUUID()
-  await sql`
-    INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
-    VALUES (${id}, ${params.owner_user_id}, ${params.portal_user_id}, ${params.name}, ${params.phone}, true, now())
-  `
+  const organizationId = await resolveOrganizationIdForNewPhoneLine(
+    params.owner_user_id,
+    params.organization_id ?? null
+  )
+  try {
+    await sql`
+      INSERT INTO field_technicians (id, user_id, organization_id, portal_user_id, name, phone, is_active, created_at)
+      VALUES (${id}, ${params.owner_user_id}, ${organizationId}, ${params.portal_user_id}, ${params.name}, ${params.phone}, true, now())
+    `
+  } catch (e) {
+    if (!isMissingFieldTechOrganizationColumnError(e)) throw e
+    await sql`
+      INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
+      VALUES (${id}, ${params.owner_user_id}, ${params.portal_user_id}, ${params.name}, ${params.phone}, true, now())
+    `
+  }
   return {
     id,
     owner_user_id: params.owner_user_id,
+    organization_id: organizationId,
     portal_user_id: params.portal_user_id,
     name: params.name,
     phone: params.phone,
@@ -5692,6 +5776,42 @@ export async function setFieldTechnicianActive(
     UPDATE field_technicians SET is_active = ${isActive}
     WHERE id = ${techId} AND user_id = ${ownerUserId}
   `
+}
+
+/** Move a technician to another workspace or update active flag. */
+export async function patchFieldTechnicianForOwner(
+  ownerUserId: string,
+  techId: string,
+  updates: { is_active?: boolean; organization_id?: string | null }
+): Promise<boolean> {
+  const sql = getSql()
+  if (updates.organization_id !== undefined && updates.organization_id !== null) {
+    const org = await getOrganizationForOwner(updates.organization_id, ownerUserId)
+    if (!org || org.id.startsWith("legacy-")) return false
+  }
+  if (updates.is_active !== undefined && updates.organization_id !== undefined) {
+    const rows = await sql`
+      UPDATE field_technicians
+      SET is_active = ${updates.is_active}, organization_id = ${updates.organization_id ?? null}
+      WHERE id = ${techId} AND user_id = ${ownerUserId}
+      RETURNING id
+    `
+    return rows.length > 0
+  }
+  if (updates.organization_id !== undefined) {
+    const rows = await sql`
+      UPDATE field_technicians
+      SET organization_id = ${updates.organization_id ?? null}
+      WHERE id = ${techId} AND user_id = ${ownerUserId}
+      RETURNING id
+    `
+    return rows.length > 0
+  }
+  if (updates.is_active !== undefined) {
+    await setFieldTechnicianActive(ownerUserId, techId, updates.is_active)
+    return true
+  }
+  return false
 }
 
 /** Read a job site + customer from a lead's collected JSONB. */

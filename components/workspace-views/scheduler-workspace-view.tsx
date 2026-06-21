@@ -438,13 +438,14 @@ export function SchedulerWorkspaceView() {
   }, [ownerUserId, refreshSchedulerData, load])
 
   useEffect(() => {
-    fetch("/api/technicians", { credentials: "include", cache: "no-store" })
+    const qs = orgId ? `?organization_id=${encodeURIComponent(orgId)}` : ""
+    fetch(`/api/technicians${qs}`, { credentials: "include", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("techs"))))
       .then((j: { data?: FieldTechnician[] }) => {
         setTechnicians(Array.isArray(j.data) ? j.data : [])
       })
       .catch(() => setTechnicians([]))
-  }, [])
+  }, [orgId])
 
   useEffect(() => {
     const base = "/api/numbers/mine"

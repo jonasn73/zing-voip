@@ -75,11 +75,54 @@ export async function createTechInviteStub(params: {
   phone: string
   token: string
   expiresAt: string
+  organizationId?: string | null
 }): Promise<{ userId: string; created: boolean }> {
   const sql = getSql()
   const email = syntheticTechEmail(params.phone)
   const phoneE164 = toE164(params.phone)
   const businessName = params.ownerBusinessName?.trim() || "Lyncr"
+  const organizationId =
+    params.organizationId?.trim() && !params.organizationId.startsWith("legacy-")
+      ? params.organizationId.trim()
+      : null
+
+  async function insertRoster(portalUserId: string) {
+    try {
+      await sql`
+        INSERT INTO field_technicians (id, user_id, organization_id, portal_user_id, name, phone, is_active, created_at)
+        VALUES (${crypto.randomUUID()}, ${params.ownerUserId}, ${organizationId}, ${portalUserId}, ${params.name}, ${phoneE164}, true, now())
+      `
+    } catch (e) {
+      const gap = schemaGapMessage(e)
+      if (gap && gap.includes("organization_id")) {
+        await sql`
+          INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
+          VALUES (${crypto.randomUUID()}, ${params.ownerUserId}, ${portalUserId}, ${params.name}, ${phoneE164}, true, now())
+        `
+        return
+      }
+      if (gap) throw new Error(gap)
+      throw e
+    }
+  }
+
+  async function updateRoster(portalUserId: string) {
+    try {
+      await sql`
+        UPDATE field_technicians
+        SET name = ${params.name}, phone = ${phoneE164}, organization_id = ${organizationId}
+        WHERE portal_user_id = ${portalUserId}
+      `
+    } catch (e) {
+      const gap = schemaGapMessage(e)
+      if (gap && gap.includes("organization_id")) {
+        await sql`UPDATE field_technicians SET name = ${params.name}, phone = ${phoneE164} WHERE portal_user_id = ${portalUserId}`
+        return
+      }
+      if (gap) throw new Error(gap)
+      throw e
+    }
+  }
 
   try {
     const existing = (await sql`
@@ -107,12 +150,9 @@ export async function createTechInviteStub(params: {
         SELECT id FROM field_technicians WHERE portal_user_id = ${id} LIMIT 1
       `) as Record<string, unknown>[]
       if (roster[0]) {
-        await sql`UPDATE field_technicians SET name = ${params.name}, phone = ${phoneE164} WHERE portal_user_id = ${id}`
+        await updateRoster(id)
       } else {
-        await sql`
-          INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
-          VALUES (${crypto.randomUUID()}, ${params.ownerUserId}, ${id}, ${params.name}, ${phoneE164}, true, now())
-        `
+        await insertRoster(id)
       }
       return { userId: id, created: false }
     }
@@ -131,11 +171,8 @@ export async function createTechInviteStub(params: {
           'field_tech', 'invited', ${params.token}, ${params.expiresAt}::timestamptz, now()
         )
       `,
-      sql`
-        INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
-        VALUES (${crypto.randomUUID()}, ${params.ownerUserId}, ${id}, ${params.name}, ${phoneE164}, true, now())
-      `,
     ])
+    await insertRoster(id)
     return { userId: id, created: true }
   } catch (e) {
     const gap = schemaGapMessage(e)
@@ -209,11 +246,62 @@ export async function createManualFieldTechnician(params: {
   ownerBusinessName: string
   name: string
   phone: string
+  organizationId?: string | null
 }): Promise<{ userId: string; rosterId: string; created: boolean }> {
   const sql = getSql()
   const email = syntheticTechEmail(params.phone)
   const phoneE164 = toE164(params.phone)
   const businessName = params.ownerBusinessName?.trim() || "Lyncr"
+  const organizationId =
+    params.organizationId?.trim() && !params.organizationId.startsWith("legacy-")
+      ? params.organizationId.trim()
+      : null
+
+  async function insertRoster(portalUserId: string, rosterId: string) {
+    try {
+      await sql`
+        INSERT INTO field_technicians (id, user_id, organization_id, portal_user_id, name, phone, is_active, created_at)
+        VALUES (${rosterId}, ${params.ownerUserId}, ${organizationId}, ${portalUserId}, ${params.name}, ${phoneE164}, true, now())
+      `
+    } catch (e) {
+      const gap = schemaGapMessage(e)
+      if (gap && gap.includes("organization_id")) {
+        await sql`
+          INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
+          VALUES (${rosterId}, ${params.ownerUserId}, ${portalUserId}, ${params.name}, ${phoneE164}, true, now())
+        `
+        return
+      }
+      if (gap) throw new Error(gap)
+      throw e
+    }
+  }
+
+  async function updateRoster(rosterId: string) {
+    try {
+      await sql`
+        UPDATE field_technicians
+        SET user_id = ${params.ownerUserId},
+            name = ${params.name},
+            phone = ${phoneE164},
+            organization_id = ${organizationId},
+            is_active = true
+        WHERE id = ${rosterId}
+      `
+    } catch (e) {
+      const gap = schemaGapMessage(e)
+      if (gap && gap.includes("organization_id")) {
+        await sql`
+          UPDATE field_technicians
+          SET user_id = ${params.ownerUserId}, name = ${params.name}, phone = ${phoneE164}, is_active = true
+          WHERE id = ${rosterId}
+        `
+        return
+      }
+      if (gap) throw new Error(gap)
+      throw e
+    }
+  }
 
   try {
     const existing = (await sql`
@@ -242,42 +330,27 @@ export async function createManualFieldTechnician(params: {
       `) as Record<string, unknown>[]
       if (roster[0]) {
         const rosterId = String(roster[0].id)
-        await sql`
-          UPDATE field_technicians
-          SET user_id = ${params.ownerUserId},
-              name = ${params.name},
-              phone = ${phoneE164},
-              is_active = true
-          WHERE id = ${rosterId}
-        `
+        await updateRoster(rosterId)
         return { userId: id, rosterId, created: false }
       }
       const rosterId = crypto.randomUUID()
-      await sql`
-        INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
-        VALUES (${rosterId}, ${params.ownerUserId}, ${id}, ${params.name}, ${phoneE164}, true, now())
-      `
+      await insertRoster(id, rosterId)
       return { userId: id, rosterId, created: false }
     }
 
     const userId = crypto.randomUUID()
     const rosterId = crypto.randomUUID()
-    await sql.transaction([
-      sql`
-        INSERT INTO users (
-          id, email, name, phone, business_name, password_hash,
-          account_role, invite_status, invitation_token, invitation_expires_at, created_at
-        )
-        VALUES (
-          ${userId}, ${email}, ${params.name}, ${phoneE164}, ${businessName}, '',
-          'field_tech', 'active', NULL, NULL, now()
-        )
-      `,
-      sql`
-        INSERT INTO field_technicians (id, user_id, portal_user_id, name, phone, is_active, created_at)
-        VALUES (${rosterId}, ${params.ownerUserId}, ${userId}, ${params.name}, ${phoneE164}, true, now())
-      `,
-    ])
+    await sql`
+      INSERT INTO users (
+        id, email, name, phone, business_name, password_hash,
+        account_role, invite_status, invitation_token, invitation_expires_at, created_at
+      )
+      VALUES (
+        ${userId}, ${email}, ${params.name}, ${phoneE164}, ${businessName}, '',
+        'field_tech', 'active', NULL, NULL, now()
+      )
+    `
+    await insertRoster(userId, rosterId)
     return { userId, rosterId, created: true }
   } catch (e) {
     const gap = schemaGapMessage(e)

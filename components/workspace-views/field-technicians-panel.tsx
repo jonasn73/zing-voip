@@ -3,11 +3,13 @@
 
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { HardHat, Loader2, Plus, Send, Check } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { WorkspacePanel } from "@/components/dashboard-workspace-ui"
 import { AddTechnicianModal } from "@/components/team/add-technician-modal"
+import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
+import { organizationQueryString } from "@/lib/workspace-organizations"
 import type { FieldTechnician } from "@/lib/types"
 
 type InviteResult = {
@@ -33,21 +35,32 @@ function formatPhoneDisplay(phone: string): string {
 }
 
 export function FieldTechniciansPanel() {
+  const { activeOrganizationId, organizations } = useDashboardWorkspace()
+  const orgId =
+    activeOrganizationId && !activeOrganizationId.startsWith("legacy-") ? activeOrganizationId : null
+  const realOrganizations = useMemo(
+    () => organizations.filter((org) => !org.id.startsWith("legacy-")),
+    [organizations]
+  )
+  const showWorkspacePicker = realOrganizations.length > 1
+
   const [techs, setTechs] = useState<FieldTechnician[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [invite, setInvite] = useState<InviteResult | null>(null)
   const [resentId, setResentId] = useState<string | null>(null)
   const [resendError, setResendError] = useState<{ techId: string; message: string } | null>(null)
+  const [movingId, setMovingId] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
-    fetch("/api/technicians", { credentials: "include" })
+    const qs = organizationQueryString(orgId)
+    fetch(`/api/technicians${qs}`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("load"))))
       .then((j: { data?: FieldTechnician[] }) => setTechs(Array.isArray(j.data) ? j.data : []))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [orgId])
 
   useEffect(() => load(), [load])
 
@@ -103,6 +116,33 @@ export function FieldTechniciansPanel() {
       })
     } catch {
       setTechs((prev) => prev.map((t) => (t.id === tech.id ? { ...t, is_active: !next } : t)))
+    }
+  }
+
+  async function moveTech(tech: FieldTechnician, nextOrgId: string | null) {
+    const previous = tech.organization_id ?? null
+    if (nextOrgId === previous) return
+    setMovingId(tech.id)
+    setTechs((prev) =>
+      prev.map((t) => (t.id === tech.id ? { ...t, organization_id: nextOrgId } : t))
+    )
+    try {
+      const res = await fetch(`/api/technicians/${tech.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_id: nextOrgId }),
+      })
+      if (!res.ok) throw new Error("move failed")
+      if (orgId && nextOrgId !== orgId) {
+        setTechs((prev) => prev.filter((t) => t.id !== tech.id))
+      }
+    } catch {
+      setTechs((prev) =>
+        prev.map((t) => (t.id === tech.id ? { ...t, organization_id: previous } : t))
+      )
+    } finally {
+      setMovingId(null)
     }
   }
 
@@ -217,6 +257,27 @@ export function FieldTechniciansPanel() {
                 <p className="truncate text-xs text-zinc-500">
                   {tech.phone ? formatPhoneDisplay(tech.phone) : "—"}
                 </p>
+                {showWorkspacePicker ? (
+                  <label className="mt-1.5 block text-[10px] text-zinc-500">
+                    Business
+                    <select
+                      value={tech.organization_id ?? ""}
+                      disabled={movingId === tech.id}
+                      onChange={(e) => {
+                        const next = e.target.value.trim()
+                        void moveTech(tech, next ? next : null)
+                      }}
+                      className="mt-0.5 w-full max-w-[200px] rounded-md border border-zinc-800 bg-zinc-900/80 px-2 py-1 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-60"
+                    >
+                      <option value="">Unassigned</option>
+                      {realOrganizations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 {tech.invite_pending && (

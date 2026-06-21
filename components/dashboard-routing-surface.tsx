@@ -200,17 +200,6 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
         adminRoutingOverridePhone={adminRoutingOverridePhone}
       />
 
-      <section className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border border-border/70 bg-muted/10 px-5 py-4 text-xs font-semibold sm:text-sm">
-        <Link href="/dashboard/activity" className="text-primary underline-offset-2 hover:underline">
-          Activity
-        </Link>
-        <Link href="/dashboard/contacts" className="text-primary underline-offset-2 hover:underline">
-          Team
-        </Link>
-        <Link href="/dashboard/settings" className="text-primary underline-offset-2 hover:underline">
-          Settings
-        </Link>
-      </section>
         </div>
       </div>
     </div>

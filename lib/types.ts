@@ -911,6 +911,8 @@ export interface OwnerPortingDeskDetail {
   pipeline_steps: { key: string; label: string; state: "complete" | "current" | "upcoming" | "failed" }[]
   unread_count: number
   banner_phase: "in_progress" | "action_needed" | "rejected"
+  /** True when UI should show PIN field + block chat-only resubmit. */
+  pin_correction_required: boolean
 }
 
 /** Admin porting desk — order detail bundle for GET /api/admin/porting/[id]. */

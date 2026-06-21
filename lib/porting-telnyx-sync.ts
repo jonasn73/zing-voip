@@ -18,8 +18,10 @@ import {
 } from "@/lib/telnyx-porting-orders"
 import { cleansePortingHumanComment } from "@/lib/porting-display"
 import {
+  extractPortingCarrierRequirement,
   extractPortingCarrierRequirementLogBody,
   extractLosingCarrierName,
+  formatPortingExceptionSystemMessage,
 } from "@/lib/porting-carrier-exceptions"
 import {
   isPortRejectionWebhook,
@@ -31,16 +33,23 @@ import {
 export async function backfillPortingExceptionsFromTelnyxOrder(params: {
   ownerUserId: string
   telnyxOrderId: string
+  organizationId?: string | null
 }): Promise<boolean> {
   const telnyxOrderId = params.telnyxOrderId.trim()
   if (!telnyxOrderId) return false
   const live = await fetchTelnyxPortingOrderById(telnyxOrderId)
   if (!live) return false
-  const body = extractPortingCarrierRequirementLogBody({ data: { record: live } })
+
+  const requirement = extractPortingCarrierRequirement({ data: { record: live } })
+  const body = requirement
+    ? formatPortingExceptionSystemMessage(requirement.exception_text)
+    : extractPortingCarrierRequirementLogBody({ data: { record: live } })
   if (!body) return false
+
   return insertPortingNotificationIfNew({
     userId: params.ownerUserId,
-    telnyxEventId: `telnyx-exception-sync-${telnyxOrderId}`,
+    organizationId: params.organizationId,
+    telnyxEventId: `telnyx-exception-sync-${telnyxOrderId}-${requirement?.exception_text?.slice(0, 40) ?? "generic"}`,
     portingOrderId: telnyxOrderId,
     eventType: "porting_order.status_changed",
     title: "Action needed on your transfer",
@@ -106,11 +115,12 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
   let actionNote: string | null = null
 
   if (live) {
-    const liveRequirement = extractPortingCarrierRequirementLogBody({
-      data: { record: live },
-    })
+    const requirement = extractPortingCarrierRequirement({ data: { record: live } })
+    const liveRequirement = requirement
+      ? formatPortingExceptionSystemMessage(requirement.exception_text)
+      : extractPortingCarrierRequirementLogBody({ data: { record: live } })
     if (liveRequirement) {
-      actionNote = liveRequirement
+      actionNote = requirement?.exception_text ?? liveRequirement
       if (order.status !== "rejected" && order.status !== "completed") {
         nextStatus = "action_required"
       }
@@ -170,6 +180,20 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
   }
 
   if (nextStatus === order.status && telnyxStatus === order.telnyx_status && !rejectionReason) {
+    const noteToPersist = actionNote?.trim()
+    const reasonEmpty = !(order.carrier_rejection_reason ?? "").trim()
+    const needsReason =
+      reasonEmpty &&
+      noteToPersist &&
+      (nextStatus === "action_required" || telnyxStatus.toLowerCase().includes("exception"))
+    if (needsReason) {
+      const updated = await markPortingOrderActionRequired(
+        order.owner_user_id,
+        telnyxOrderId,
+        noteToPersist
+      )
+      return updated ?? order
+    }
     return order
   }
 

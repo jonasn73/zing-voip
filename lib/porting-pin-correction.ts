@@ -13,10 +13,30 @@ export function isValidPortingPin(pin: string, order?: PortingOrder): boolean {
   return validatePortingDeskPin(pin, order).ok
 }
 
-/** True when Telnyx / carrier flagged a missing or invalid wireless PIN. */
-export function orderRequiresPinCorrection(order: PortingOrder): boolean {
+function correctionBlob(order: PortingOrder, conversationSnippets: string[] = []): string {
+  return [order.carrier_rejection_reason ?? "", ...conversationSnippets].join(" ").trim()
+}
+
+/** True when Telnyx / carrier flagged a missing or invalid PIN (or live status is exception). */
+export function orderRequiresPinCorrection(
+  order: PortingOrder,
+  conversationSnippets: string[] = []
+): boolean {
+  const telnyx = (order.telnyx_status ?? "").toLowerCase()
+  if (telnyx.includes("exception")) return true
+
   const reason = (order.carrier_rejection_reason ?? "").trim()
-  if (!reason || !looksLikePinPasscodeRejection(reason)) return false
-  if (order.status === "action_required" || order.status === "rejected") return true
-  return (order.telnyx_status ?? "").toLowerCase().includes("exception")
+  if (reason && looksLikePinPasscodeRejection(reason)) return true
+
+  const blob = correctionBlob(order, conversationSnippets)
+  if (blob && looksLikePinPasscodeRejection(blob)) return true
+
+  if (
+    (order.status === "action_required" || order.status === "rejected") &&
+    /transfer pin|porting pin|account number.*pin|pin.*account number/i.test(blob)
+  ) {
+    return true
+  }
+
+  return false
 }

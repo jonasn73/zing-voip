@@ -70,6 +70,15 @@ describe("telnyx porting webhook handler", () => {
     } as PortingOrder
     expect(orderRequiresPinCorrection(order)).toBe(true)
   })
+
+  it("detects PIN correction from telnyx exception status alone", () => {
+    const order = {
+      status: "processing",
+      telnyx_status: "exception",
+      carrier_rejection_reason: null,
+    } as PortingOrder
+    expect(orderRequiresPinCorrection(order)).toBe(true)
+  })
 })
 
 describe("resolvePortingWebhookOwner", () => {

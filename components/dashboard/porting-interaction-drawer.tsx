@@ -287,6 +287,8 @@ export function PortingInteractionDrawer({ orderId, open, onOpenChange }: Props)
                 key={detail.order.id + detail.order.updated_at}
                 order={detail.order}
                 sending={sending}
+                pinCorrectionRequired={detail.pin_correction_required}
+                conversationSnippets={detail.conversation.slice(-8).map((item) => item.body)}
                 onSubmit={submitCorrection}
               />
             </>

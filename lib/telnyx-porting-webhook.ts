@@ -177,7 +177,7 @@ export function isPortRejectionEventType(eventType: string): boolean {
   return lower.includes("porting_order.rejected") || lower.endsWith(".rejected")
 }
 
-/** PIN / passcode correction comments from Telnyx (e.g. "rejection due to an invalid PIN/Passcode"). */
+/** True when text mentions PIN / passcode correction (Telnyx exceptions + desk comments). */
 export function looksLikePinPasscodeRejection(text: string): boolean {
   const lower = text.toLowerCase()
   return (
@@ -187,7 +187,11 @@ export function looksLikePinPasscodeRejection(text: string): boolean {
     lower.includes("pin/passcode") ||
     lower.includes("account pin") ||
     lower.includes("pin or passcode") ||
-    lower.includes("pin/pass code")
+    lower.includes("pin/pass code") ||
+    lower.includes("transfer pin") ||
+    lower.includes("porting transfer pin") ||
+    lower.includes("pin must be provided") ||
+    lower.includes("wireless port")
   )
 }
 

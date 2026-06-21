@@ -21,15 +21,24 @@ export type CarrierTransferDeskSubmitPayload = {
 type Props = {
   order: PortingOrder
   sending: boolean
+  pinCorrectionRequired?: boolean
+  conversationSnippets?: string[]
   onSubmit: (payload: CarrierTransferDeskSubmitPayload) => void | Promise<void>
 }
 
-export function CarrierTransferDesk({ order, sending, onSubmit }: Props) {
+export function CarrierTransferDesk({
+  order,
+  sending,
+  pinCorrectionRequired,
+  conversationSnippets = [],
+  onSubmit,
+}: Props) {
   const [reply, setReply] = useState("")
   const [pin, setPin] = useState(order.pin_or_sid ?? "")
   const [fieldError, setFieldError] = useState<string | null>(null)
 
-  const pinRequired = orderRequiresPinCorrection(order)
+  const pinRequired =
+    pinCorrectionRequired ?? orderRequiresPinCorrection(order, conversationSnippets)
   const pinPattern = useMemo(() => portingPinPatternForOrder(order), [order])
   const exactEight = requiresExactEightDigitWirelessPin(order)
   const pinHint = exactEight

@@ -6,6 +6,7 @@ import { getUser, listPortingOrdersForOwner, countUnreadPortingNotificationsForO
 import { isActivePortingOrder } from "@/lib/porting-lifecycle"
 import {
   backfillPortingNotificationsFromTelnyxComments,
+  backfillPortingExceptionsFromTelnyxOrder,
   syncPortingOrderFromTelnyxLive,
 } from "@/lib/porting-telnyx-sync"
 
@@ -33,6 +34,11 @@ export async function GET(req: NextRequest) {
             const telnyxId = order.telnyx_order_id?.trim()
             if (!telnyxId) return order
             try {
+              await backfillPortingExceptionsFromTelnyxOrder({
+                ownerUserId: userId,
+                telnyxOrderId: telnyxId,
+                organizationId: order.organization_id,
+              })
               await backfillPortingNotificationsFromTelnyxComments({
                 ownerUserId: userId,
                 telnyxOrderId: telnyxId,

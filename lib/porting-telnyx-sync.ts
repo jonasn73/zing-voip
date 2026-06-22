@@ -2,6 +2,7 @@
 
 import {
   insertPortingNotificationIfNew,
+  listPortingOrdersForOwner,
   mapTelnyxStatusToPortingOrderStatus,
   markPortingOrderActionRequired,
   patchPortingOrderFields,
@@ -16,7 +17,13 @@ import {
   fetchTelnyxPortingOrderById,
   listTelnyxPortingOrderComments,
 } from "@/lib/telnyx-porting-orders"
-import { cleansePortingHumanComment } from "@/lib/porting-display"
+import {
+  cleansePortingHumanComment,
+  displayUserFacingMessage,
+  formatPortingThreadMessage,
+} from "@/lib/porting-display"
+import { formatPortingSystemStatusMessage } from "@/lib/porting-notification-log"
+import { isActivePortingOrder } from "@/lib/porting-lifecycle"
 import {
   extractPortingCarrierRequirement,
   extractPortingCarrierRequirementLogBody,
@@ -58,10 +65,28 @@ export async function backfillPortingExceptionsFromTelnyxOrder(params: {
   })
 }
 
+/** Normalize carrier comment text for in-app alerts (keep substantive updates when PIN heuristics miss). */
+function portingCommentNotificationBody(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ""
+  return (
+    cleansePortingHumanComment(trimmed) ||
+    formatPortingThreadMessage(trimmed) ||
+    displayUserFacingMessage(trimmed).slice(0, 500)
+  )
+}
+
+/** Skip only the business owner's outbound desk replies — everything else is carrier-side. */
+function isCarrierPortingCommentUserType(userType: string): boolean {
+  const ut = userType.toLowerCase().trim()
+  return ut !== "user" && ut !== "customer" && ut !== "owner"
+}
+
 /** Backfill porting_notifications from Telnyx /comments (historical + missed webhooks). */
 export async function backfillPortingNotificationsFromTelnyxComments(params: {
   ownerUserId: string
   telnyxOrderId: string
+  organizationId?: string | null
 }): Promise<number> {
   const telnyxOrderId = params.telnyxOrderId.trim()
   if (!telnyxOrderId) return 0
@@ -76,13 +101,14 @@ export async function backfillPortingNotificationsFromTelnyxComments(params: {
 
   let inserted = 0
   for (const c of comments) {
-    const ut = c.user_type.toLowerCase()
-    if (ut !== "admin" && ut !== "system") continue
+    if (!isCarrierPortingCommentUserType(c.user_type)) continue
     const raw = c.body.trim()
     if (!raw) continue
-    const body = cleansePortingHumanComment(raw) || raw
+    const body = portingCommentNotificationBody(raw)
+    if (!body) continue
     const ok = await insertPortingNotificationIfNew({
       userId: params.ownerUserId,
+      organizationId: params.organizationId,
       telnyxEventId: `telnyx-comment-sync-${c.id}`,
       portingOrderId: telnyxOrderId,
       eventType: "porting_order.comment_created",
@@ -93,6 +119,90 @@ export async function backfillPortingNotificationsFromTelnyxComments(params: {
     if (ok) inserted += 1
   }
   return inserted
+}
+
+/** Backfill a status-transition row when Telnyx webhooks never reached Lyncr. */
+export async function backfillPortingStatusFromTelnyxLive(params: {
+  ownerUserId: string
+  telnyxOrderId: string
+  organizationId?: string | null
+}): Promise<boolean> {
+  const telnyxOrderId = params.telnyxOrderId.trim()
+  if (!telnyxOrderId) return false
+  const live = await fetchTelnyxPortingOrderById(telnyxOrderId)
+  if (!live) return false
+  const statuses = collectPortingStatuses(live)
+  if (statuses.length === 0) return false
+  const keyword = pickBestPortingStatus(statuses)
+  return insertPortingNotificationIfNew({
+    userId: params.ownerUserId,
+    organizationId: params.organizationId,
+    telnyxEventId: `telnyx-status-sync-${telnyxOrderId}-${keyword}`,
+    portingOrderId: telnyxOrderId,
+    eventType: "porting_order.status_changed",
+    title: "Transfer status updated",
+    body: formatPortingSystemStatusMessage(keyword),
+    rawPayload: live,
+  })
+}
+
+/** Pull Telnyx comments + status into DB for one active port order. */
+export async function syncPortingOrderNotificationsFromTelnyx(
+  order: PortingOrder
+): Promise<{ inserted: number; order: PortingOrder }> {
+  const telnyxId = order.telnyx_order_id?.trim()
+  if (!telnyxId) return { inserted: 0, order }
+
+  let inserted = 0
+  try {
+    if (
+      await backfillPortingExceptionsFromTelnyxOrder({
+        ownerUserId: order.owner_user_id,
+        telnyxOrderId: telnyxId,
+        organizationId: order.organization_id,
+      })
+    ) {
+      inserted += 1
+    }
+    inserted += await backfillPortingNotificationsFromTelnyxComments({
+      ownerUserId: order.owner_user_id,
+      telnyxOrderId: telnyxId,
+      organizationId: order.organization_id,
+    })
+    if (
+      await backfillPortingStatusFromTelnyxLive({
+        ownerUserId: order.owner_user_id,
+        telnyxOrderId: telnyxId,
+        organizationId: order.organization_id,
+      })
+    ) {
+      inserted += 1
+    }
+  } catch (e) {
+    console.warn("[porting-telnyx-sync] notification sync:", e)
+  }
+
+  const syncedOrder = await syncPortingOrderFromTelnyxLive(order)
+  return { inserted, order: syncedOrder }
+}
+
+/** Sync all in-flight port orders for an owner workspace (missed webhook recovery). */
+export async function syncActivePortingOrdersForOwner(params: {
+  ownerUserId: string
+  organizationId: string | null
+}): Promise<{ inserted: number; orders: PortingOrder[] }> {
+  const orders = await listPortingOrdersForOwner(params.ownerUserId, params.organizationId)
+  const active = orders.filter(isActivePortingOrder)
+  let inserted = 0
+  const synced: PortingOrder[] = []
+
+  for (const order of active) {
+    const result = await syncPortingOrderNotificationsFromTelnyx(order)
+    inserted += result.inserted
+    synced.push(result.order)
+  }
+
+  return { inserted, orders: synced }
 }
 
 /** Align porting_orders row with live Telnyx status + latest admin comment when webhooks lag. */

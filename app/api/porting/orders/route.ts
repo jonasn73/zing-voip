@@ -4,11 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getUser, listPortingOrdersForOwner, countUnreadPortingNotificationsForOrder } from "@/lib/db"
 import { isActivePortingOrder } from "@/lib/porting-lifecycle"
-import {
-  backfillPortingNotificationsFromTelnyxComments,
-  backfillPortingExceptionsFromTelnyxOrder,
-  syncPortingOrderFromTelnyxLive,
-} from "@/lib/porting-telnyx-sync"
+import { syncPortingOrderNotificationsFromTelnyx } from "@/lib/porting-telnyx-sync"
 
 export const dynamic = "force-dynamic"
 
@@ -39,16 +35,8 @@ export async function GET(req: NextRequest) {
             const telnyxId = order.telnyx_order_id?.trim()
             if (!telnyxId) return order
             try {
-              await backfillPortingExceptionsFromTelnyxOrder({
-                ownerUserId: userId,
-                telnyxOrderId: telnyxId,
-                organizationId: order.organization_id,
-              })
-              await backfillPortingNotificationsFromTelnyxComments({
-                ownerUserId: userId,
-                telnyxOrderId: telnyxId,
-              })
-              return await syncPortingOrderFromTelnyxLive(order)
+              const { order: synced } = await syncPortingOrderNotificationsFromTelnyx(order)
+              return synced
             } catch (e) {
               console.warn("[GET /api/porting/orders] Telnyx sync:", e)
               return order

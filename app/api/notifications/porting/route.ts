@@ -1,35 +1,62 @@
-// ============================================
-// GET/PATCH /api/notifications/porting
-// ============================================
-// In-app list of Telnyx porting/carrier updates (from /api/webhooks/telnyx/porting).
+// GET/PATCH /api/notifications/porting — Telnyx porting alerts (sync + unread list for the bell).
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import {
   listPortingNotifications,
   countUnreadPortingNotifications,
+  listUnreadPortingNotificationsEnriched,
   markPortingNotificationsRead,
   markAllPortingNotificationsRead,
 } from "@/lib/db"
+import { syncActivePortingOrdersForOwner } from "@/lib/porting-telnyx-sync"
+
+export const dynamic = "force-dynamic"
 
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
+
   const { searchParams } = new URL(req.url)
   const unreadOnly = searchParams.get("unread") === "1"
+  const syncFromTelnyx = searchParams.get("sync") === "1"
   const portingOrderId = searchParams.get("porting_order_id")?.trim() || null
+  const organizationId = searchParams.get("organization_id")?.trim() || null
+
   try {
-    const [notifications, unreadCount] = await Promise.all([
+    let syncedCount = 0
+    if (syncFromTelnyx && !portingOrderId) {
+      const sync = await syncActivePortingOrdersForOwner({
+        ownerUserId: userId,
+        organizationId,
+      })
+      syncedCount = sync.inserted
+    }
+
+    const [notifications, unreadCount, unreadEnriched] = await Promise.all([
       listPortingNotifications(userId, 50, portingOrderId),
       countUnreadPortingNotifications(userId),
+      unreadOnly
+        ? listUnreadPortingNotificationsEnriched(userId, organizationId, 30)
+        : Promise.resolve([]),
     ])
-    const data = unreadOnly ? notifications.filter((n) => n.read_at == null) : notifications
+
+    const data = unreadOnly ? unreadEnriched : notifications
     const orderUnreadCount = portingOrderId
       ? data.filter((n) => n.read_at == null).length
-      : unreadCount
-    return NextResponse.json({ data: { notifications: data, unreadCount: orderUnreadCount } })
+      : unreadOnly
+        ? unreadEnriched.length
+        : unreadCount
+
+    return NextResponse.json({
+      data: {
+        notifications: data,
+        unreadCount: orderUnreadCount,
+        syncedFromTelnyx: syncedCount,
+      },
+    })
   } catch (e) {
     console.error("[Sigo] GET /api/notifications/porting:", e)
     return NextResponse.json({ error: "Failed to load notifications" }, { status: 500 })

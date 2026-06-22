@@ -14,11 +14,7 @@ import {
   orderPinSavedAwaitingCarrierReview,
   orderRequiresPinCorrection,
 } from "@/lib/porting-pin-correction"
-import {
-  backfillPortingNotificationsFromTelnyxComments,
-  backfillPortingExceptionsFromTelnyxOrder,
-  syncPortingOrderFromTelnyxLive,
-} from "@/lib/porting-telnyx-sync"
+import { syncPortingOrderNotificationsFromTelnyx } from "@/lib/porting-telnyx-sync"
 import { listTelnyxPortingOrderComments } from "@/lib/telnyx-porting-orders"
 import type { OwnerPortingDeskDetail } from "@/lib/types"
 
@@ -35,16 +31,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const telnyxOrderId = order.telnyx_order_id?.trim() || ""
 
   if (telnyxOrderId) {
-    await backfillPortingExceptionsFromTelnyxOrder({
-      ownerUserId: userId,
-      telnyxOrderId,
-      organizationId: order.organization_id,
-    })
-    await backfillPortingNotificationsFromTelnyxComments({
-      ownerUserId: userId,
-      telnyxOrderId,
-    })
-    order = await syncPortingOrderFromTelnyxLive(order)
+    const { order: synced } = await syncPortingOrderNotificationsFromTelnyx(order)
+    order = synced
   }
 
   const [notifications, telnyxComments, unreadCount] = await Promise.all([

@@ -9,6 +9,7 @@ import {
 } from "@/lib/db"
 import { SITE_NAME } from "@/lib/brand"
 import { finalizePortedNumber } from "@/lib/port-number-finalize"
+import { publishOwnerEvent } from "@/lib/realtime/pusher-server"
 import {
   applyPortActionRequiredFromTelnyxWebhook,
   applyPortRejectionFromTelnyxWebhook,
@@ -198,6 +199,16 @@ export async function processTelnyxPortingWebhook(body: Record<string, unknown>)
     body: text,
     rawPayload: body,
   })
+
+  if (inserted) {
+    void publishOwnerEvent(userId, "porting-update", {
+      organization_id: organizationId,
+      porting_order_id: portingOrder?.id ?? null,
+      telnyx_order_id: orderId,
+      event_type: eventType,
+      title,
+    })
+  }
 
   const actionSync = await applyPortActionRequiredFromTelnyxWebhook({
     ownerUserId: userId,

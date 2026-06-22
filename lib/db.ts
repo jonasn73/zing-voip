@@ -8117,6 +8117,120 @@ export async function countUnreadPortingNotificationsForOrder(
   }
 }
 
+/** Unread porting alerts with workspace order id + phone for the notification bell. */
+export async function listUnreadPortingNotificationsEnriched(
+  userId: string,
+  organizationId?: string | null,
+  limit: number = 30
+): Promise<import("@/lib/types").PortingNotificationEnriched[]> {
+  const sql = getSql()
+  const orgId = organizationId?.trim() || null
+  const capped = Math.min(Math.max(limit, 1), 50)
+  try {
+    const rows = orgId
+      ? await sql`
+          SELECT
+            pn.id,
+            pn.user_id,
+            pn.telnyx_event_id,
+            pn.porting_order_id,
+            pn.event_type,
+            pn.title,
+            pn.body,
+            pn.read_at,
+            pn.created_at,
+            po.id AS workspace_port_order_id,
+            po.phone_number
+          FROM porting_notifications pn
+          LEFT JOIN porting_orders po
+            ON po.telnyx_order_id = pn.porting_order_id
+           AND po.owner_user_id = pn.user_id
+          WHERE pn.user_id = ${userId}
+            AND pn.read_at IS NULL
+            AND (po.organization_id = ${orgId} OR pn.organization_id = ${orgId})
+          ORDER BY pn.created_at DESC
+          LIMIT ${capped}
+        `
+      : await sql`
+          SELECT
+            pn.id,
+            pn.user_id,
+            pn.telnyx_event_id,
+            pn.porting_order_id,
+            pn.event_type,
+            pn.title,
+            pn.body,
+            pn.read_at,
+            pn.created_at,
+            po.id AS workspace_port_order_id,
+            po.phone_number
+          FROM porting_notifications pn
+          LEFT JOIN porting_orders po
+            ON po.telnyx_order_id = pn.porting_order_id
+           AND po.owner_user_id = pn.user_id
+          WHERE pn.user_id = ${userId}
+            AND pn.read_at IS NULL
+          ORDER BY pn.created_at DESC
+          LIMIT ${capped}
+        `
+    return (rows as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id),
+      user_id: String(row.user_id),
+      telnyx_event_id: String(row.telnyx_event_id),
+      porting_order_id: row.porting_order_id != null ? String(row.porting_order_id) : null,
+      event_type: String(row.event_type ?? ""),
+      title: String(row.title ?? ""),
+      body: String(row.body ?? ""),
+      read_at: row.read_at instanceof Date ? row.read_at.toISOString() : row.read_at != null ? String(row.read_at) : null,
+      created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ""),
+      workspace_port_order_id:
+        row.workspace_port_order_id != null ? String(row.workspace_port_order_id) : null,
+      phone_number: row.phone_number != null ? String(row.phone_number) : null,
+    }))
+  } catch (e) {
+    if (isUndefinedRelationError(e, "porting_notifications")) return []
+    if (isUndefinedRelationError(e, "organization_id") || String(e).includes("organization_id")) {
+      const rows = await sql`
+        SELECT
+          pn.id,
+          pn.user_id,
+          pn.telnyx_event_id,
+          pn.porting_order_id,
+          pn.event_type,
+          pn.title,
+          pn.body,
+          pn.read_at,
+          pn.created_at,
+          po.id AS workspace_port_order_id,
+          po.phone_number
+        FROM porting_notifications pn
+        LEFT JOIN porting_orders po
+          ON po.telnyx_order_id = pn.porting_order_id
+         AND po.owner_user_id = pn.user_id
+        WHERE pn.user_id = ${userId}
+          AND pn.read_at IS NULL
+        ORDER BY pn.created_at DESC
+        LIMIT ${capped}
+      `
+      return (rows as Record<string, unknown>[]).map((row) => ({
+        id: String(row.id),
+        user_id: String(row.user_id),
+        telnyx_event_id: String(row.telnyx_event_id),
+        porting_order_id: row.porting_order_id != null ? String(row.porting_order_id) : null,
+        event_type: String(row.event_type ?? ""),
+        title: String(row.title ?? ""),
+        body: String(row.body ?? ""),
+        read_at: row.read_at instanceof Date ? row.read_at.toISOString() : row.read_at != null ? String(row.read_at) : null,
+        created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ""),
+        workspace_port_order_id:
+          row.workspace_port_order_id != null ? String(row.workspace_port_order_id) : null,
+        phone_number: row.phone_number != null ? String(row.phone_number) : null,
+      }))
+    }
+    throw e
+  }
+}
+
 export async function markPortingNotificationsRead(userId: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return
   const sql = getSql()

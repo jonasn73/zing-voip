@@ -894,6 +894,12 @@ export interface PortingNotification {
   created_at: string
 }
 
+/** Unread porting alert joined to workspace order + phone for the notification bell. */
+export interface PortingNotificationEnriched extends PortingNotification {
+  workspace_port_order_id: string | null
+  phone_number: string | null
+}
+
 /** Owner porting drawer — order + thread + pipeline for GET /api/porting/orders/[id]/desk. */
 export interface PortingConversationItem {
   id: string

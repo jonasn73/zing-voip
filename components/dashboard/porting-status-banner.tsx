@@ -46,8 +46,11 @@ function bannerTone(phase: PortingBannerPhase): string {
   return "border-sky-500/30 bg-gradient-to-r from-slate-900/95 via-sky-950/80 to-slate-900/90 text-sky-50"
 }
 
-function buildDisplayMessage(order: PortingOrderRow, phase: PortingBannerPhase): string {
+function buildDisplayMessage(order: PortingOrderRow, phase: PortingBannerPhase, unread: number): string {
   const phone = formatPhoneDisplay(order.phone_number)
+  if (unread > 0) {
+    return `📬 ${unread} new carrier update${unread === 1 ? "" : "s"} for ${phone} — tap to read the transfer desk thread.`
+  }
   if (orderPinSavedAwaitingCarrierReview(order) && storedPortingPinForDesk(order)) {
     return `✅ PIN submitted for ${phone} — carrier is re-reviewing your transfer (status may still show pending briefly).`
   }
@@ -119,7 +122,7 @@ export function PortingStatusBanner() {
     >
       <Icon className="mt-0.5 h-5 w-5 shrink-0 opacity-90" aria-hidden />
       <span className="min-w-0 flex-1 text-sm font-medium leading-snug">
-        {buildDisplayMessage(primary, phase)}
+        {buildDisplayMessage(primary, phase, unread)}
         {extraCount > 0 ? (
           <span className="mt-1 block text-xs font-normal opacity-80">
             +{extraCount} more active transfer{extraCount === 1 ? "" : "s"} in this workspace

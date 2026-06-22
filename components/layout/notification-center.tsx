@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Bell,
   Loader2,
+  MessageSquare,
   MessageSquareWarning,
   ShieldAlert,
   Truck,
@@ -37,7 +38,9 @@ import {
   type SmsComplianceView,
 } from "@/lib/sms-registration-notice"
 import { organizationQueryString, readActiveOrganizationId } from "@/lib/workspace-organizations"
-import type { PortingOrder } from "@/lib/types"
+import { displayPortingMessageBody } from "@/lib/porting-display"
+import { getPusherClient } from "@/lib/realtime/pusher-client"
+import type { PortingNotificationEnriched, PortingOrder } from "@/lib/types"
 
 type NotificationTone = "critical" | "warning" | "info" | "success"
 
@@ -54,8 +57,24 @@ type NotificationCenterItem = {
 
 type PortingOrderRow = PortingOrder & { unread_notification_count?: number }
 
-function portingMessage(order: PortingOrderRow, phase: PortingBannerPhase): string {
+function portingMessage(
+  order: PortingOrderRow,
+  phase: PortingBannerPhase,
+  unread: number,
+  latestAlertBody?: string | null
+): string {
   const phone = formatPhoneDisplay(order.phone_number)
+  if (unread > 0) {
+    const excerpt = latestAlertBody?.trim()
+      ? displayPortingMessageBody(latestAlertBody).slice(0, 160)
+      : null
+    if (excerpt) {
+      return unread === 1
+        ? `New carrier update for ${phone}: ${excerpt}`
+        : `${unread} new carrier updates for ${phone}. Latest: ${excerpt}`
+    }
+    return `${unread} new carrier update${unread === 1 ? "" : "s"} for ${phone} — open the transfer desk.`
+  }
   if (orderPinSavedAwaitingCarrierReview(order) && storedPortingPinForDesk(order)) {
     return `PIN submitted for ${phone} — carrier is re-reviewing your transfer.`
   }
@@ -92,6 +111,32 @@ async function fetchActivePortingOrders(organizationId: string | null): Promise<
   return scoped.filter(isActivePortingOrder)
 }
 
+async function fetchUnreadPortingAlerts(
+  organizationId: string | null,
+  syncFromTelnyx: boolean
+): Promise<PortingNotificationEnriched[]> {
+  const params = new URLSearchParams()
+  params.set("unread", "1")
+  if (syncFromTelnyx) params.set("sync", "1")
+  const orgId = organizationId?.trim()
+  if (orgId && !orgId.startsWith("legacy-")) params.set("organization_id", orgId)
+  const res = await fetch(`/api/notifications/porting?${params.toString()}`, {
+    credentials: "include",
+    cache: "no-store",
+  })
+  if (!res.ok) return []
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: { notifications?: PortingNotificationEnriched[] }
+  }
+  return Array.isArray(json.data?.notifications) ? json.data.notifications : []
+}
+
+function clipAlertBody(body: string, max = 160): string {
+  const text = displayPortingMessageBody(body).trim()
+  if (text.length <= max) return text
+  return `${text.slice(0, max - 1)}…`
+}
+
 function toneClasses(tone: NotificationTone): string {
   if (tone === "critical") return "border-red-500/35 bg-red-500/10"
   if (tone === "warning") return "border-amber-500/35 bg-amber-500/10"
@@ -107,6 +152,8 @@ export const NotificationCenter = memo(function NotificationCenter() {
   const [viewingEmail, setViewingEmail] = useState<string | null>(null)
   const [exitingImpersonation, setExitingImpersonation] = useState(false)
   const [portingOrders, setPortingOrders] = useState<PortingOrderRow[]>([])
+  const [unreadPortingAlerts, setUnreadPortingAlerts] = useState<PortingNotificationEnriched[]>([])
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(null)
   const [smsView, setSmsView] = useState<SmsComplianceView | null>(null)
   const [smsDismissed, setSmsDismissed] = useState(true)
 
@@ -117,22 +164,28 @@ export const NotificationCenter = memo(function NotificationCenter() {
         const imp = data?.data?.impersonation as { active?: boolean } | undefined
         setImpersonating(Boolean(imp?.active))
         setViewingEmail((data?.data?.user?.email as string | undefined) ?? null)
+        setOwnerUserId((data?.data?.user?.id as string | undefined) ?? null)
       })
       .catch(() => setImpersonating(false))
   }, [])
 
-  const refreshPorting = useCallback(async () => {
+  const refreshPorting = useCallback(async (syncFromTelnyx = false) => {
     const orgId = readActiveOrganizationId() ?? activeOrganizationId
     try {
-      const rows = await fetchActivePortingOrders(orgId)
+      const [rows, alerts] = await Promise.all([
+        fetchActivePortingOrders(orgId),
+        fetchUnreadPortingAlerts(orgId, syncFromTelnyx),
+      ])
       const unreadMap: Record<string, number> = {}
       for (const o of rows) {
         const id = o.telnyx_order_id?.trim()
         if (id) unreadMap[id] = o.unread_notification_count ?? 0
       }
+      setUnreadPortingAlerts(alerts)
       setPortingOrders(sortPortingOrdersForBanner(rows, unreadMap))
     } catch {
       setPortingOrders([])
+      setUnreadPortingAlerts([])
     }
   }, [activeOrganizationId])
 
@@ -158,7 +211,41 @@ export const NotificationCenter = memo(function NotificationCenter() {
   useEffect(() => {
     if (!open) return
     void loadSms(readActiveOrganizationId() ?? activeOrganizationId)
-  }, [open, loadSms, activeOrganizationId])
+    void refreshPorting(true)
+  }, [open, loadSms, activeOrganizationId, refreshPorting])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshPorting(true)
+    }, 60_000)
+    return () => window.clearInterval(interval)
+  }, [refreshPorting])
+
+  useEffect(() => {
+    if (!ownerUserId) return
+    const pusher = getPusherClient()
+    if (!pusher) return
+
+    const channel = pusher.subscribe(`owner-${ownerUserId}`)
+    const onPortingUpdate = (payload: { organization_id?: string | null }) => {
+      const orgId = readActiveOrganizationId() ?? activeOrganizationId
+      if (
+        orgId &&
+        !orgId.startsWith("legacy-") &&
+        payload.organization_id &&
+        payload.organization_id !== orgId
+      ) {
+        return
+      }
+      void refreshPorting(true)
+    }
+
+    channel.bind("porting-update", onPortingUpdate)
+    return () => {
+      channel.unbind("porting-update", onPortingUpdate)
+      pusher.unsubscribe(`owner-${ownerUserId}`)
+    }
+  }, [ownerUserId, activeOrganizationId, refreshPorting])
 
   useEffect(() => {
     const onChanged = () => {
@@ -232,7 +319,32 @@ export const NotificationCenter = memo(function NotificationCenter() {
       })
     }
 
+    for (const alert of unreadPortingAlerts) {
+      const phone = alert.phone_number ? formatPhoneDisplay(alert.phone_number) : "your line"
+      const deskOrderId = alert.workspace_port_order_id
+      list.push({
+        id: `port-alert-${alert.id}`,
+        tone: "warning",
+        icon: MessageSquare,
+        title: alert.title?.trim() || "New carrier update",
+        message: `${phone} — ${clipAlertBody(alert.body)}`,
+        actionLabel: "Open transfer desk",
+        onAction: () => {
+          setOpen(false)
+          if (deskOrderId) requestOpenPortingInteractionDrawer(deskOrderId)
+        },
+        priority: 92,
+      })
+    }
+
+    const ordersWithUnreadAlerts = new Set(
+      unreadPortingAlerts
+        .map((a) => a.workspace_port_order_id?.trim())
+        .filter(Boolean) as string[]
+    )
+
     for (const order of portingOrders) {
+      if (ordersWithUnreadAlerts.has(order.id)) continue
       const unread = order.unread_notification_count ?? 0
       const phase = getPortingBannerPhase(order, unread)
       list.push({
@@ -240,7 +352,7 @@ export const NotificationCenter = memo(function NotificationCenter() {
         tone: phase === "rejected" ? "critical" : phase === "action_needed" ? "warning" : "info",
         icon: phase === "in_progress" ? Truck : AlertTriangle,
         title: "Number transfer",
-        message: portingMessage(order, phase),
+        message: portingMessage(order, phase, unread),
         actionLabel: "Open transfer desk",
         onAction: () => {
           setOpen(false)
@@ -279,6 +391,7 @@ export const NotificationCenter = memo(function NotificationCenter() {
     exitingImpersonation,
     activation,
     portingOrders,
+    unreadPortingAlerts,
     smsView,
     smsDismissed,
   ])

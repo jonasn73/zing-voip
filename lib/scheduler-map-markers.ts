@@ -43,11 +43,15 @@ export function keyTypeLine(jobType: string | null, jobNotes: string | null): st
   return null
 }
 
-export function tooltipFromPoolJob(job: UnassignedPoolJob, poolIndex: number): MapMarkerTooltipModel {
+export function tooltipFromPoolJob(
+  job: UnassignedPoolJob,
+  poolIndex: number,
+  extras?: { job_status?: string | null; assigned_tech_id?: string | null }
+): MapMarkerTooltipModel {
   const phase = schedulerLifecyclePhase({
     dispatch_status: job.dispatch_status,
-    assigned_tech_id: null,
-    job_status: null,
+    assigned_tech_id: extras?.assigned_tech_id ?? null,
+    job_status: extras?.job_status ?? null,
   })
   return {
     id: job.id,
@@ -103,8 +107,8 @@ export function scheduledPinHtml(order: number, color: string, phase: SchedulerL
 }
 
 /** HTML for an unassigned hopper pin (pulsing orange/grey). */
-export function poolPinHtml(label: string): string {
-  return `<span class="hopper-pulse" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#78716c,#f97316);border:2px solid #fb923c;color:#fff7ed;font-size:11px;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,0.45)">${label}</span>`
+export function poolPinHtml(label: string, color = "#f97316"): string {
+  return `<span class="hopper-pulse" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#78716c,${color});border:2px solid ${color};color:#fff7ed;font-size:11px;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,0.45)">${label}</span>`
 }
 
 export const MAP_MARKER_ANIMATION_CSS = `

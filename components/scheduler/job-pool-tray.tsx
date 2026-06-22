@@ -22,8 +22,8 @@ export function JobPoolTray({ jobs, loading, highlightId, onSelectJob }: JobPool
             <Inbox className="h-4 w-4" aria-hidden />
           </span>
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Unassigned Job Pool</h2>
-            <p className="text-[11px] text-zinc-500">Drag a job onto the hourly grid to schedule & assign</p>
+            <h2 className="text-sm font-semibold text-foreground">Active job pool</h2>
+            <p className="text-[11px] text-zinc-500">Drag onto the hourly grid to schedule & assign</p>
           </div>
         </div>
         {loading ? (

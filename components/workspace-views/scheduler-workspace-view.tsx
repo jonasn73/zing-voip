@@ -3,7 +3,7 @@
 // Owner job scheduler — month calendar, hourly grid or map route view, manual booking.
 
 import dynamic from "next/dynamic"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Car, Clock, LayoutGrid, Loader2, Map as MapIcon, MapPin, Phone, Plus, User } from "lucide-react"
 import { getPusherClient } from "@/lib/realtime/pusher-client"
 import { Calendar } from "@/components/ui/calendar"
@@ -36,8 +36,8 @@ import {
   SCHEDULER_GRID_END_HOUR,
   SCHEDULER_GRID_START_HOUR,
   SCHEDULER_HOUR_ROW_PX,
-  dateAtLocalHour,
   dayKeyLocal,
+  dateAtLocalHour,
   formatHourLabel,
   schedulerEventPlacement,
   schedulerHourSlots,
@@ -51,12 +51,16 @@ import {
 import { HOPPER_DRAG_MIME } from "@/components/scheduler/job-pool-card"
 import { JobDetailDrawer } from "@/components/scheduler/job-detail-drawer"
 import { JobPoolTray } from "@/components/scheduler/job-pool-tray"
+import { ActivePipelinePanel } from "@/components/scheduler/active-pipeline-panel"
+import type { SchedulerRouteMapHandle } from "@/components/scheduler-route-map"
 import { PhoneLookupBar } from "@/components/scheduler/phone-lookup-bar"
 import { PoolScheduleDialog } from "@/components/scheduler/pool-schedule-dialog"
 import type {
+  ActivePipelineJob,
   FieldTechnician,
   SchedulerEvent,
   SchedulerPhoneLookupResult,
+  TechLiveLocation,
   UnassignedPoolJob,
 } from "@/lib/types"
 
@@ -274,6 +278,10 @@ export function SchedulerWorkspaceView() {
   const [bookingSaving, setBookingSaving] = useState(false)
   const [bookingError, setBookingError] = useState<string | null>(null)
   const [poolJobs, setPoolJobs] = useState<UnassignedPoolJob[]>([])
+  const [activePipelineJobs, setActivePipelineJobs] = useState<ActivePipelineJob[]>([])
+  const [activePipelineLoading, setActivePipelineLoading] = useState(false)
+  const [techLocations, setTechLocations] = useState<TechLiveLocation[]>([])
+  const mapRef = useRef<SchedulerRouteMapHandle>(null)
   const [poolLoading, setPoolLoading] = useState(true)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [drawerPoolJob, setDrawerPoolJob] = useState<UnassignedPoolJob | null>(null)
@@ -380,18 +388,50 @@ export function SchedulerWorkspaceView() {
       .finally(() => setPoolLoading(false))
   }, [orgId])
 
+  const loadActivePipeline = useCallback(() => {
+    setActivePipelineLoading(true)
+    const day = dayKeyLocal(selectedDay)
+    const orgQs = orgId ? `&organization_id=${encodeURIComponent(orgId)}` : ""
+    fetch(`/api/owner/jobs/pool?scope=active&day=${day}${orgQs}`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("pipeline"))))
+      .then((j: { data?: { jobs?: ActivePipelineJob[] } }) => {
+        setActivePipelineJobs(Array.isArray(j.data?.jobs) ? j.data!.jobs! : [])
+      })
+      .catch(() => setActivePipelineJobs([]))
+      .finally(() => setActivePipelineLoading(false))
+  }, [orgId, selectedDay])
+
+  const loadTechLocations = useCallback(() => {
+    fetch("/api/owner/jobs", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("jobs"))))
+      .then((j: { data?: { techLocations?: TechLiveLocation[] } }) => {
+        setTechLocations(Array.isArray(j.data?.techLocations) ? j.data!.techLocations! : [])
+      })
+      .catch(() => setTechLocations([]))
+  }, [])
+
   useEffect(() => {
     loadPool()
   }, [loadPool])
 
   useEffect(() => {
-    if (viewMode === "map") loadPool()
-  }, [viewMode, loadPool])
+    if (viewMode === "map") {
+      loadActivePipeline()
+      loadTechLocations()
+    }
+  }, [viewMode, loadActivePipeline, loadTechLocations])
 
   const refreshSchedulerData = useCallback(() => {
     load()
     loadPool()
-  }, [load, loadPool])
+    if (viewMode === "map") {
+      loadActivePipeline()
+      loadTechLocations()
+    }
+  }, [load, loadPool, viewMode, loadActivePipeline, loadTechLocations])
 
   useEffect(() => {
     if (!ownerUserId) return
@@ -415,6 +455,7 @@ export function SchedulerWorkspaceView() {
             : ev
         )
       )
+      if (viewMode === "map") loadActivePipeline()
     }
 
     const onJobAssigned = (payload: { leadId?: string; techUserId?: string }) => {
@@ -428,14 +469,18 @@ export function SchedulerWorkspaceView() {
     channel.bind("job-booked", refreshSchedulerData)
     channel.bind("job-assigned", onJobAssigned)
     channel.bind("disposition-updated", refreshSchedulerData)
+    channel.bind("tech-location-updated", () => {
+      if (viewMode === "map") loadTechLocations()
+    })
     return () => {
       channel.unbind("job-status-updated", onJobStatus)
       channel.unbind("job-booked", refreshSchedulerData)
       channel.unbind("job-assigned", onJobAssigned)
       channel.unbind("disposition-updated", refreshSchedulerData)
+      channel.unbind("tech-location-updated")
       pusher.unsubscribe(`owner-${ownerUserId}`)
     }
-  }, [ownerUserId, refreshSchedulerData, load])
+  }, [ownerUserId, refreshSchedulerData, load, viewMode, loadTechLocations])
 
   useEffect(() => {
     const qs = orgId ? `?organization_id=${encodeURIComponent(orgId)}` : ""
@@ -522,6 +567,19 @@ export function SchedulerWorkspaceView() {
     setHighlightId(ev.id)
     setDrawerScheduledEvent(ev)
     setDrawerPoolJob(null)
+  }
+
+  function focusPipelineJob(job: ActivePipelineJob) {
+    setHighlightId(job.id)
+    if (typeof job.latitude === "number" && typeof job.longitude === "number") {
+      mapRef.current?.panTo(job.latitude, job.longitude, 15)
+    }
+    const scheduled = dayEvents.find((ev) => ev.id === job.id)
+    if (scheduled) {
+      openScheduledJobDrawer(scheduled)
+      return
+    }
+    openPoolJobDrawer(job)
   }
 
   function closeJobDrawer() {
@@ -732,12 +790,14 @@ export function SchedulerWorkspaceView() {
         </div>
       </div>
 
-      <JobPoolTray
-        jobs={poolJobs}
-        loading={poolLoading}
-        highlightId={highlightId}
-        onSelectJob={openPoolJobDrawer}
-      />
+      {viewMode === "grid" ? (
+        <JobPoolTray
+          jobs={poolJobs}
+          loading={poolLoading}
+          highlightId={highlightId}
+          onSelectJob={openPoolJobDrawer}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
         <WorkspacePanel className="p-3">
@@ -783,7 +843,9 @@ export function SchedulerWorkspaceView() {
                   </>
                 ) : (
                   <>
-                    Map route · {dayEvents.length} stop{dayEvents.length === 1 ? "" : "s"} in chronological order
+                    Dispatch map · {activePipelineJobs.length} active job
+                    {activePipelineJobs.length === 1 ? "" : "s"} · {techLocations.length} tech
+                    {techLocations.length === 1 ? "" : "s"} live
                   </>
                 )}
               </p>
@@ -908,18 +970,27 @@ export function SchedulerWorkspaceView() {
               ) : null}
             </>
           ) : (
-            <div className="grid min-h-[min(720px,70vh)] flex-1 grid-cols-1 divide-y divide-border/60 md:grid-cols-2 md:divide-x md:divide-y-0">
-              <div className="max-h-[min(720px,70vh)] overflow-y-auto">
-                <DayRouteList events={dayEvents} />
+            <div className="flex min-h-[min(720px,70vh)] flex-1 flex-col lg:flex-row">
+              <div className="max-h-[min(360px,45vh)] w-full shrink-0 overflow-y-auto border-b border-border/60 bg-card/40 lg:max-h-none lg:w-[40%] lg:border-b-0 lg:border-r">
+                <ActivePipelinePanel
+                  jobs={activePipelineJobs}
+                  loading={activePipelineLoading}
+                  highlightId={highlightId}
+                  onFocusJob={focusPipelineJob}
+                />
               </div>
-              <div className="min-h-[320px] md:min-h-0">
+              <div className="min-h-[320px] min-w-0 flex-1 lg:min-h-0">
                 <SchedulerRouteMap
+                  ref={mapRef}
                   events={dayEvents}
+                  pipelineJobs={activePipelineJobs}
                   poolJobs={poolJobs}
+                  techLocations={techLocations}
                   selectedDayLabel={selectedDayLabel}
                   highlightId={highlightId}
+                  embedded
                   onSelectEvent={openScheduledJobDrawer}
-                  onSelectPoolJob={openPoolJobDrawer}
+                  onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
                 />
               </div>
             </div>

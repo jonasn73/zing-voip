@@ -31,15 +31,31 @@ export const SCHEDULER_CARD_STYLE: Record<SchedulerLifecyclePhase, string> = {
   unassigned: "border-amber-500/50 bg-amber-500/15 text-amber-100",
   scheduled: "border-teal-500/50 bg-teal-500/15 text-teal-50",
   en_route: "border-sky-500/50 bg-sky-500/15 text-sky-100",
-  on_site: "border-orange-500/50 bg-orange-500/15 text-orange-100",
+  on_site: "border-yellow-500/50 bg-yellow-500/15 text-yellow-100",
   completed: "border-zinc-600/50 bg-zinc-700/30 text-zinc-400 opacity-70",
 }
 
 export const SCHEDULER_STATUS_LABEL: Record<SchedulerLifecyclePhase, string> = {
   unassigned: "Unassigned",
-  scheduled: "Scheduled",
+  scheduled: "Assigned",
   en_route: "En route",
-  on_site: "On site",
+  on_site: "In progress",
+  completed: "Completed",
+}
+
+/** Left-panel group order for the dispatch split view (most urgent first). */
+export const PIPELINE_PANEL_GROUP_ORDER: SchedulerLifecyclePhase[] = [
+  "en_route",
+  "on_site",
+  "scheduled",
+  "unassigned",
+]
+
+export const PIPELINE_PANEL_GROUP_TITLE: Record<SchedulerLifecyclePhase, string> = {
+  unassigned: "Unassigned",
+  scheduled: "Assigned",
+  en_route: "En route",
+  on_site: "In progress",
   completed: "Completed",
 }
 
@@ -48,7 +64,7 @@ export const SCHEDULER_MAP_PIN_COLOR: Record<SchedulerLifecyclePhase, string> = 
   unassigned: "#f97316",
   scheduled: "#14b8a6",
   en_route: "#38bdf8",
-  on_site: "#fbbf24",
+  on_site: "#eab308",
   completed: "#22c55e",
 }
 

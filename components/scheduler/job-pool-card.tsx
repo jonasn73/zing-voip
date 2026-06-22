@@ -5,6 +5,7 @@
 import { Car, GripVertical, MapPin } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { vehicleLabelFromParts } from "@/lib/job-pool"
+import { SCHEDULER_CARD_STYLE, SCHEDULER_STATUS_LABEL } from "@/lib/scheduler-job-status"
 import type { UnassignedPoolJob } from "@/lib/types"
 
 export const HOPPER_DRAG_MIME = "application/x-lyncr-job-id"
@@ -38,9 +39,19 @@ export function JobPoolCard({ job, highlighted, onSelect }: JobPoolCardProps) {
       <div className="flex items-start gap-1.5">
         <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-600" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-foreground">
-            {job.job_type || "Service call"}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="truncate text-xs font-semibold text-foreground">
+              {job.job_type || "Service call"}
+            </p>
+            <span
+              className={cn(
+                "shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                SCHEDULER_CARD_STYLE.unassigned
+              )}
+            >
+              {SCHEDULER_STATUS_LABEL.unassigned}
+            </span>
+          </div>
           {vehicle ? (
             <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-zinc-400">
               <Car className="h-3 w-3 shrink-0" aria-hidden />

@@ -39,6 +39,14 @@ export function dayKeyLocal(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/** Local midnight → next midnight as ISO bounds for a calendar day key. */
+export function localDayRangeIso(dayKey: string): { fromIso: string; toIso: string } {
+  const [y, m, d] = dayKey.split("-").map(Number)
+  const from = new Date(y, m - 1, d, 0, 0, 0, 0)
+  const to = new Date(y, m - 1, d + 1, 0, 0, 0, 0)
+  return { fromIso: from.toISOString(), toIso: to.toISOString() }
+}
+
 /** Hourly grid defaults for the owner scheduler day view. */
 export const SCHEDULER_GRID_START_HOUR = 7
 export const SCHEDULER_GRID_END_HOUR = 19

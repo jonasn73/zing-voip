@@ -8,6 +8,7 @@
 import { neon } from "@neondatabase/serverless"
 import { unstable_cache, revalidateTag } from "next/cache"
 import { neighborhoodFromLocation } from "@/lib/job-pool"
+import { localDayRangeIso } from "@/lib/scheduler-utils"
 import { resolveNeonDatabaseUrl } from "@/lib/neon-database-url"
 import { formatAdminRoutingOverridePhoneForTelnyx, resolveScopedAdminRoutingOverrideE164 } from "@/lib/phone-e164"
 import { SITE_NAME } from "@/lib/brand"
@@ -6538,6 +6539,101 @@ function poolJobFromRow(row: Record<string, unknown>): import("@/lib/types").Una
     created_at: ev.created_at,
     latitude: ev.latitude,
     longitude: ev.longitude,
+  }
+}
+
+function activePipelineJobFromRow(row: Record<string, unknown>): import("@/lib/types").ActivePipelineJob {
+  const ev = schedulerEventFromRow(row)
+  const base = poolJobFromRow(row)
+  return {
+    ...base,
+    scheduled_at: ev.scheduled_tentative ? null : ev.scheduled_at,
+    job_status: ev.job_status,
+    assigned_tech_id: ev.assigned_tech_id,
+    assigned_tech_name: ev.assigned_tech_name,
+  }
+}
+
+/** All non-completed pipeline jobs for one calendar day (+ open hopper jobs). */
+export async function listOwnerActivePipelineJobsForDay(params: {
+  ownerUserId: string
+  dayKey: string
+  organizationId?: string | null
+  limit?: number
+}): Promise<import("@/lib/types").ActivePipelineJob[]> {
+  const sql = getSql()
+  const lim = Math.min(Math.max(params.limit ?? 150, 1), 300)
+  const orgId = params.organizationId?.trim() || null
+  const { fromIso, toIso } = localDayRangeIso(params.dayKey)
+
+  try {
+    const rows = orgId
+      ? await sql`
+          SELECT l.id, l.caller_e164, l.collected, l.summary, l.disposition, l.scheduled_at, l.created_at,
+                 l.assigned_tech_id, l.job_status, l.dispatch_status, t.name AS assigned_tech_name
+          FROM ai_leads l
+          LEFT JOIN field_technicians t ON t.portal_user_id = l.assigned_tech_id
+          WHERE l.user_id = ${params.ownerUserId}
+            AND (l.job_status IS NULL OR l.job_status <> 'completed')
+            AND (
+              l.disposition IN ('BOOKED', 'PENDING_TIME')
+              OR l.collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
+            )
+            AND (
+              (
+                l.scheduled_at IS NOT NULL
+                AND l.scheduled_at >= ${fromIso}::timestamptz
+                AND l.scheduled_at < ${toIso}::timestamptz
+              )
+              OR (
+                l.assigned_tech_id IS NULL
+                AND (
+                  l.dispatch_status = 'unassigned_pool'
+                  OR l.dispatch_status IS NULL
+                  OR l.collected->>'dispatch_status' = 'unassigned_pool'
+                )
+              )
+            )
+            AND (l.organization_id IS NULL OR l.organization_id = ${orgId}::uuid)
+          ORDER BY COALESCE(l.scheduled_at, l.created_at) ASC
+          LIMIT ${lim}
+        `
+      : await sql`
+          SELECT l.id, l.caller_e164, l.collected, l.summary, l.disposition, l.scheduled_at, l.created_at,
+                 l.assigned_tech_id, l.job_status, l.dispatch_status, t.name AS assigned_tech_name
+          FROM ai_leads l
+          LEFT JOIN field_technicians t ON t.portal_user_id = l.assigned_tech_id
+          WHERE l.user_id = ${params.ownerUserId}
+            AND (l.job_status IS NULL OR l.job_status <> 'completed')
+            AND (
+              l.disposition IN ('BOOKED', 'PENDING_TIME')
+              OR l.collected->>'disposition' IN ('BOOKED', 'PENDING_TIME')
+            )
+            AND (
+              (
+                l.scheduled_at IS NOT NULL
+                AND l.scheduled_at >= ${fromIso}::timestamptz
+                AND l.scheduled_at < ${toIso}::timestamptz
+              )
+              OR (
+                l.assigned_tech_id IS NULL
+                AND (
+                  l.dispatch_status = 'unassigned_pool'
+                  OR l.dispatch_status IS NULL
+                  OR l.collected->>'dispatch_status' = 'unassigned_pool'
+                )
+              )
+            )
+          ORDER BY COALESCE(l.scheduled_at, l.created_at) ASC
+          LIMIT ${lim}
+        `
+    return rows.map((r) => activePipelineJobFromRow(r as Record<string, unknown>))
+  } catch (e) {
+    if (isMissingSchedulerColumnError(e) || isMissingAssignedTechColumnError(e)) {
+      return []
+    }
+    if (isUndefinedRelationError(e, "ai_leads")) return []
+    throw e
   }
 }
 

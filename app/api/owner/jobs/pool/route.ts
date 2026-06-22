@@ -1,17 +1,64 @@
-// GET /api/owner/jobs/pool — unassigned hopper jobs for the active workspace
+// GET /api/owner/jobs/pool — hopper (unassigned) or active day pipeline (map dispatch)
 
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
-import { listOwnerUnassignedPoolJobs, setLeadCoordinates } from "@/lib/db"
+import {
+  listOwnerActivePipelineJobsForDay,
+  listOwnerUnassignedPoolJobs,
+  setLeadCoordinates,
+} from "@/lib/db"
 import { geocodeAddress } from "@/lib/geocode"
 import {
   poolCoordKey,
   geocodeQueryForPoolJob,
   poolJobNeedsGeocode,
 } from "@/lib/map-pin-spread"
-import type { UnassignedPoolJob } from "@/lib/types"
+import type { ActivePipelineJob, UnassignedPoolJob } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
+
+type PoolJobRow = UnassignedPoolJob | ActivePipelineJob
+
+async function enrichPoolJobsWithGeocode(jobs: PoolJobRow[]): Promise<PoolJobRow[]> {
+  const coordCounts = new Map<string, number>()
+  for (const job of jobs) {
+    if (job.latitude == null || job.longitude == null) continue
+    const key = poolCoordKey(job.latitude, job.longitude)
+    coordCounts.set(key, (coordCounts.get(key) ?? 0) + 1)
+  }
+
+  const updated: PoolJobRow[] = [...jobs]
+  let geocoded = 0
+  for (let i = 0; i < updated.length && geocoded < 8; i++) {
+    const job = updated[i]
+    const key =
+      job.latitude != null && job.longitude != null
+        ? poolCoordKey(job.latitude, job.longitude)
+        : null
+    const duplicateCoords = key != null && (coordCounts.get(key) ?? 0) > 1
+
+    if (!poolJobNeedsGeocode(job, duplicateCoords)) continue
+
+    const address = geocodeQueryForPoolJob(job)
+    if (!address) continue
+
+    const coords = await geocodeAddress(address)
+    if (!coords) continue
+
+    await setLeadCoordinates(job.id, coords.lat, coords.lng).catch(() => {})
+    updated[i] = { ...job, latitude: coords.lat, longitude: coords.lng }
+
+    if (key) {
+      coordCounts.set(key, (coordCounts.get(key) ?? 1) - 1)
+      if ((coordCounts.get(key) ?? 0) <= 0) coordCounts.delete(key)
+    }
+    const newKey = poolCoordKey(coords.lat, coords.lng)
+    coordCounts.set(newKey, (coordCounts.get(newKey) ?? 0) + 1)
+    geocoded += 1
+  }
+
+  return updated
+}
 
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
@@ -19,53 +66,28 @@ export async function GET(req: NextRequest) {
 
   const organizationId = req.nextUrl.searchParams.get("organization_id")?.trim() || null
   const orgId = organizationId && !organizationId.startsWith("legacy-") ? organizationId : null
+  const scope = req.nextUrl.searchParams.get("scope")?.trim() || "hopper"
+  const dayKey = req.nextUrl.searchParams.get("day")?.trim() || null
 
   try {
-    const jobs = await listOwnerUnassignedPoolJobs({
-      ownerUserId: userId,
-      organizationId: orgId,
-    })
-
-    const coordCounts = new Map<string, number>()
-    for (const job of jobs) {
-      if (job.latitude == null || job.longitude == null) continue
-      const key = poolCoordKey(job.latitude, job.longitude)
-      coordCounts.set(key, (coordCounts.get(key) ?? 0) + 1)
+    let jobs: PoolJobRow[]
+    if (scope === "active" && dayKey && /^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
+      jobs = await listOwnerActivePipelineJobsForDay({
+        ownerUserId: userId,
+        dayKey,
+        organizationId: orgId,
+      })
+    } else {
+      jobs = await listOwnerUnassignedPoolJobs({
+        ownerUserId: userId,
+        organizationId: orgId,
+      })
     }
 
-    const updated: UnassignedPoolJob[] = [...jobs]
-    let geocoded = 0
-    for (let i = 0; i < updated.length && geocoded < 8; i++) {
-      const job = updated[i]
-      const key =
-        job.latitude != null && job.longitude != null
-          ? poolCoordKey(job.latitude, job.longitude)
-          : null
-      const duplicateCoords = key != null && (coordCounts.get(key) ?? 0) > 1
-
-      if (!poolJobNeedsGeocode(job, duplicateCoords)) continue
-
-      const address = geocodeQueryForPoolJob(job)
-      if (!address) continue
-
-      const coords = await geocodeAddress(address)
-      if (!coords) continue
-
-      await setLeadCoordinates(job.id, coords.lat, coords.lng).catch(() => {})
-      updated[i] = { ...job, latitude: coords.lat, longitude: coords.lng }
-
-      if (key) {
-        coordCounts.set(key, (coordCounts.get(key) ?? 1) - 1)
-        if ((coordCounts.get(key) ?? 0) <= 0) coordCounts.delete(key)
-      }
-      const newKey = poolCoordKey(coords.lat, coords.lng)
-      coordCounts.set(newKey, (coordCounts.get(newKey) ?? 0) + 1)
-      geocoded += 1
-    }
-
-    return NextResponse.json({ data: { jobs: updated } })
+    const updated = await enrichPoolJobsWithGeocode(jobs)
+    return NextResponse.json({ data: { jobs: updated, scope: scope === "active" ? "active" : "hopper" } })
   } catch (e) {
     console.error("[GET /api/owner/jobs/pool]", e)
-    return NextResponse.json({ data: { jobs: [] }, degraded: true })
+    return NextResponse.json({ data: { jobs: [], scope: "hopper" }, degraded: true })
   }
 }

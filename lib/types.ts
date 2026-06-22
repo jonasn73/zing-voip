@@ -148,6 +148,13 @@ export interface UnassignedPoolJob {
   longitude: number | null
 }
 
+/** Active dispatch pipeline job (scheduled + hopper) for map split view. */
+export interface ActivePipelineJob extends UnassignedPoolJob {
+  job_status: string | null
+  assigned_tech_id: string | null
+  assigned_tech_name: string | null
+}
+
 /** Phone lookup hits across pool + calendar. */
 export interface SchedulerPhoneLookupResult {
   pool: UnassignedPoolJob[]

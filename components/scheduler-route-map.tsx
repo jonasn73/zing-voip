@@ -1,8 +1,8 @@
 "use client"
 
-// Owner scheduler map — Louisville default, status-colored pins, hover tooltips.
+// Owner scheduler map — Louisville default, status-colored pins, live tech markers, panTo focus.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react"
 import { Loader2, MapPinned } from "lucide-react"
 import "leaflet/dist/leaflet.css"
 import type { Map as LeafletMap, Marker, Polyline } from "leaflet"
@@ -30,7 +30,7 @@ import {
   isCompletedMapJob,
   schedulerLifecyclePhase,
 } from "@/lib/scheduler-job-status"
-import type { SchedulerEvent, UnassignedPoolJob } from "@/lib/types"
+import type { ActivePipelineJob, SchedulerEvent, TechLiveLocation, UnassignedPoolJob } from "@/lib/types"
 
 type LeafletModule = typeof import("leaflet")
 
@@ -43,7 +43,7 @@ type RoutedStop = {
 }
 
 type PoolPin = {
-  job: UnassignedPoolJob
+  job: UnassignedPoolJob | ActivePipelineJob
   lat: number
   lng: number
   poolIndex: number
@@ -65,32 +65,65 @@ function routeStopIcon(L: LeafletModule, order: number, phase: RoutedStop["phase
   })
 }
 
-function poolHopperIcon(L: LeafletModule, label: string) {
+function poolHopperIcon(L: LeafletModule, label: string, color: string) {
   return L.divIcon({
     className: "",
-    html: poolPinHtml(label),
+    html: poolPinHtml(label, color),
     iconSize: [26, 26],
     iconAnchor: [13, 13],
   })
 }
 
-type SchedulerRouteMapProps = {
-  events: SchedulerEvent[]
-  poolJobs?: UnassignedPoolJob[]
-  selectedDayLabel: string
-  highlightId?: string | null
-  onSelectEvent?: (event: SchedulerEvent) => void
-  onSelectPoolJob?: (job: UnassignedPoolJob) => void
+function techLiveIcon(L: LeafletModule, initials: string, status: string | null) {
+  const color =
+    status === "en_route" ? "#38bdf8" : status === "on_site" || status === "arrived" ? "#eab308" : "#a1a1aa"
+  const pulse = status === "en_route" || status === "on_site" || status === "arrived"
+  return L.divIcon({
+    className: "",
+    html: `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;background:${color};border:2px solid #18181b;font-size:10px;font-weight:700;color:#0a0a0a;box-shadow:0 0 0 ${pulse ? "5px" : "2px"} ${color}44">${initials}</span>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  })
 }
 
-export function SchedulerRouteMap({
-  events,
-  poolJobs = [],
-  selectedDayLabel,
-  highlightId,
-  onSelectEvent,
-  onSelectPoolJob,
-}: SchedulerRouteMapProps) {
+function techInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+  return (parts[0]?.slice(0, 2) ?? "T").toUpperCase()
+}
+
+export type SchedulerRouteMapHandle = {
+  panTo: (lat: number, lng: number, zoom?: number) => void
+}
+
+type SchedulerRouteMapProps = {
+  events: SchedulerEvent[]
+  pipelineJobs?: ActivePipelineJob[]
+  poolJobs?: UnassignedPoolJob[]
+  techLocations?: TechLiveLocation[]
+  selectedDayLabel: string
+  highlightId?: string | null
+  /** Hide top stats chrome so the map fills the split pane edge-to-edge. */
+  embedded?: boolean
+  onSelectEvent?: (event: SchedulerEvent) => void
+  onSelectPoolJob?: (job: UnassignedPoolJob | ActivePipelineJob) => void
+}
+
+export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRouteMapProps>(
+  function SchedulerRouteMap(
+    {
+      events,
+      pipelineJobs = [],
+      poolJobs = [],
+      techLocations = [],
+      selectedDayLabel,
+      highlightId,
+      embedded = false,
+      onSelectEvent,
+      onSelectPoolJob,
+    },
+    ref
+  ) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
   const leafletRef = useRef<LeafletModule | null>(null)
@@ -99,6 +132,14 @@ export function SchedulerRouteMap({
   const [ready, setReady] = useState(false)
   const [hovered, setHovered] = useState<HoveredPin | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
+
+  useImperativeHandle(ref, () => ({
+    panTo(lat: number, lng: number, zoom = 15) {
+      const map = mapRef.current
+      if (!map) return
+      map.setView([lat, lng], zoom, { animate: true })
+    },
+  }))
 
   const syncTooltipPos = useCallback((lat: number, lng: number) => {
     const map = mapRef.current
@@ -127,8 +168,10 @@ export function SchedulerRouteMap({
     return out
   }, [events])
 
+  const hopperSource = pipelineJobs.length > 0 ? pipelineJobs : poolJobs
+
   const poolPins = useMemo((): PoolPin[] => {
-    const mapped = poolJobs
+    const mapped = hopperSource
       .filter((j) => typeof j.latitude === "number" && typeof j.longitude === "number")
       .map((j, idx) => ({ job: j, lat: j.latitude!, lng: j.longitude!, poolIndex: idx + 1 }))
 
@@ -136,7 +179,7 @@ export function SchedulerRouteMap({
       (item) => item.data
     )
     return ensureUniquePoolPinPositions(spread)
-  }, [poolJobs])
+  }, [hopperSource])
 
   const routeStops = useMemo(
     () => stops.filter((s) => isActiveMapJob(s.phase)),
@@ -205,9 +248,19 @@ export function SchedulerRouteMap({
 
     for (const pin of poolPins) {
       const highlighted = highlightId === pin.job.id
-      const tooltipModel = tooltipFromPoolJob(pin.job, pin.poolIndex)
+      const active = pin.job as ActivePipelineJob
+      const phase = schedulerLifecyclePhase({
+        job_status: active.job_status,
+        dispatch_status: pin.job.dispatch_status,
+        assigned_tech_id: active.assigned_tech_id,
+      })
+      const pinColor = SCHEDULER_MAP_PIN_COLOR[phase]
+      const tooltipModel = tooltipFromPoolJob(pin.job, pin.poolIndex, {
+        job_status: active.job_status,
+        assigned_tech_id: active.assigned_tech_id,
+      })
       const marker = L.marker([pin.lat, pin.lng], {
-        icon: poolHopperIcon(L, String(pin.poolIndex)),
+        icon: poolHopperIcon(L, String(pin.poolIndex), pinColor),
         zIndexOffset: pin.poolIndex * 250,
       }).addTo(map)
 
@@ -226,6 +279,17 @@ export function SchedulerRouteMap({
       }
       markersRef.current.push(marker)
       latLngs.push([pin.lat, pin.lng])
+    }
+
+    for (const tech of techLocations) {
+      if (typeof tech.latitude !== "number" || typeof tech.longitude !== "number") continue
+      const marker = L.marker([tech.latitude, tech.longitude], {
+        icon: techLiveIcon(L, techInitials(tech.name), tech.status),
+        zIndexOffset: 5000,
+      }).addTo(map)
+      marker.bindTooltip(`${tech.name} · live`, { direction: "top", opacity: 0.95 })
+      markersRef.current.push(marker)
+      latLngs.push([tech.latitude, tech.longitude])
     }
 
     for (const stop of scheduledPins) {
@@ -283,6 +347,7 @@ export function SchedulerRouteMap({
     stops,
     scheduledPins,
     poolPins,
+    techLocations,
     ready,
     highlightId,
     onSelectEvent,
@@ -290,10 +355,10 @@ export function SchedulerRouteMap({
     syncTooltipPos,
   ])
 
-  const mappedPoolCount = poolJobs.filter(
+  const mappedPoolCount = hopperSource.filter(
     (j) => typeof j.latitude === "number" && typeof j.longitude === "number"
   ).length
-  const unmappedPoolCount = poolJobs.length - mappedPoolCount
+  const unmappedPoolCount = hopperSource.length - mappedPoolCount
 
   const activeEvents = events.filter((ev) =>
     isActiveMapJob(
@@ -307,22 +372,25 @@ export function SchedulerRouteMap({
   const missingCoords =
     activeEvents.length -
     routeStops.length +
-    poolJobs.filter((j) => j.latitude == null || j.longitude == null).length
+    hopperSource.filter((j) => j.latitude == null || j.longitude == null).length
 
   return (
     <div className="relative flex h-full min-h-[320px] flex-col">
       <style>{MAP_MARKER_ANIMATION_CSS}</style>
-      <div className="flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
-        <p className="text-xs font-medium text-zinc-400">
-          <MapPinned className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-          Route — {selectedDayLabel}
-        </p>
-        <p className="text-[10px] text-zinc-500">
-          {routeStops.length} scheduled · {mappedPoolCount}/{poolJobs.length} pool on map
-          {unmappedPoolCount > 0 ? ` · ${unmappedPoolCount} geocoding` : ""}
-          {missingCoords > 0 ? ` · ${missingCoords} awaiting address` : ""}
-        </p>
-      </div>
+      {!embedded ? (
+        <div className="flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
+          <p className="text-xs font-medium text-zinc-400">
+            <MapPinned className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+            Route — {selectedDayLabel}
+          </p>
+          <p className="text-[10px] text-zinc-500">
+            {routeStops.length} scheduled · {mappedPoolCount}/{hopperSource.length} pipeline on map
+            {techLocations.length > 0 ? ` · ${techLocations.length} tech live` : ""}
+            {unmappedPoolCount > 0 ? ` · ${unmappedPoolCount} geocoding` : ""}
+            {missingCoords > 0 ? ` · ${missingCoords} awaiting address` : ""}
+          </p>
+        </div>
+      ) : null}
       <div ref={containerRef} className="relative min-h-0 flex-1 bg-zinc-950">
         {hovered && tooltipPos ? (
           <MapMarkerHoverCard model={hovered.model} x={tooltipPos.x} y={tooltipPos.y} />
@@ -342,4 +410,4 @@ export function SchedulerRouteMap({
       ) : null}
     </div>
   )
-}
+})

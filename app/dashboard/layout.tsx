@@ -37,7 +37,16 @@ export default async function DashboardLayout({
 }) {
   const [user, h] = await Promise.all([getCachedSessionUser(), headers()])
   const pathnameFromRequest = h.get("x-sigo-pathname")
-  const isSchedulerRoute = pathnameFromRequest?.startsWith("/dashboard/scheduler") ?? false
+  const isSecondaryDashboardRoute =
+    pathnameFromRequest === "/dashboard/help" ||
+    pathnameFromRequest?.startsWith("/dashboard/help/") ||
+    pathnameFromRequest === "/dashboard/customers" ||
+    pathnameFromRequest?.startsWith("/dashboard/customers/")
+  const isDashboardShellRoute =
+    !pathnameFromRequest ||
+    pathnameFromRequest === "/dashboard" ||
+    pathnameFromRequest.startsWith("/dashboard/")
+  const shouldStreamMainBootstrap = isDashboardShellRoute && !isSecondaryDashboardRoute
   const isMainRoutingDashboard =
     !pathnameFromRequest ||
     pathnameFromRequest === "/dashboard" ||
@@ -57,7 +66,7 @@ export default async function DashboardLayout({
   }
   if (isPlatformAdminUser(user)) redirect("/admin")
 
-  const mainBootstrapPromise = isMainRoutingDashboard ? dashboardMainBootstrapPromise(user) : undefined
+  const mainBootstrapPromise = shouldStreamMainBootstrap ? dashboardMainBootstrapPromise(user) : undefined
   const linesPromise = mainBootstrapPromise
     ? mainBootstrapPromise.then((b) => b.phoneLines)
     : phoneLinesPromise(user)
@@ -69,8 +78,8 @@ export default async function DashboardLayout({
   const orgsPromise = mainBootstrapPromise
     ? mainBootstrapPromise.then((b) => b.organizations)
     : organizationsPromise(user)
-  const hopperPromise = isSchedulerRoute ? jobPoolPromise(user) : undefined
-  const pipelinePromise = isSchedulerRoute ? activePipelinePromise(user) : undefined
+  const hopperPromise = shouldStreamMainBootstrap ? jobPoolPromise(user) : undefined
+  const pipelinePromise = shouldStreamMainBootstrap ? activePipelinePromise(user) : undefined
 
   return (
     <DashboardStreamProvider

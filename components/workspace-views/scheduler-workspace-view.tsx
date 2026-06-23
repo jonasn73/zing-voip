@@ -113,7 +113,7 @@ export function SchedulerWorkspaceView() {
   const [loading, setLoading] = useState(true)
   const [bookingOpen, setBookingOpen] = useState(false)
   const [bookingStart, setBookingStart] = useState(() => toDatetimeLocalValue(new Date()))
-  const [viewMode, setViewMode] = useState<SchedulerViewMode>("map")
+  const [viewMode, setViewMode] = useState<SchedulerViewMode>("grid")
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [intakeValues, setIntakeValues] = useState<IntakeFormValues>({})
@@ -129,6 +129,7 @@ export function SchedulerWorkspaceView() {
   const [gridScheduleError, setGridScheduleError] = useState<string | null>(null)
   const [gridScheduleSaving, setGridScheduleSaving] = useState(false)
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null)
+  const initialBootstrapDoneRef = useRef(false)
 
   const monthKey = `${visibleMonth.getFullYear()}-${String(visibleMonth.getMonth() + 1).padStart(2, "0")}`
   const orgId =
@@ -242,7 +243,7 @@ export function SchedulerWorkspaceView() {
   }, [])
 
   const load = useCallback(() => {
-    setLoading(true)
+    if (!initialBootstrapDoneRef.current) setLoading(true)
     const bootstrapUrl = `/api/owner/scheduler/bootstrap?month=${encodeURIComponent(monthKey)}${orgQuery}`
 
     const bootstrapFetch = fetch(bootstrapUrl, { credentials: "include", cache: "no-store" })
@@ -271,12 +272,20 @@ export function SchedulerWorkspaceView() {
     return Promise.all([
       bootstrapFetch,
       viewMode === "map" ? loadTechLocations() : Promise.resolve(),
-    ]).finally(() => setLoading(false))
+    ]).finally(() => {
+      initialBootstrapDoneRef.current = true
+      setLoading(false)
+    })
   }, [monthKey, orgQuery, viewMode, loadTechLocations])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (viewMode !== "map") return
+    void loadTechLocations()
+  }, [viewMode, loadTechLocations])
 
   const refreshSchedulerData = useCallback(() => {
     load()

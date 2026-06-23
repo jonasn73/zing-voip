@@ -23,7 +23,7 @@ function DashboardBootstrapFromStream({
   )
 }
 
-/** Suspends only main content on /dashboard — header stays mounted to avoid layout shift. */
+/** Suspends routing with skeleton; hydrates bootstrap in the background on other tabs. */
 export function DashboardMainStreamGate({
   children,
   activePage,
@@ -33,12 +33,22 @@ export function DashboardMainStreamGate({
 }) {
   const { dashboardMainBootstrapPromise } = useDashboardStream()
 
-  if (!dashboardMainBootstrapPromise || activePage !== "dashboard") {
+  if (!dashboardMainBootstrapPromise) {
     return <>{children}</>
   }
 
+  if (activePage === "dashboard") {
+    return (
+      <Suspense fallback={<DashboardRoutingPageSkeleton />}>
+        <DashboardBootstrapFromStream promise={dashboardMainBootstrapPromise}>
+          {children}
+        </DashboardBootstrapFromStream>
+      </Suspense>
+    )
+  }
+
   return (
-    <Suspense fallback={<DashboardRoutingPageSkeleton />}>
+    <Suspense fallback={null}>
       <DashboardBootstrapFromStream promise={dashboardMainBootstrapPromise}>
         {children}
       </DashboardBootstrapFromStream>

@@ -41,7 +41,7 @@ export function useJobPoolQuery(activeOrganizationId: string | null) {
         writePersistedCache(cacheKey, jobs)
         return jobs
       }),
-    { ...defaultSwrConfig, fallbackData }
+    { ...defaultSwrConfig, fallbackData, revalidateOnFocus: false }
   )
 
   const hasCachedData = fallbackData !== undefined || data !== undefined
@@ -103,7 +103,7 @@ export function useActivePipelineQuery(
         writePersistedCache(cacheKey, jobs)
         return jobs
       }),
-    { ...defaultSwrConfig, fallbackData }
+    { ...defaultSwrConfig, fallbackData, revalidateOnFocus: false }
   )
 
   const hasCachedData = fallbackData !== undefined || data !== undefined

@@ -24,12 +24,12 @@ type JobDetailDrawerProps = {
   onSaved?: (event: SchedulerEvent) => void
 }
 
-const fieldBlockClass = "flex flex-col mb-4 min-w-0"
+const fieldBlockClass = "flex w-full min-w-0 flex-col mb-4 overflow-hidden"
 const labelClass = "text-xs font-medium text-zinc-400 mb-1.5"
 const inputClass =
   "w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 const addressTextareaClass =
-  "box-border block w-full max-w-full resize-none break-words whitespace-normal text-sm bg-zinc-900/50 border-zinc-800 min-h-[72px] rounded-lg border px-3 py-2 text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+  "w-full max-w-[calc(100%-4px)] box-border block break-words whitespace-normal px-3 py-2 text-sm bg-zinc-900/50 border border-zinc-800 rounded-md resize-none min-h-[72px] text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 const notesTextareaClass =
   "box-border block w-full max-w-full resize-none break-words whitespace-normal text-sm bg-zinc-900/50 border-zinc-800 min-h-[64px] rounded-lg border px-3 py-2 text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 
@@ -179,7 +179,7 @@ export function JobDetailDrawer({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
+        <div className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
           <div className={fieldBlockClass}>
             <label className={labelClass} htmlFor="job-customer-name">
               Customer name
@@ -262,11 +262,11 @@ export function JobDetailDrawer({
             </div>
           </div>
 
-          <div className={cn(fieldBlockClass, "w-full max-w-full")}>
+          <div className={fieldBlockClass}>
             <label className={labelClass} htmlFor="job-location">
               Address
             </label>
-            <Textarea
+            <textarea
               id="job-location"
               className={addressTextareaClass}
               value={location}

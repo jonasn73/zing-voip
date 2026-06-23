@@ -5,6 +5,7 @@ import type { DashboardMainBootstrap } from "@/lib/dashboard-stream-types"
 import { DashboardBootstrapProvider } from "@/components/dashboard-bootstrap-context"
 import { useDashboardStream } from "@/components/dashboard-stream-context"
 import { DashboardRoutingPageSkeleton } from "@/components/dashboard-routing-page-skeleton"
+import { DashboardRoutingReveal } from "@/components/dashboard-routing-reveal"
 import type { PageId } from "@/components/app-shell"
 
 function DashboardBootstrapFromStream({
@@ -15,7 +16,11 @@ function DashboardBootstrapFromStream({
   children: ReactNode
 }) {
   const bootstrap = use(promise)
-  return <DashboardBootstrapProvider bootstrap={bootstrap}>{children}</DashboardBootstrapProvider>
+  return (
+    <DashboardBootstrapProvider bootstrap={bootstrap}>
+      <DashboardRoutingReveal>{children}</DashboardRoutingReveal>
+    </DashboardBootstrapProvider>
+  )
 }
 
 /** Suspends only main content on /dashboard — header stays mounted to avoid layout shift. */

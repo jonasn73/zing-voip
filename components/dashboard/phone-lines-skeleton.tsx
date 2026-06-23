@@ -6,8 +6,8 @@ export function PhoneLinesSkeleton() {
       aria-busy="true"
       aria-label="Loading phone lines"
     >
-      <div className="h-[84px] animate-pulse rounded-xl bg-zinc-800/60" />
-      <div className="h-[84px] animate-pulse rounded-xl bg-zinc-800/60" />
+      <div className="h-[84px] sigo-skeleton-breathe rounded-xl bg-zinc-800/60" />
+      <div className="h-[84px] sigo-skeleton-breathe rounded-xl bg-zinc-800/60" />
     </div>
   )
 }

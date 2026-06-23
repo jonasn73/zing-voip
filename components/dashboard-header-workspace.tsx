@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
+import { cn } from "@/lib/utils"
 import { OrganizationSwitcher, OrganizationSwitcherPlaceholder } from "@/components/organization-switcher"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 
@@ -16,18 +17,24 @@ export function DashboardHeaderWorkspace({ sessionBusinessName }: { sessionBusin
   )
 
   const placeholderLabel = sessionBusinessName?.trim() || organizations[0]?.name || "Business"
-
-  if (organizations.length === 0) {
-    return <OrganizationSwitcherPlaceholder label={placeholderLabel} />
-  }
+  const ready = organizations.length > 0
 
   return (
-    <OrganizationSwitcher
-      seedOrganizations={organizations}
-      skipInitialFetch
-      onOrganizationsLoaded={setOrganizations}
-      onOrganizationChange={handleOrganizationChange}
-    />
+    <div
+      className={cn("transform-gpu", ready && "sigo-bloom-in")}
+      key={ready ? "workspace-ready" : "workspace-loading"}
+    >
+      {ready ? (
+        <OrganizationSwitcher
+          seedOrganizations={organizations}
+          skipInitialFetch
+          onOrganizationsLoaded={setOrganizations}
+          onOrganizationChange={handleOrganizationChange}
+        />
+      ) : (
+        <OrganizationSwitcherPlaceholder label={placeholderLabel} />
+      )}
+    </div>
   )
 }
 

@@ -35,7 +35,7 @@ export function DashboardRoutingPageSkeleton() {
           <section className="min-h-[22rem] overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-lg ring-1 ring-border/40">
             <header className="border-b border-border/50 bg-gradient-to-b from-muted/20 to-transparent px-5 py-5 sm:px-8 sm:py-6">
               <div className="flex flex-col items-center gap-4">
-                <div className="h-10 w-full max-w-xs animate-pulse rounded-xl bg-zinc-800/60" aria-hidden />
+                <div className="h-10 w-full max-w-xs sigo-skeleton-breathe rounded-xl bg-zinc-800/60" aria-hidden />
                 <CallFlowLinePickerSkeleton />
               </div>
             </header>

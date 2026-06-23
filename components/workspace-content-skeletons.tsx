@@ -9,7 +9,7 @@ import {
   WORKSPACE_TABLE_ROW_CLASS,
 } from "@/components/dashboard-workspace-ui"
 
-const SKELETON_BLOCK = "rounded-xl bg-zinc-900 animate-pulse"
+const SKELETON_BLOCK = "rounded-xl bg-zinc-900 sigo-skeleton-breathe"
 
 /** GPU bloom wrapper for lists/cards after data is ready. */
 export function WorkspaceBloom({ children, className }: { children: ReactNode; className?: string }) {

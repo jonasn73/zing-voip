@@ -8,7 +8,7 @@ import { after } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getOwnerIdForLead, getUser, setJobStatusForTech } from "@/lib/db"
 import { publishOwnerEvent } from "@/lib/realtime/pusher-server"
-import { onJobStateChange } from "@/lib/sms-pipeline"
+import { sendDispatchEnRouteCustomerSms, sendDispatchOnSiteCustomerSms } from "@/lib/dispatch-customer-sms"
 
 export const dynamic = "force-dynamic"
 
@@ -40,13 +40,29 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       await publishOwnerEvent(ownerId, "job-status-updated", { leadId: id, status }).catch(() => {})
     }
 
-    // Pressing "Start Route" dispatches the customer's "on the way" text (if the owner enabled it).
     if (status === "en_route") {
       after(async () => {
         try {
-          await onJobStateChange("EN_ROUTE", { leadId: id, techName: user.name })
+          const ownerId = await getOwnerIdForLead(id)
+          await sendDispatchEnRouteCustomerSms({
+            leadId: id,
+            expectedOwnerUserId: ownerId ?? undefined,
+          })
         } catch (e) {
-          console.warn("[tech status] EN_ROUTE SMS pipeline failed:", e)
+          console.warn("[tech status] en_route SMS failed:", e)
+        }
+      })
+    }
+    if (status === "arrived") {
+      after(async () => {
+        try {
+          const ownerId = await getOwnerIdForLead(id)
+          await sendDispatchOnSiteCustomerSms({
+            leadId: id,
+            expectedOwnerUserId: ownerId ?? undefined,
+          })
+        } catch (e) {
+          console.warn("[tech status] on_site SMS failed:", e)
         }
       })
     }

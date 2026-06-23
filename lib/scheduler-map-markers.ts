@@ -127,5 +127,32 @@ export const MAP_MARKER_ANIMATION_CSS = `
     70% { box-shadow: 0 0 0 10px rgba(251, 146, 60, 0); }
     100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0); }
   }
+  @keyframes techEnRouteRing {
+    0% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.75), 0 0 12px rgba(45, 212, 191, 0.35); }
+    70% { box-shadow: 0 0 0 12px rgba(45, 212, 191, 0), 0 0 16px rgba(45, 212, 191, 0.45); }
+    100% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0), 0 0 12px rgba(45, 212, 191, 0.35); }
+  }
+  @keyframes techOnSiteRing {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.95), 0 0 14px rgba(250, 204, 21, 0.55); }
+    50% { box-shadow: 0 0 0 4px rgba(234, 179, 8, 1), 0 0 20px rgba(250, 204, 21, 0.75); }
+  }
   .hopper-pulse { animation: hopperPulse 2s ease-out infinite; }
+  .tech-marker-en-route { animation: techEnRouteRing 1.8s ease-out infinite; }
+  .tech-marker-on-site { animation: techOnSiteRing 2.2s ease-in-out infinite; }
 `
+
+/** Micro-badge pin for a live technician — initials + status ring. */
+export function techBadgePinHtml(initials: string, status: string | null): string {
+  const isEnRoute = status === "en_route"
+  const isOnSite = status === "on_site" || status === "arrived"
+  const ringClass = isEnRoute
+    ? "tech-marker-en-route"
+    : isOnSite
+      ? "tech-marker-on-site"
+      : ""
+  const fill = isEnRoute ? "#0f766e" : isOnSite ? "#ca8a04" : "#52525b"
+  const textColor = isOnSite ? "#fef9c3" : "#ecfdf5"
+  const border = isOnSite ? "2px solid #facc15" : "2px solid #18181b"
+  const idleShadow = !isEnRoute && !isOnSite ? "box-shadow:0 0 0 2px rgba(161,161,170,0.35);" : ""
+  return `<span class="${ringClass}" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9999px;background:${fill};border:${border};font-size:10px;font-weight:800;color:${textColor};letter-spacing:-0.02em;${idleShadow}">${initials}</span>`
+}

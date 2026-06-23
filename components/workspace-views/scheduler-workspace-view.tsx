@@ -40,6 +40,7 @@ import {
 } from "@/lib/scheduler-utils"
 import { useActivePipelineQuery, useJobPoolQuery } from "@/lib/hooks/use-job-pool-query"
 import { JobPoolPanel } from "@/components/scheduler/job-pool-panel"
+import { DispatchOperationsMetricStrip } from "@/components/scheduler/dispatch-operations-metric-strip"
 import { ActivePipelinePanelStream } from "@/components/scheduler/active-pipeline-panel-stream"
 import { SchedulerCalendarStatsSkeleton } from "@/components/scheduler/scheduler-panel-skeletons"
 import type { SchedulerRouteMapHandle, DrivingRouteFocus } from "@/components/scheduler-route-map"
@@ -432,6 +433,31 @@ export function SchedulerWorkspaceView() {
     }
   }
 
+  function applyJobEventUpdate(event: SchedulerEvent) {
+    setDrawerScheduledEvent(event)
+    setDrawerPoolJob(null)
+    setEvents((prev) => {
+      const idx = prev.findIndex((ev) => ev.id === event.id)
+      if (idx === -1) return prev
+      const next = [...prev]
+      next[idx] = event
+      return next
+    })
+    if (typeof event.latitude === "number" && typeof event.longitude === "number") {
+      const techId = event.assigned_tech_id
+      const live = techId ? techLocations.find((t) => t.tech_user_id === techId) : null
+      mapRef.current?.fitDrivingRoute({
+        jobLat: event.latitude,
+        jobLng: event.longitude,
+        techLat: live?.latitude ?? null,
+        techLng: live?.longitude ?? null,
+        accountForDrawer: true,
+      })
+    }
+    if (viewMode === "map") void mutateActivePipeline()
+    refreshSchedulerData()
+  }
+
   function closeJobDrawer() {
     setDrawerPoolJob(null)
     setDrawerScheduledEvent(null)
@@ -675,6 +701,14 @@ export function SchedulerWorkspaceView() {
         <JobPoolPanel highlightId={highlightId} onSelectJob={openPoolJobDrawer} />
       ) : null}
 
+      {viewMode === "map" ? (
+        <DispatchOperationsMetricStrip
+          poolJobs={poolJobs}
+          activePipelineJobs={activePipelineJobs}
+          dayEvents={dayEvents}
+        />
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
         <WorkspacePanel className="p-3">
           <Calendar
@@ -889,29 +923,8 @@ export function SchedulerWorkspaceView() {
           scheduledEvent={drawerScheduledEvent}
           technicians={technicians}
           onClose={closeJobDrawer}
-          onSaved={(event) => {
-            setDrawerScheduledEvent(event)
-            setDrawerPoolJob(null)
-            setEvents((prev) => {
-              const idx = prev.findIndex((ev) => ev.id === event.id)
-              if (idx === -1) return prev
-              const next = [...prev]
-              next[idx] = event
-              return next
-            })
-            if (typeof event.latitude === "number" && typeof event.longitude === "number") {
-              const techId = event.assigned_tech_id
-              const live = techId ? techLocations.find((t) => t.tech_user_id === techId) : null
-              mapRef.current?.fitDrivingRoute({
-                jobLat: event.latitude,
-                jobLng: event.longitude,
-                techLat: live?.latitude ?? null,
-                techLng: live?.longitude ?? null,
-                accountForDrawer: true,
-              })
-            }
-            refreshSchedulerData()
-          }}
+          onSaved={applyJobEventUpdate}
+          onStatusChanged={applyJobEventUpdate}
         />
       ) : null}
     </WorkspacePage>

@@ -7085,6 +7085,22 @@ export async function setJobStatusForTech(
   return rows.length > 0
 }
 
+/** Owner updates field progress from the dispatch console drawer. */
+export async function setJobStatusForOwner(
+  ownerUserId: string,
+  leadId: string,
+  status: string
+): Promise<boolean> {
+  const sql = getSql()
+  const rows = await sql`
+    UPDATE ai_leads
+    SET job_status = ${status}
+    WHERE id = ${leadId} AND user_id = ${ownerUserId}
+    RETURNING id
+  `
+  return rows.length > 0
+}
+
 /**
  * Pick the best available on-duty technician for an owner to auto-dispatch a fresh booking to.
  * Prefers an idle tech, then any active tech without a live status, then busy ones. Null when the

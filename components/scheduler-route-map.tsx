@@ -19,6 +19,7 @@ import {
   MAP_MARKER_ANIMATION_CSS,
   poolPinHtml,
   scheduledPinHtml,
+  techBadgePinHtml,
   tooltipFromPoolJob,
   tooltipFromScheduledEvent,
   type MapMarkerTooltipModel,
@@ -76,14 +77,11 @@ function poolHopperIcon(L: LeafletModule, label: string, color: string) {
 }
 
 function techLiveIcon(L: LeafletModule, initials: string, status: string | null) {
-  const color =
-    status === "en_route" ? "#38bdf8" : status === "on_site" || status === "arrived" ? "#eab308" : "#a1a1aa"
-  const pulse = status === "en_route" || status === "on_site" || status === "arrived"
   return L.divIcon({
     className: "",
-    html: `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;background:${color};border:2px solid #18181b;font-size:10px;font-weight:700;color:#0a0a0a;box-shadow:0 0 0 ${pulse ? "5px" : "2px"} ${color}44">${initials}</span>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    html: techBadgePinHtml(initials, status),
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
   })
 }
 
@@ -94,7 +92,7 @@ function techInitials(name: string): string {
 }
 
 /** Right padding when the job drawer is open (matches drawer width + gutter). */
-const JOB_DRAWER_MAP_PADDING_PX = 460
+const JOB_DRAWER_MAP_PADDING_PX = 440
 
 type MapEdgePadding = {
   top?: number

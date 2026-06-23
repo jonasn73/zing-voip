@@ -11,6 +11,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import {
   SCHEDULER_STATUS_LABEL,
   schedulerLifecyclePhase,
+  type SchedulerLifecyclePhase,
 } from "@/lib/scheduler-job-status"
 import { SCHEDULER_DURATION_OPTIONS, toDatetimeLocalValue } from "@/lib/scheduler-utils"
 import { cn } from "@/lib/utils"
@@ -23,7 +24,19 @@ type JobDetailDrawerProps = {
   technicians: FieldTechnician[]
   onClose: () => void
   onSaved?: (event: SchedulerEvent) => void
+  onStatusChanged?: (event: SchedulerEvent) => void
 }
+
+const STATUS_SEGMENTS: {
+  phase: SchedulerLifecyclePhase
+  jobStatus: "assigned" | "en_route" | "arrived" | "completed"
+  label: string
+}[] = [
+  { phase: "scheduled", jobStatus: "assigned", label: "Assigned" },
+  { phase: "en_route", jobStatus: "en_route", label: "En route" },
+  { phase: "on_site", jobStatus: "arrived", label: "On site" },
+  { phase: "completed", jobStatus: "completed", label: "Completed" },
+]
 
 const fieldBlockClass = "flex w-full min-w-0 flex-col mb-4 overflow-hidden"
 const labelClass = "text-xs font-medium text-zinc-400 mb-1.5"
@@ -48,6 +61,7 @@ export function JobDetailDrawer({
   technicians,
   onClose,
   onSaved,
+  onStatusChanged,
 }: JobDetailDrawerProps) {
   const source = scheduledEvent ?? poolJob
   const jobId = source?.id ?? ""
@@ -64,7 +78,9 @@ export function JobDetailDrawer({
   const [durationMinutes, setDurationMinutes] = useState(60)
   const [assignedTechId, setAssignedTechId] = useState("")
   const [saving, setSaving] = useState(false)
+  const [statusUpdating, setStatusUpdating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [localJobStatus, setLocalJobStatus] = useState<string | null>(null)
 
   const assignableTechs = useMemo(
     () => technicians.filter((t) => t.is_active && t.portal_user_id),
@@ -77,14 +93,19 @@ export function JobDetailDrawer({
   }) | null
 
   const lifecyclePhase = schedulerLifecyclePhase({
-    job_status: scheduledEvent?.job_status ?? poolWithTech?.job_status ?? null,
+    job_status: localJobStatus ?? scheduledEvent?.job_status ?? poolWithTech?.job_status ?? null,
     dispatch_status: scheduledEvent?.dispatch_status ?? poolJob?.dispatch_status ?? null,
     assigned_tech_id: scheduledEvent?.assigned_tech_id ?? poolWithTech?.assigned_tech_id ?? null,
   })
   const statusLabel = SCHEDULER_STATUS_LABEL[lifecyclePhase]
 
+  const hasAssignedTech = Boolean(
+    scheduledEvent?.assigned_tech_id ?? poolWithTech?.assigned_tech_id ?? assignedTechId.trim()
+  )
+
   useEffect(() => {
     if (!source) return
+    setLocalJobStatus(scheduledEvent?.job_status ?? poolWithTech?.job_status ?? null)
     setCustomerName(source.customer_name ?? "")
     setCustomerPhone(source.customer_phone ?? "")
     setJobType(source.job_type ?? "")
@@ -108,6 +129,37 @@ export function JobDetailDrawer({
   if (!open || !source) return null
 
   const canSave = customerName.trim().length > 0 && customerPhone.trim().length > 0
+
+  async function handleStatusChange(nextStatus: (typeof STATUS_SEGMENTS)[number]["jobStatus"]) {
+    if (!jobId || statusUpdating) return
+    if (nextStatus !== "completed" && !hasAssignedTech) {
+      setError("Assign a technician before updating field status.")
+      return
+    }
+    setStatusUpdating(true)
+    setError(null)
+    setLocalJobStatus(nextStatus)
+    try {
+      const res = await fetch(`/api/owner/jobs/${encodeURIComponent(jobId)}/status`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      const json = (await res.json()) as { error?: string; data?: { event?: SchedulerEvent } }
+      if (!res.ok) throw new Error(json.error ?? "Could not update status")
+      const event = json.data?.event
+      if (event) {
+        setLocalJobStatus(event.job_status ?? nextStatus)
+        onStatusChanged?.(event)
+      }
+    } catch (e) {
+      setLocalJobStatus(scheduledEvent?.job_status ?? poolWithTech?.job_status ?? null)
+      setError(e instanceof Error ? e.message : "Could not update status")
+    } finally {
+      setStatusUpdating(false)
+    }
+  }
 
   async function handleSave() {
     if (!jobId || !canSave) return
@@ -168,6 +220,39 @@ export function JobDetailDrawer({
           >
             {statusLabel}
           </span>
+
+          <div className="mt-4 flex flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            {STATUS_SEGMENTS.map((segment) => {
+              const active = lifecyclePhase === segment.phase
+              const disabled =
+                statusUpdating ||
+                (segment.jobStatus !== "completed" && !hasAssignedTech && segment.phase !== "scheduled")
+              return (
+                <button
+                  key={segment.jobStatus}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => void handleStatusChange(segment.jobStatus)}
+                  className={cn(
+                    "flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-zinc-400 hover:bg-zinc-800/80 hover:text-foreground",
+                    disabled && !active && "cursor-not-allowed opacity-40"
+                  )}
+                >
+                  {segment.label}
+                </button>
+              )
+            })}
+          </div>
+          {statusUpdating ? (
+            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-zinc-500">
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              Updating status…
+            </p>
+          ) : null}
+
           <button
             type="button"
             aria-label="Close"

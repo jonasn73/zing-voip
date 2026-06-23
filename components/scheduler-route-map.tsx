@@ -128,6 +128,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
     ref
   ) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const mapShellRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
   const leafletRef = useRef<LeafletModule | null>(null)
   const markersRef = useRef<Marker[]>([])
@@ -220,6 +221,9 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       }).addTo(created)
       mapRef.current = created
       setReady(true)
+      requestAnimationFrame(() => {
+        created?.invalidateSize({ animate: false })
+      })
     })()
     return () => {
       cancelled = true
@@ -229,6 +233,17 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       lineRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const shell = mapShellRef.current
+    if (!map || !ready || !shell) return
+    const refreshSize = () => map.invalidateSize({ animate: false })
+    refreshSize()
+    const ro = new ResizeObserver(refreshSize)
+    ro.observe(shell)
+    return () => ro.disconnect()
+  }, [ready])
 
   useEffect(() => {
     const map = mapRef.current
@@ -342,6 +357,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
     } else {
       map.setView([LOUISVILLE_MAP_CENTER.lat, LOUISVILLE_MAP_CENTER.lng], LOUISVILLE_DEFAULT_ZOOM)
     }
+    requestAnimationFrame(() => map.invalidateSize({ animate: false }))
   }, [
     routeStops,
     stops,
@@ -390,13 +406,14 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
           </p>
         </div>
       ) : null}
-      <div ref={containerRef} className="relative min-h-0 flex-1 bg-zinc-950">
+      <div ref={mapShellRef} className="relative min-h-0 flex-1">
+        <div ref={containerRef} className="absolute inset-0 z-0 bg-zinc-950" />
         {hovered && tooltipPos && !hideHoverCard ? (
           <MapMarkerHoverCard model={hovered.model} x={tooltipPos.x} y={tooltipPos.y} />
         ) : null}
       </div>
       {!ready ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-zinc-950/80">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/80">
           <Loader2 className="h-6 w-6 animate-spin text-zinc-500" aria-hidden />
         </div>
       ) : null}

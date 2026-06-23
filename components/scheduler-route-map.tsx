@@ -92,8 +92,16 @@ function techInitials(name: string): string {
   return (parts[0]?.slice(0, 2) ?? "T").toUpperCase()
 }
 
+/** Horizontal overlap of the fixed job drawer on the map canvas (max-w-md ≈ 448px). */
+const JOB_DRAWER_MAP_PADDING_PX = 400
+
+export type SchedulerRouteMapPanOptions = {
+  /** Shift the pin left so it stays visible beside the open job drawer. */
+  accountForDrawer?: boolean
+}
+
 export type SchedulerRouteMapHandle = {
-  panTo: (lat: number, lng: number, zoom?: number) => void
+  panTo: (lat: number, lng: number, zoom?: number, options?: SchedulerRouteMapPanOptions) => void
 }
 
 type SchedulerRouteMapProps = {
@@ -103,8 +111,6 @@ type SchedulerRouteMapProps = {
   techLocations?: TechLiveLocation[]
   selectedDayLabel: string
   highlightId?: string | null
-  /** Hide the floating pin card (e.g. while the job detail drawer is open). */
-  hideHoverCard?: boolean
   /** Hide top stats chrome so the map fills the split pane edge-to-edge. */
   embedded?: boolean
   onSelectEvent?: (event: SchedulerEvent) => void
@@ -120,7 +126,6 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       techLocations = [],
       selectedDayLabel,
       highlightId,
-      hideHoverCard = false,
       embedded = false,
       onSelectEvent,
       onSelectPoolJob,
@@ -137,14 +142,6 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
   const [hovered, setHovered] = useState<HoveredPin | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
 
-  useImperativeHandle(ref, () => ({
-    panTo(lat: number, lng: number, zoom = 15) {
-      const map = mapRef.current
-      if (!map) return
-      map.setView([lat, lng], zoom, { animate: true })
-    },
-  }))
-
   const syncTooltipPos = useCallback((lat: number, lng: number) => {
     const map = mapRef.current
     if (!map) return
@@ -152,12 +149,32 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
     setTooltipPos({ x: point.x, y: point.y })
   }, [])
 
-  useEffect(() => {
-    if (hideHoverCard) {
-      setHovered(null)
-      setTooltipPos(null)
-    }
-  }, [hideHoverCard])
+  useImperativeHandle(
+    ref,
+    () => ({
+      panTo(lat: number, lng: number, zoom = 15, options?: SchedulerRouteMapPanOptions) {
+        const map = mapRef.current
+        if (!map) return
+        map.setView([lat, lng], zoom, { animate: true })
+        if (!options?.accountForDrawer) return
+
+        const nudgeForDrawer = () => {
+          const markerPoint = map.latLngToContainerPoint([lat, lng])
+          const mapWidth = map.getSize().x
+          const targetX = (mapWidth - JOB_DRAWER_MAP_PADDING_PX) / 2
+          const deltaX = markerPoint.x - targetX
+          if (Math.abs(deltaX) > 4) {
+            map.panBy([deltaX, 0], { animate: true })
+          }
+          syncTooltipPos(lat, lng)
+        }
+
+        map.once("moveend", nudgeForDrawer)
+        requestAnimationFrame(() => requestAnimationFrame(nudgeForDrawer))
+      },
+    }),
+    [syncTooltipPos]
+  )
 
   const stops = useMemo((): RoutedStop[] => {
     const sorted = [...events].sort(
@@ -202,6 +219,35 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       stops.map((s) => ({ lat: s.lat, lng: s.lng, data: s }))
     ).map((spread) => spread.data)
   }, [stops])
+
+  useEffect(() => {
+    if (!highlightId || !ready) {
+      if (!highlightId) {
+        setHovered(null)
+        setTooltipPos(null)
+      }
+      return
+    }
+
+    const poolPin = poolPins.find((p) => p.job.id === highlightId)
+    if (poolPin) {
+      const active = poolPin.job as ActivePipelineJob
+      const tooltipModel = tooltipFromPoolJob(poolPin.job, poolPin.poolIndex, {
+        job_status: active.job_status,
+        assigned_tech_id: active.assigned_tech_id,
+      })
+      setHovered({ lat: poolPin.lat, lng: poolPin.lng, model: tooltipModel })
+      syncTooltipPos(poolPin.lat, poolPin.lng)
+      return
+    }
+
+    const stop = scheduledPins.find((s) => s.event.id === highlightId)
+    if (stop) {
+      const tooltipModel = tooltipFromScheduledEvent(stop.event, stop.order)
+      setHovered({ lat: stop.lat, lng: stop.lng, model: tooltipModel })
+      syncTooltipPos(stop.lat, stop.lng)
+    }
+  }, [highlightId, ready, poolPins, scheduledPins, syncTooltipPos])
 
   useEffect(() => {
     let cancelled = false
@@ -293,6 +339,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
         syncTooltipPos(pin.lat, pin.lng)
       })
       marker.on("mouseout", () => {
+        if (highlightId === pin.job.id) return
         setHovered(null)
         setTooltipPos(null)
       })
@@ -325,6 +372,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
         syncTooltipPos(stop.lat, stop.lng)
       })
       marker.on("mouseout", () => {
+        if (highlightId === stop.event.id) return
         setHovered(null)
         setTooltipPos(null)
       })
@@ -368,6 +416,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
     onSelectEvent,
     onSelectPoolJob,
     syncTooltipPos,
+    highlightId,
   ])
 
   const mappedPoolCount = hopperSource.filter(
@@ -408,7 +457,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       ) : null}
       <div ref={mapShellRef} className="relative min-h-0 flex-1">
         <div ref={containerRef} className="absolute inset-0 z-0 bg-zinc-950" />
-        {hovered && tooltipPos && !hideHoverCard ? (
+        {hovered && tooltipPos ? (
           <MapMarkerHoverCard model={hovered.model} x={tooltipPos.x} y={tooltipPos.y} />
         ) : null}
       </div>

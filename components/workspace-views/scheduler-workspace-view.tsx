@@ -569,17 +569,24 @@ export function SchedulerWorkspaceView() {
     setDrawerPoolJob(null)
   }
 
+  function focusScheduledMapJob(ev: SchedulerEvent) {
+    openScheduledJobDrawer(ev)
+    if (typeof ev.latitude === "number" && typeof ev.longitude === "number") {
+      mapRef.current?.panTo(ev.latitude, ev.longitude, 15, { accountForDrawer: true })
+    }
+  }
+
   function focusPipelineJob(job: ActivePipelineJob) {
     setHighlightId(job.id)
-    if (typeof job.latitude === "number" && typeof job.longitude === "number") {
-      mapRef.current?.panTo(job.latitude, job.longitude, 15)
-    }
     const scheduled = dayEvents.find((ev) => ev.id === job.id)
     if (scheduled) {
       openScheduledJobDrawer(scheduled)
-      return
+    } else {
+      openPoolJobDrawer(job)
     }
-    openPoolJobDrawer(job)
+    if (typeof job.latitude === "number" && typeof job.longitude === "number") {
+      mapRef.current?.panTo(job.latitude, job.longitude, 15, { accountForDrawer: true })
+    }
   }
 
   function closeJobDrawer() {
@@ -988,9 +995,8 @@ export function SchedulerWorkspaceView() {
                   techLocations={techLocations}
                   selectedDayLabel={selectedDayLabel}
                   highlightId={highlightId}
-                  hideHoverCard={Boolean(drawerPoolJob || drawerScheduledEvent)}
                   embedded
-                  onSelectEvent={openScheduledJobDrawer}
+                  onSelectEvent={focusScheduledMapJob}
                   onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
                 />
               </div>
@@ -1135,7 +1141,7 @@ export function SchedulerWorkspaceView() {
             return next
           })
           if (typeof event.latitude === "number" && typeof event.longitude === "number") {
-            mapRef.current?.panTo(event.latitude, event.longitude, 15)
+            mapRef.current?.panTo(event.latitude, event.longitude, 15, { accountForDrawer: true })
           }
           refreshSchedulerData()
         }}

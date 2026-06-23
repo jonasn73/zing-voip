@@ -200,7 +200,7 @@ export function phoneLinesSubtitle(numbers: DashboardBusinessNumber[], loading: 
   if (loading) return "Loading…"
   const count = numbers.filter((b) => isDashboardVisibleLineStatus(b.status)).length
   if (count === 0) return "No lines yet"
-  return `${count} active`
+  return `${count} line${count === 1 ? "" : "s"}`
 }
 
 export function phoneLinesHasLines(

@@ -1,16 +1,13 @@
 "use client"
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
-import { Activity, CalendarRange, Clock, Phone, PhoneIncoming, PhoneMissed, Truck } from "lucide-react"
+import { CalendarRange, Clock, Phone, PhoneIncoming, PhoneMissed } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { formatTalkDuration } from "@/lib/daily-call-telemetry"
 import { isDashboardVisibleLineStatus, type DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
 import { getPusherClient } from "@/lib/realtime/pusher-client"
-import { isActivePortingOrder } from "@/lib/porting-lifecycle"
-import { useJobPoolQuery } from "@/lib/hooks/use-job-pool-query"
 import { organizationQueryString } from "@/lib/workspace-organizations"
-import type { PortingOrder } from "@/lib/types"
 
 type TelemetryPillProps = {
   label: string
@@ -54,9 +51,7 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
   className?: string
 }) {
   const { activeOrganizationId } = useDashboardWorkspace()
-  const { jobs: poolJobs, mutate: mutatePool } = useJobPoolQuery(activeOrganizationId)
   const [metricsReady, setMetricsReady] = useState(false)
-  const [pendingPorts, setPendingPorts] = useState(0)
   const [dailyCalls, setDailyCalls] = useState(0)
   const [missedCalls, setMissedCalls] = useState(0)
   const [dailyTalkDisplay, setDailyTalkDisplay] = useState("0:00")
@@ -66,8 +61,6 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
   const activeLines = businessNumbers.filter(
     (line) => isDashboardVisibleLineStatus(line.status) && line.status === "active"
   ).length
-
-  const queueVolume = poolJobs.length
 
   const workspaceLineSet = useMemo(() => {
     return new Set(
@@ -107,24 +100,12 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
   }, [activeOrganizationId])
 
   const refreshMetrics = useCallback(async () => {
-    const orgQs = organizationQueryString(activeOrganizationId)
     try {
-      const [portsRes] = await Promise.all([
-        fetch(`/api/porting/orders${orgQs}${orgQs ? "&" : "?"}active=1`, { credentials: "include" }),
-        refreshCallMetrics(),
-        mutatePool(),
-      ])
-      const portsJson = portsRes.ok
-        ? ((await portsRes.json()) as { data?: { orders?: PortingOrder[] } })
-        : null
-      const orders = Array.isArray(portsJson?.data?.orders) ? portsJson.data.orders : []
-      setPendingPorts(orders.filter(isActivePortingOrder).length)
-    } catch {
-      setPendingPorts(0)
+      await refreshCallMetrics()
     } finally {
       setMetricsReady(true)
     }
-  }, [activeOrganizationId, refreshCallMetrics, mutatePool])
+  }, [refreshCallMetrics])
 
   useEffect(() => {
     void refreshMetrics()
@@ -197,7 +178,7 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
       aria-label="Workspace telemetry"
       aria-busy={!metricsReady}
     >
-      <TelemetryPill label="Active lines" value={activeLines} icon={Phone} tone="teal" />
+      <TelemetryPill label="Live lines" value={activeLines} icon={Phone} tone="teal" />
       <TelemetryPill label="Daily calls" value={dailyCalls} icon={PhoneIncoming} />
       <TelemetryPill
         label="Missed calls"
@@ -208,13 +189,6 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
       />
       <TelemetryPill label="Daily talk" value={dailyTalkDisplay} icon={Clock} tone="teal" />
       <TelemetryPill label="Weekly talk" value={weeklyTalkDisplay} icon={CalendarRange} />
-      <TelemetryPill
-        label="Pending ports"
-        value={pendingPorts}
-        icon={Truck}
-        tone={pendingPorts > 0 ? "amber" : "default"}
-      />
-      <TelemetryPill label="Queue volume" value={queueVolume} icon={Activity} />
     </section>
   )
 })

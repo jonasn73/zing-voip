@@ -7,36 +7,19 @@ import { readActiveOrganizationId } from "@/lib/workspace-organizations"
 
 const DashboardBootstrapContext = createContext<DashboardMainBootstrap | null>(null)
 
-export function DashboardBootstrapProvider({
-  bootstrap,
-  children,
-}: {
-  bootstrap: DashboardMainBootstrap
-  children: ReactNode
-}) {
-  return (
-    <DashboardBootstrapContext.Provider value={bootstrap}>{children}</DashboardBootstrapContext.Provider>
-  )
-}
-
-export function useDashboardBootstrapOptional(): DashboardMainBootstrap | null {
-  return useContext(DashboardBootstrapContext)
-}
-
 function pickActiveOrganizationId(organizations: DashboardMainBootstrap["organizations"]): string | null {
   const stored = readActiveOrganizationId()
   const def = organizations.find((o) => o.is_default) ?? organizations[0]
   return (stored && organizations.some((o) => o.id === stored) ? stored : null) ?? def?.id ?? null
 }
 
-/** Mirrors streamed bootstrap into workspace context once (for cross-tab filters). */
-export function DashboardBootstrapSync() {
-  const bootstrap = useDashboardBootstrapOptional()
+/** Hydrates workspace from bootstrap before paint — avoids a second header/content flash. */
+function DashboardBootstrapWorkspaceSync({ bootstrap }: { bootstrap: DashboardMainBootstrap }) {
   const { hydrateWorkspaceFromBootstrap } = useDashboardWorkspace()
   const syncedRef = useRef(false)
 
   useLayoutEffect(() => {
-    if (!bootstrap || syncedRef.current) return
+    if (syncedRef.current) return
     syncedRef.current = true
     hydrateWorkspaceFromBootstrap({
       organizations: bootstrap.organizations,
@@ -47,4 +30,23 @@ export function DashboardBootstrapSync() {
   }, [bootstrap, hydrateWorkspaceFromBootstrap])
 
   return null
+}
+
+export function DashboardBootstrapProvider({
+  bootstrap,
+  children,
+}: {
+  bootstrap: DashboardMainBootstrap
+  children: ReactNode
+}) {
+  return (
+    <DashboardBootstrapContext.Provider value={bootstrap}>
+      <DashboardBootstrapWorkspaceSync bootstrap={bootstrap} />
+      {children}
+    </DashboardBootstrapContext.Provider>
+  )
+}
+
+export function useDashboardBootstrapOptional(): DashboardMainBootstrap | null {
+  return useContext(DashboardBootstrapContext)
 }

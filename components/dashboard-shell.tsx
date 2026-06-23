@@ -17,7 +17,6 @@ import {
   DashboardHeaderWorkspace,
   DashboardOrganizationsBootstrap,
 } from "@/components/dashboard-header-workspace"
-import { DashboardBootstrapSync } from "@/components/dashboard-bootstrap-context"
 import { DashboardMainStreamGate } from "@/components/dashboard-main-stream-gate"
 
 const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "scheduler", "help"]
@@ -141,7 +140,6 @@ export function DashboardShell({
                   headerCenter={<DashboardHeaderWorkspace sessionBusinessName={sessionBusinessName} />}
                 >
                   <DashboardMainStreamGate activePage={activePage}>
-                    <DashboardBootstrapSync />
                     <DashboardMainContent activePage={activePage} routedChildren={children} />
                   </DashboardMainStreamGate>
                   <DashboardAnsweredCallPopup enabled={popupEnabled} />

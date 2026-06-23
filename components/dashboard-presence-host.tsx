@@ -66,16 +66,8 @@ const PresencePane = memo(function PresencePane({
   )
 })
 
-function RoutingPaneFallback() {
-  return <div className="min-h-[40vh] w-full" aria-hidden />
-}
-
 function RoutingPane() {
-  return (
-    <Suspense fallback={<RoutingPaneFallback />}>
-      <DashboardPage />
-    </Suspense>
-  )
+  return <DashboardPage />
 }
 
 /** All primary dashboard views stay mounted; inactive panes use `hidden` so they never paint. */

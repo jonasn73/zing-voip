@@ -23,6 +23,8 @@ export type BusinessNumbersQueryResult = {
   reservedNumber: string | null
 }
 
+const EMPTY_BUSINESS_NUMBERS: DashboardBusinessNumber[] = []
+
 function mapNumbersResponse(data: NumbersMineResponse): BusinessNumbersQueryResult {
   if (!Array.isArray(data.numbers)) {
     return { numbers: [], reservedNumber: null }
@@ -79,7 +81,10 @@ export function useBusinessNumbersQuery(activeOrganizationId: string | null) {
   )
 
   const hasCachedData = fallbackData !== undefined || data !== undefined
-  const numbers = data?.numbers ?? fallbackData?.numbers ?? []
+  const numbers = useMemo(
+    () => data?.numbers ?? fallbackData?.numbers ?? EMPTY_BUSINESS_NUMBERS,
+    [data, fallbackData]
+  )
   const reservedNumber = data?.reservedNumber ?? fallbackData?.reservedNumber ?? null
 
   return {

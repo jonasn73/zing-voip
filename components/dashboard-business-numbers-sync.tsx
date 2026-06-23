@@ -1,11 +1,18 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import {
   resolveActiveLineAfterNumbers,
   useBusinessNumbersQuery,
 } from "@/lib/hooks/use-business-numbers-query"
+import type { DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
+
+function numbersUnchanged(a: DashboardBusinessNumber[], b: DashboardBusinessNumber[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  return a.every((row, i) => row.number === b[i]?.number && row.status === b[i]?.status)
+}
 
 /** Keeps workspace context in sync with the SWR business-numbers cache. */
 export function DashboardBusinessNumbersSync() {
@@ -17,8 +24,11 @@ export function DashboardBusinessNumbersSync() {
   } = useDashboardWorkspace()
 
   const { numbers, reservedNumber, isLoading, mutate } = useBusinessNumbersQuery(activeOrganizationId)
+  const prevNumbersRef = useRef(numbers)
 
   useEffect(() => {
+    if (numbersUnchanged(prevNumbersRef.current, numbers)) return
+    prevNumbersRef.current = numbers
     setBusinessNumbers(numbers)
   }, [numbers, setBusinessNumbers])
 
@@ -27,7 +37,10 @@ export function DashboardBusinessNumbersSync() {
   }, [isLoading, setBusinessNumbersLoading])
 
   useEffect(() => {
-    setActiveLine((prev) => resolveActiveLineAfterNumbers(numbers, reservedNumber, prev))
+    setActiveLine((prev) => {
+      const next = resolveActiveLineAfterNumbers(numbers, reservedNumber, prev)
+      return next === prev ? prev : next
+    })
   }, [numbers, reservedNumber, setActiveLine])
 
   useEffect(() => {

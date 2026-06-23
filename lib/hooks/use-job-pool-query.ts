@@ -10,6 +10,9 @@ import { persistedCacheKey, readPersistedCache, writePersistedCache } from "@/li
 
 type PoolResponse<T> = { data?: { jobs?: T[] } }
 
+const EMPTY_POOL_JOBS: UnassignedPoolJob[] = []
+const EMPTY_PIPELINE_JOBS: ActivePipelineJob[] = []
+
 function poolHopperUrl(activeOrganizationId: string | null): string {
   const orgQs = organizationQueryString(activeOrganizationId)
   return `/api/owner/jobs/pool${orgQs}`
@@ -42,7 +45,10 @@ export function useJobPoolQuery(activeOrganizationId: string | null) {
   )
 
   const hasCachedData = fallbackData !== undefined || data !== undefined
-  const jobs = data ?? fallbackData ?? []
+  const jobs = useMemo(
+    () => data ?? fallbackData ?? EMPTY_POOL_JOBS,
+    [data, fallbackData]
+  )
 
   return {
     jobs,
@@ -81,7 +87,10 @@ export function useActivePipelineQuery(
   )
 
   const hasCachedData = fallbackData !== undefined || data !== undefined
-  const jobs = data ?? fallbackData ?? []
+  const jobs = useMemo(
+    () => data ?? fallbackData ?? EMPTY_PIPELINE_JOBS,
+    [data, fallbackData]
+  )
 
   return {
     jobs,

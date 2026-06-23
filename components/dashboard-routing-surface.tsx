@@ -8,7 +8,6 @@ import { SheetInfoTrigger } from "@/components/sheet-info-trigger"
 import { DashboardCallFlow } from "@/components/dashboard-call-flow"
 import { DashboardRoutingSidebar } from "@/components/dashboard-routing-sidebar"
 import { RoutingTelemetryStrip } from "@/components/dashboard/routing-telemetry-strip"
-import { useDashboardBootstrapOptional } from "@/components/dashboard-bootstrap-context"
 import { useDashboardNumbersModal } from "@/components/dashboard-numbers-modal-context"
 import {
   businessNumbersMatch,
@@ -69,7 +68,6 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
   adminRoutingOverridePhone,
 }: DashboardRoutingSurfaceProps) {
   const { openBuyModal, openManageModal } = useDashboardNumbersModal()
-  const bootstrap = useDashboardBootstrapOptional()
 
   // Resolve the currently-selected line the same way the call-flow header does, so the sidebar's
   // active-line card always mirrors what the chart on the right is configuring.
@@ -81,12 +79,7 @@ export const DashboardRoutingSurface = memo(function DashboardRoutingSurface({
 
   return (
     <div className="mx-auto w-full max-w-7xl">
-      <div
-        className={cn(
-          "flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10",
-          !bootstrap && "sigo-bloom-in-stagger"
-        )}
-      >
+      <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
         <DashboardRoutingSidebar
           activeLineDisplay={activeLineDisplay}
           routingStrategy={routingStrategy}

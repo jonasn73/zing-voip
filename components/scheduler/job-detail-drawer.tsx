@@ -7,6 +7,7 @@ import { Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import {
   SCHEDULER_STATUS_LABEL,
   schedulerLifecyclePhase,
@@ -147,13 +148,11 @@ export function JobDetailDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex justify-end bg-black/50" role="presentation" onClick={onClose}>
-      <aside
-        className={cn(
-          "relative z-[200] flex h-full w-full min-w-0 max-w-md flex-col border-l border-border bg-card shadow-xl",
-          "animate-in slide-in-from-right duration-200"
-        )}
-        onClick={(e) => e.stopPropagation()}
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent
+        side="right"
+        variant="drawer"
+        className="flex w-full max-w-md flex-col gap-0 p-0 sm:max-w-md [&>button]:hidden"
       >
         <header className="relative shrink-0 border-b border-border/60 px-5 py-4 pr-14">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Job details</p>
@@ -354,7 +353,7 @@ export function JobDetailDrawer({
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
           </Button>
         </div>
-      </aside>
-    </div>
+      </SheetContent>
+    </Sheet>
   )
 }

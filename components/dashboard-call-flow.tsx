@@ -24,7 +24,6 @@ import {
 } from "@/lib/dashboard-routing-utils"
 import { DRAWER_SHEET_GPU } from "@/lib/workspace-sheet-classes"
 import { AdminRoutingOverrideNotice } from "@/components/dashboard/admin-routing-override-notice"
-import { useDashboardBootstrapOptional } from "@/components/dashboard-bootstrap-context"
 import {
   CallFlowLinePickerSkeleton,
   CallFlowStepsSkeleton,
@@ -283,7 +282,6 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
   adminRoutingOverridePhone,
 }: DashboardCallFlowProps) {
   const { openBuyModal } = useDashboardNumbersModal()
-  const bootstrap = useDashboardBootstrapOptional()
   const activation = useDashboardActivationOptional()
   const subscriptionActive = activation?.subscriptionActive === true
   const lineCarrierLive = activation?.lineCarrierLive === true
@@ -383,7 +381,6 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
             <div
               className={cn(
                 "flex flex-col gap-4 lg:flex-row lg:items-stretch",
-                !bootstrap && "sigo-bloom-in-stagger",
                 CALL_FLOW_STEPS_MIN_H,
                 routingLineDetailLoading && "opacity-60"
               )}

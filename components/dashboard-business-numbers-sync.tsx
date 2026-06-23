@@ -28,7 +28,10 @@ export function DashboardBusinessNumbersSync() {
 
   const bootstrap = useDashboardBootstrapOptional()
   const { phoneLinesPromise, dashboardMainBootstrapPromise } = useDashboardStream()
-  const { numbers, reservedNumber, isLoading, mutate } = useBusinessNumbersQuery(activeOrganizationId)
+  const skipNumbersFetch = Boolean(bootstrap || dashboardMainBootstrapPromise)
+  const { numbers, reservedNumber, isLoading, mutate } = useBusinessNumbersQuery(activeOrganizationId, {
+    skipInitialFetch: skipNumbersFetch,
+  })
   const prevNumbersRef = useRef(numbers)
 
   useEffect(() => {

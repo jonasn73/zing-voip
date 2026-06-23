@@ -4,7 +4,6 @@ import dynamic from "next/dynamic"
 import { Suspense, memo, useLayoutEffect, useState, type ReactNode } from "react"
 import type { PageId } from "@/components/app-shell"
 import { DashboardPage } from "@/components/dashboard-page"
-import { DashboardSettingsModalsHost } from "@/components/dashboard/settings-modals-host"
 import { ActivityWorkspaceView } from "@/components/workspace-views/activity-workspace-view"
 import { LeadsWorkspaceView } from "@/components/workspace-views/leads-workspace-view"
 import { TeamWorkspaceView } from "@/components/workspace-views/team-workspace-view"
@@ -78,30 +77,27 @@ export const DashboardPresenceHost = memo(function DashboardPresenceHost({
 }) {
   return (
     <div className="w-full min-h-[calc(100dvh-4rem)]">
-      <Suspense fallback={null}>
-        <DashboardSettingsModalsHost />
-      </Suspense>
       <PresencePane active={activePage === "dashboard"} label="Routing">
         <RoutingPane />
       </PresencePane>
-      <PresencePane active={activePage === "activity"} label="Activity">
+      <PresencePane active={activePage === "activity"} label="Activity" deferUntilVisit>
         <ActivityWorkspaceView />
       </PresencePane>
       <PresencePane active={activePage === "scheduler"} label="Scheduler" deferUntilVisit>
         <SchedulerWorkspaceView />
       </PresencePane>
-      <PresencePane active={activePage === "leads"} label="Leads">
+      <PresencePane active={activePage === "leads"} label="Leads" deferUntilVisit>
         <LeadsWorkspaceView />
       </PresencePane>
-      <PresencePane active={activePage === "contacts"} label="Team">
+      <PresencePane active={activePage === "contacts"} label="Team" deferUntilVisit>
         <TeamWorkspaceView />
       </PresencePane>
-      <PresencePane active={activePage === "pay"} label="Pay">
+      <PresencePane active={activePage === "pay"} label="Pay" deferUntilVisit>
         <Suspense fallback={<div className="min-h-[40vh] w-full" aria-hidden />}>
           <PayWorkspaceView />
         </Suspense>
       </PresencePane>
-      <PresencePane active={activePage === "settings"} label="Settings">
+      <PresencePane active={activePage === "settings"} label="Settings" deferUntilVisit>
         <SettingsWorkspaceView />
       </PresencePane>
     </div>

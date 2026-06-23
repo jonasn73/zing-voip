@@ -30,7 +30,7 @@ import {
   useWorkspaceRightSheet,
 } from "@/components/workspace-right-sheet-gate"
 import { DispatchJobsPanel } from "@/components/workspace-views/dispatch-jobs-panel"
-import { DispatchLiveMap } from "@/components/workspace-views/dispatch-live-map"
+import dynamic from "next/dynamic"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { useOperationsData, type UiCallRecord } from "@/lib/hooks/use-operations-data"
 import {
@@ -38,6 +38,15 @@ import {
   resolveBusinessLineLabel,
   type LineLabelEntry,
 } from "@/lib/line-display"
+
+/** Leaflet map — only loaded when Activity tab mounts. */
+const DispatchLiveMap = dynamic(
+  () =>
+    import("@/components/workspace-views/dispatch-live-map").then((m) => ({
+      default: m.DispatchLiveMap,
+    })),
+  { ssr: false }
+)
 
 function formatDuration(seconds: number): string {
   if (seconds <= 0) return "—"
@@ -441,38 +450,15 @@ const ActivityWorkspaceBody = memo(function ActivityWorkspaceBody({
 
 function useLineLabelMap(): Map<string, string> {
   const { businessNumbers } = useDashboardWorkspace()
-  const [fetched, setFetched] = useState<Map<string, string>>(() => new Map())
 
-  useEffect(() => {
-    if (businessNumbers.length > 0) {
-      const entries: LineLabelEntry[] = businessNumbers.map((n) => ({
-        number: n.number,
-        label: "Business Line",
-      }))
-      setFetched(buildBusinessLineLabelMap(entries))
-      return
-    }
-    let cancelled = false
-    fetch("/api/numbers/mine", { credentials: "include" })
-      .then(async (res) => (res.ok ? res.json() : { numbers: [] }))
-      .then((data) => {
-        if (cancelled) return
-        const numbers = Array.isArray(data.numbers) ? data.numbers : []
-        const entries: LineLabelEntry[] = numbers.map((n: { number?: string; label?: string }) => ({
-          number: String(n.number ?? ""),
-          label: String(n.label ?? "Business Line"),
-        }))
-        setFetched(buildBusinessLineLabelMap(entries))
-      })
-      .catch(() => {
-        if (!cancelled) setFetched(new Map())
-      })
-    return () => {
-      cancelled = true
-    }
+  return useMemo(() => {
+    if (businessNumbers.length === 0) return new Map<string, string>()
+    const entries: LineLabelEntry[] = businessNumbers.map((n) => ({
+      number: n.number,
+      label: n.label ?? "Business Line",
+    }))
+    return buildBusinessLineLabelMap(entries)
   }, [businessNumbers])
-
-  return fetched
 }
 
 export const ActivityWorkspaceView = memo(function ActivityWorkspaceView() {

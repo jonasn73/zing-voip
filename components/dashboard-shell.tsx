@@ -18,6 +18,7 @@ import {
   DashboardOrganizationsBootstrap,
 } from "@/components/dashboard-header-workspace"
 import { DashboardMainStreamGate } from "@/components/dashboard-main-stream-gate"
+import { DashboardSettingsModalsLazyHost } from "@/components/dashboard/settings-modals-lazy-host"
 
 const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "scheduler", "help"]
 
@@ -49,6 +50,7 @@ export function DashboardShell({
   sessionAccount?: {
     name: string
     email: string
+    companyUserId?: string
     answeredCallCustomerPopupEnabled?: boolean
   }
 }) {
@@ -94,8 +96,9 @@ export function DashboardShell({
   }, [router])
 
   useEffect(() => {
+    if (sessionAccount) return
     void refreshSession()
-  }, [refreshSession])
+  }, [sessionAccount, refreshSession])
 
   useEffect(() => {
     const onUpdated = () => void refreshSession()
@@ -123,6 +126,19 @@ export function DashboardShell({
     [accountHeader]
   )
 
+  const settingsSessionSeed = useMemo(
+    () =>
+      sessionAccount
+        ? {
+            name: sessionAccount.name,
+            email: sessionAccount.email,
+            businessName: sessionBusinessName?.trim() || "My Business",
+            companyUserId: sessionAccount.companyUserId ?? "",
+          }
+        : undefined,
+    [sessionAccount, sessionBusinessName]
+  )
+
   return (
     <Suspense fallback={null}>
       <DashboardActivationProvider>
@@ -134,6 +150,9 @@ export function DashboardShell({
               <DashboardNumbersModalProvider>
                 <UpgradeSubscriptionModal />
                 <AddCarrierCreditModal />
+                <Suspense fallback={null}>
+                  <DashboardSettingsModalsLazyHost sessionSeed={settingsSessionSeed} />
+                </Suspense>
                 <AppShell
                   pathname={pathname}
                   accountHeader={accountHeader}

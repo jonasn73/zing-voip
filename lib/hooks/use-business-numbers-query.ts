@@ -56,7 +56,10 @@ export function businessNumbersMineUrl(activeOrganizationId: string | null): str
   return `/api/numbers/mine${orgQs}`
 }
 
-export function useBusinessNumbersQuery(activeOrganizationId: string | null) {
+export function useBusinessNumbersQuery(
+  activeOrganizationId: string | null,
+  options?: { skipInitialFetch?: boolean }
+) {
   const url = businessNumbersMineUrl(activeOrganizationId)
   const cacheKey = persistedCacheKey("business-numbers", activeOrganizationId ?? "default")
 
@@ -75,8 +78,10 @@ export function useBusinessNumbersQuery(activeOrganizationId: string | null) {
       }),
     {
       ...defaultSwrConfig,
-      keepPreviousData: false,
       fallbackData,
+      revalidateOnFocus: false,
+      revalidateOnMount: !options?.skipInitialFetch,
+      revalidateIfStale: !options?.skipInitialFetch,
     }
   )
 
@@ -118,8 +123,8 @@ export function useBusinessNumbersSuspenseQuery(activeOrganizationId: string | n
       }),
     {
       ...defaultSwrConfig,
-      keepPreviousData: false,
       fallbackData,
+      revalidateOnFocus: false,
       suspense: true,
     }
   )

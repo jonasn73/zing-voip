@@ -46,9 +46,28 @@ const EMPTY_PROFILE: SettingsModalsProfile = {
 }
 
 /** Mounted once under the dashboard shell so banner + settings rows share the same modals. */
-export function DashboardSettingsModalsHost() {
+export function DashboardSettingsModalsHost({
+  sessionSeed,
+}: {
+  sessionSeed?: {
+    name: string
+    email: string
+    businessName: string
+    companyUserId: string
+  }
+}) {
   const searchParams = useSearchParams()
-  const [profile, setProfile] = useState<SettingsModalsProfile>(EMPTY_PROFILE)
+  const [profile, setProfile] = useState<SettingsModalsProfile>(() =>
+    sessionSeed
+      ? {
+          ...EMPTY_PROFILE,
+          name: sessionSeed.name,
+          email: sessionSeed.email,
+          businessName: sessionSeed.businessName,
+          companyUserId: sessionSeed.companyUserId,
+        }
+      : EMPTY_PROFILE
+  )
   const [carrierOpen, setCarrierOpen] = useState(false)
   const [portAddressOpen, setPortAddressOpen] = useState(false)
   const [smsAutomationOpen, setSmsAutomationOpen] = useState(false)
@@ -59,15 +78,27 @@ export function DashboardSettingsModalsHost() {
 
   const refreshProfile = useCallback(async () => {
     try {
-      const sessionRes = await fetch("/api/auth/session", { credentials: "include" })
-      const sessionJson = sessionRes.ok ? await sessionRes.json() : null
-      const u = sessionJson?.data?.user
-      let next: SettingsModalsProfile = {
-        ...EMPTY_PROFILE,
-        name: String(u?.name ?? ""),
-        email: String(u?.email ?? ""),
-        companyUserId: String(u?.id ?? ""),
-        businessName: String(u?.business_name ?? "").trim() || "My Business",
+      let next: SettingsModalsProfile = sessionSeed
+        ? {
+            ...EMPTY_PROFILE,
+            name: sessionSeed.name,
+            email: sessionSeed.email,
+            businessName: sessionSeed.businessName,
+            companyUserId: sessionSeed.companyUserId,
+          }
+        : { ...EMPTY_PROFILE }
+
+      if (!sessionSeed) {
+        const sessionRes = await fetch("/api/auth/session", { credentials: "include" })
+        const sessionJson = sessionRes.ok ? await sessionRes.json() : null
+        const u = sessionJson?.data?.user
+        next = {
+          ...EMPTY_PROFILE,
+          name: String(u?.name ?? ""),
+          email: String(u?.email ?? ""),
+          companyUserId: String(u?.id ?? ""),
+          businessName: String(u?.business_name ?? "").trim() || "My Business",
+        }
       }
       try {
         const { profile: ob, carrierLive } = await fetchOnboardingProfile()
@@ -90,11 +121,7 @@ export function DashboardSettingsModalsHost() {
     } catch {
       /* non-fatal */
     }
-  }, [])
-
-  useEffect(() => {
-    void refreshProfile()
-  }, [refreshProfile])
+  }, [sessionSeed])
 
   const openCarrier = useCallback(() => {
     void refreshProfile()

@@ -87,6 +87,7 @@ export default async function DashboardLayout({
         sessionAccount={{
           name: user.name?.trim() || "Account",
           email: user.email,
+          companyUserId: user.id,
           answeredCallCustomerPopupEnabled: user.answered_call_customer_popup_enabled !== false,
         }}
       >

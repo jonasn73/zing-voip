@@ -81,7 +81,15 @@ export default async function DashboardLayout({
       jobPoolPromise={hopperPromise}
       activePipelinePromise={pipelinePromise}
     >
-      <DashboardShell pathnameFromRequest={pathnameFromRequest} sessionBusinessName={user.business_name}>
+      <DashboardShell
+        pathnameFromRequest={pathnameFromRequest}
+        sessionBusinessName={user.business_name}
+        sessionAccount={{
+          name: user.name?.trim() || "Account",
+          email: user.email,
+          answeredCallCustomerPopupEnabled: user.answered_call_customer_popup_enabled !== false,
+        }}
+      >
         <Suspense fallback={null}>
           <DashboardOnboardingGuard user={user} />
         </Suspense>

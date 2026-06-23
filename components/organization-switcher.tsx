@@ -74,7 +74,7 @@ export function OrganizationSwitcherPlaceholder({
       aria-busy="true"
       aria-label="Loading business workspace"
       className={cn(
-        "h-9 max-w-[min(100%,14rem)] gap-1.5 border-border/70 bg-card/80 px-2.5 text-xs font-medium sm:max-w-[16rem] sm:px-3",
+        "h-9 w-[14rem] max-w-[14rem] gap-1.5 border-border/70 bg-card/80 px-2.5 text-xs font-medium sm:w-[16rem] sm:max-w-[16rem] sm:px-3",
         className
       )}
     >
@@ -351,7 +351,7 @@ export function OrganizationSwitcher({
             variant="outline"
             size="sm"
             className={cn(
-              "h-9 max-w-[min(100%,14rem)] gap-1.5 border-border/70 bg-card/80 px-2.5 text-xs font-medium sm:max-w-[16rem] sm:px-3",
+              "h-9 w-[14rem] max-w-[14rem] gap-1.5 border-border/70 bg-card/80 px-2.5 text-xs font-medium sm:w-[16rem] sm:max-w-[16rem] sm:px-3",
               className
             )}
           >

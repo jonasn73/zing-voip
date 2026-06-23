@@ -72,10 +72,11 @@ const AppShellHeader = memo(function AppShellHeader({
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 flex shrink-0 items-center gap-2 border-b px-3 py-3 sm:px-5 sm:py-3.5",
+        "sticky top-0 z-40 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b px-3 py-3 sm:px-5 sm:py-3.5",
         SHELL_ACRYLIC_SURFACE
       )}
     >
+      <div className="flex min-w-0 items-center justify-self-start">
       {useLinks ? (
         <Link
           href="/dashboard"
@@ -100,10 +101,15 @@ const AppShellHeader = memo(function AppShellHeader({
           <BrandWordmark size="md" className="hidden sm:inline-flex" />
         </button>
       )}
+      </div>
 
-      {headerCenter ? <div className="flex min-w-0 flex-1 justify-center px-2">{headerCenter}</div> : <div className="min-w-0 flex-1" />}
+      {headerCenter ? (
+        <div className="flex min-w-0 justify-center justify-self-center px-2">{headerCenter}</div>
+      ) : (
+        <div aria-hidden />
+      )}
 
-      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <div className="flex shrink-0 items-center justify-self-end gap-1.5 sm:gap-2">
         {useLinks && (
           <>
             <Button
@@ -121,9 +127,7 @@ const AppShellHeader = memo(function AppShellHeader({
           </>
         )}
         {useLinks ? <NotificationCenter /> : null}
-        {useLinks && accountHeader?.kind === "loading" && (
-          <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" aria-hidden />
-        )}
+        {useLinks && accountHeader?.kind === "loading" && <HeaderAccountMenuSkeleton />}
         {useLinks && accountHeader?.kind === "ready" && (
           <HeaderAccountMenu name={accountHeader.name} email={accountHeader.email} />
         )}
@@ -141,7 +145,7 @@ const HeaderAccountMenu = memo(function HeaderAccountMenu({ name, email }: { nam
           type="button"
           variant="outline"
           size="sm"
-          className="h-9 max-w-[min(100vw-8rem,14rem)] gap-2 border-border/80 bg-card/80 px-2 shadow-sm"
+          className="h-9 w-[2.25rem] gap-2 border-border/80 bg-card/80 px-2 shadow-sm sm:w-[14rem] sm:max-w-[14rem]"
           aria-label="Open account menu"
         >
           <Avatar className="h-7 w-7">
@@ -197,6 +201,30 @@ const HeaderAccountMenu = memo(function HeaderAccountMenu({ name, email }: { nam
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+})
+
+/** Same footprint as HeaderAccountMenu while session loads — prevents center slot from shifting. */
+const HeaderAccountMenuSkeleton = memo(function HeaderAccountMenuSkeleton() {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled
+      aria-busy="true"
+      aria-label="Loading account"
+      className="h-9 w-[2.25rem] gap-2 border-border/80 bg-card/80 px-2 shadow-sm sm:w-[14rem] sm:max-w-[14rem]"
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />
+      </span>
+      <span className="hidden min-w-0 flex-1 flex-col items-start gap-1 text-left sm:flex">
+        <span className="h-3 w-20 animate-pulse rounded bg-muted/80" aria-hidden />
+        <span className="h-2.5 w-28 animate-pulse rounded bg-muted/60" aria-hidden />
+      </span>
+      <ChevronDown className="hidden h-4 w-4 shrink-0 opacity-40 sm:block" aria-hidden />
+    </Button>
   )
 })
 

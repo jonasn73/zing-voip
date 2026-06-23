@@ -40,16 +40,32 @@ export function DashboardShell({
   children,
   pathnameFromRequest,
   sessionBusinessName,
+  sessionAccount,
 }: {
   children: React.ReactNode
   pathnameFromRequest: string | null
   /** Shown in the header workspace slot while orgs stream in on hard refresh. */
   sessionBusinessName?: string
+  /** Server session snapshot — avoids header width jump while /api/auth/session loads. */
+  sessionAccount?: {
+    name: string
+    email: string
+    answeredCallCustomerPopupEnabled?: boolean
+  }
 }) {
   const clientPathname = usePathname()
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
-  const [accountHeader, setAccountHeader] = useState<AccountHeaderState>({ kind: "loading" })
+  const [accountHeader, setAccountHeader] = useState<AccountHeaderState>(() =>
+    sessionAccount
+      ? {
+          kind: "ready",
+          name: sessionAccount.name,
+          email: sessionAccount.email,
+          answeredCallCustomerPopupEnabled: sessionAccount.answeredCallCustomerPopupEnabled !== false,
+        }
+      : { kind: "loading" }
+  )
 
   useEffect(() => {
     setMounted(true)
@@ -114,27 +130,23 @@ export function DashboardShell({
         <DashboardChromeProvider activePage={activePage}>
           <SwrProvider>
             <DashboardWorkspaceProvider>
-              <DashboardMainStreamGate
-                pathname={pathname}
-                sessionBusinessName={sessionBusinessName}
-                activePage={activePage}
-              >
-                <DashboardBootstrapSync />
-                <DashboardBusinessNumbersSync />
-                <DashboardOrganizationsBootstrap />
-                <DashboardNumbersModalProvider>
-                  <UpgradeSubscriptionModal />
-                  <AddCarrierCreditModal />
-                  <AppShell
-                    pathname={pathname}
-                    accountHeader={accountHeader}
-                    headerCenter={<DashboardHeaderWorkspace sessionBusinessName={sessionBusinessName} />}
-                  >
+              <DashboardBusinessNumbersSync />
+              <DashboardOrganizationsBootstrap />
+              <DashboardNumbersModalProvider>
+                <UpgradeSubscriptionModal />
+                <AddCarrierCreditModal />
+                <AppShell
+                  pathname={pathname}
+                  accountHeader={accountHeader}
+                  headerCenter={<DashboardHeaderWorkspace sessionBusinessName={sessionBusinessName} />}
+                >
+                  <DashboardMainStreamGate activePage={activePage}>
+                    <DashboardBootstrapSync />
                     <DashboardMainContent activePage={activePage} routedChildren={children} />
-                    <DashboardAnsweredCallPopup enabled={popupEnabled} />
-                  </AppShell>
-                </DashboardNumbersModalProvider>
-              </DashboardMainStreamGate>
+                  </DashboardMainStreamGate>
+                  <DashboardAnsweredCallPopup enabled={popupEnabled} />
+                </AppShell>
+              </DashboardNumbersModalProvider>
             </DashboardWorkspaceProvider>
           </SwrProvider>
         </DashboardChromeProvider>

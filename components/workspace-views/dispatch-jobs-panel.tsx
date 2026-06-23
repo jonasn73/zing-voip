@@ -82,8 +82,8 @@ export function DispatchJobsPanel() {
     }
   }
 
-  // Don't show an empty box when there are no booked jobs to dispatch.
-  if (!loading && jobs.length === 0) return null
+  // Hide until we know there are jobs — avoids a loading panel that collapses and shifts the calls table.
+  if (loading || jobs.length === 0) return null
 
   return (
     <WorkspacePanel className="mb-4 p-5">
@@ -97,13 +97,8 @@ export function DispatchJobsPanel() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-6 text-sm text-zinc-500">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading jobs…
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {jobs.map((job) => (
+      <div className="space-y-2">
+        {jobs.map((job) => (
             <div
               key={job.id}
               className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -140,8 +135,7 @@ export function DispatchJobsPanel() {
               </div>
             </div>
           ))}
-        </div>
-      )}
+      </div>
     </WorkspacePanel>
   )
 }

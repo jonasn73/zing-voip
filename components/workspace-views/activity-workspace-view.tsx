@@ -24,7 +24,6 @@ import {
 } from "@/components/dashboard-workspace-ui"
 import {
   ActivityTableSkeleton,
-  WorkspaceBloom,
 } from "@/components/workspace-content-skeletons"
 import {
   WorkspaceRightSheetGate,
@@ -368,6 +367,7 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
 })
 
 type ActivityBodyProps = {
+  calls: UiCallRecord[]
   loading: boolean
   loadError: string | null
   refreshing: boolean
@@ -375,15 +375,16 @@ type ActivityBodyProps = {
 }
 
 const ActivityWorkspaceBody = memo(function ActivityWorkspaceBody({
+  calls,
   loading,
   loadError,
   refreshing,
   lineLabelMap,
 }: ActivityBodyProps) {
-  const { activityLogs, activeLine } = useDashboardWorkspace()
+  const { activeLine } = useDashboardWorkspace()
 
   const rows = useMemo(() => {
-    let list = activityLogs
+    let list = calls
     if (activeLine) {
       list = list.filter((c) => businessNumbersMatch(c.targetLineE164, activeLine))
     }
@@ -392,7 +393,7 @@ const ActivityWorkspaceBody = memo(function ActivityWorkspaceBody({
       const bTs = b.createdAt || `${b.date} ${b.time}`
       return bTs.localeCompare(aTs)
     })
-  }, [activityLogs, activeLine])
+  }, [calls, activeLine])
 
   return (
     <WorkspacePage>
@@ -401,6 +402,11 @@ const ActivityWorkspaceBody = memo(function ActivityWorkspaceBody({
         title="Activity"
         action={
           <div className="flex flex-wrap items-center gap-3">
+            {refreshing ? (
+              <p className="text-xs text-zinc-600" aria-live="polite">
+                Refreshing…
+              </p>
+            ) : null}
             <Link
               href="/dashboard/scheduler"
               className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/15"
@@ -418,20 +424,16 @@ const ActivityWorkspaceBody = memo(function ActivityWorkspaceBody({
         }
       />
 
-      {refreshing ? <p className="text-xs text-zinc-600">Refreshing…</p> : null}
-
       <DispatchLiveMap />
 
       <DispatchJobsPanel />
 
-      {loading && activityLogs.length === 0 ? (
+      {loading && calls.length === 0 ? (
         <ActivityTableSkeleton />
-      ) : loadError && activityLogs.length === 0 ? (
+      ) : loadError && calls.length === 0 ? (
         <p className="min-h-[380px] text-sm text-destructive">{loadError}</p>
       ) : (
-        <WorkspaceBloom>
-          <ActivityCallsTable rows={rows} lineLabelMap={lineLabelMap} />
-        </WorkspaceBloom>
+        <ActivityCallsTable rows={rows} lineLabelMap={lineLabelMap} />
       )}
     </WorkspacePage>
   )
@@ -496,6 +498,7 @@ export const ActivityWorkspaceView = memo(function ActivityWorkspaceView() {
       )}
     >
       <ActivityWorkspaceBody
+        calls={calls}
         loading={loading}
         loadError={loadError}
         refreshing={refreshing}

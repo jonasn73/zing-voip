@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast"
 import type { RoutingStrategy } from "@/lib/types"
 import { DashboardRoutingWithSheets } from "@/components/dashboard-routing-with-sheets"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
+import { useDashboardBootstrapOptional } from "@/components/dashboard-bootstrap-context"
 import { useDashboardStream } from "@/components/dashboard-stream-context"
 import { fallbackOptions } from "@/components/dashboard-routing-fallback-options"
 import {
@@ -19,6 +20,7 @@ import {
 
 export function DashboardPage() {
   const { toast } = useToast()
+  const bootstrap = useDashboardBootstrapOptional()
   const {
     activeLine,
     setActiveLine,
@@ -27,6 +29,7 @@ export function DashboardPage() {
     activeOrganizationId,
   } = useDashboardWorkspace()
   const { routingBootstrapPromise } = useDashboardStream()
+  const routedNumbers = bootstrap?.phoneLines ?? businessNumbers
 
   const receptionistsUrl = useCallback(() => {
     const base = "/api/receptionists"
@@ -36,48 +39,57 @@ export function DashboardPage() {
     return base
   }, [activeOrganizationId])
 
-  const [mainLinePhone, setMainLinePhone] = useState<string | null>(null)
-  const [receptionists, setReceptionists] = useState<Contact[]>([])
-  const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(null)
-  const [fallback, setFallback] = useState<FallbackOption>("owner")
-  /** AI fallback + no receptionist: ring owner cell before Voice AI (see Fallback Settings). */
-  const [aiRingOwnerFirst, setAiRingOwnerFirst] = useState(false)
-  /** Ring duration for the first leg before no-answer fallback (from GET /api/routing). */
-  const [ringTimeoutSec, setRingTimeoutSec] = useState(30)
-  /** Hybrid-network routing (migrations 048/049) — drives the Call flow "Lyncr Network Pool" step. */
-  const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>("private_only")
-  const [allowLyncrNetworkFallback, setAllowLyncrNetworkFallback] = useState(false)
+  const [mainLinePhone, setMainLinePhone] = useState<string | null>(
+    () => bootstrap?.routing.ownerPhone ?? null
+  )
+  const [receptionists, setReceptionists] = useState<Contact[]>(
+    () => bootstrap?.routing.receptionists ?? []
+  )
+  const [selectedReceptionistId, setSelectedReceptionistId] = useState<string | null>(() => {
+    if (!bootstrap) return null
+    const recId = bootstrap.routing.routing.selected_receptionist_id
+    const recs = bootstrap.routing.receptionists
+    return recId && recs.some((r) => r.id === recId) ? recId : recs[0]?.id ?? null
+  })
+  const [fallback, setFallback] = useState<FallbackOption>(
+    () => bootstrap?.routing.routing.fallback_type || "owner"
+  )
+  const [aiRingOwnerFirst, setAiRingOwnerFirst] = useState(
+    () => bootstrap?.routing.routing.ai_ring_owner_first ?? false
+  )
+  const [ringTimeoutSec, setRingTimeoutSec] = useState(() =>
+    snapDashboardRingTimeoutSec(bootstrap?.routing.routing.ring_timeout_seconds ?? 30)
+  )
+  const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>(
+    () => bootstrap?.routing.routing.routing_strategy ?? "private_only"
+  )
+  const [allowLyncrNetworkFallback, setAllowLyncrNetworkFallback] = useState(
+    () => bootstrap?.routing.routing.allow_lyncr_network_fallback ?? false
+  )
 
-  // AI assistant state
   const [hasTelnyxAiAssistant, setHasTelnyxAiAssistant] = useState(false)
-  // activeLine + businessNumbers live in DashboardWorkspaceProvider (line picker + cross-tab filters).
-  // True while GET /api/routing for the tapped line is in flight (avoids showing the previous line’s target).
   const [routingLineDetailLoading, setRoutingLineDetailLoading] = useState(false)
   const routingFetchSeqRef = useRef(0)
-  const skipNextRoutingFetchRef = useRef(Boolean(routingBootstrapPromise))
+  const skipNextRoutingFetchRef = useRef(Boolean(bootstrap || routingBootstrapPromise))
 
-  // Wait until these complete before showing “Quick setup” — otherwise empty initial state looks
-  // like an incomplete setup and the banner flashes away when APIs return (confusing on refresh).
-  const [sessionFetchDone, setSessionFetchDone] = useState(false)
-  const [receptionistsFetchDone, setReceptionistsFetchDone] = useState(false)
-  const [numbersRoutingFetchDone, setNumbersRoutingFetchDone] = useState(false)
+  const [sessionFetchDone, setSessionFetchDone] = useState(() => bootstrap != null)
+  const [receptionistsFetchDone, setReceptionistsFetchDone] = useState(() => bootstrap != null)
+  const [numbersRoutingFetchDone, setNumbersRoutingFetchDone] = useState(() => bootstrap != null)
   const quickSetupDecided =
     sessionFetchDone && receptionistsFetchDone && numbersRoutingFetchDone
 
-  /** Call-flow cards render once phone lines finish streaming — not blocked on team/routing fetches. */
-  const callFlowUiReady = !businessNumbersLoading
+  const callFlowUiReady = bootstrap != null || !businessNumbersLoading
 
   // Platform-admin inbound override for the active line only (scoped per workspace / DID — not global).
   const adminRoutingOverridePhone = useMemo(() => {
     if (!activeLine) return null
-    const row = businessNumbers.find((b) => businessNumbersMatch(b.number, activeLine))
+    const row = routedNumbers.find((b) => businessNumbersMatch(b.number, activeLine))
     const raw = row?.admin_routing_override_phone?.trim()
     return raw || null
-  }, [businessNumbers, activeLine])
+  }, [routedNumbers, activeLine])
 
-  // Stream routing bootstrap from the server on hard refresh (parallel with phone lines).
   useEffect(() => {
-    if (!routingBootstrapPromise) return
+    if (bootstrap || !routingBootstrapPromise) return
     let cancelled = false
     void (async () => {
       try {
@@ -110,11 +122,10 @@ export function DashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [routingBootstrapPromise, activeLine, setActiveLine])
+  }, [bootstrap, routingBootstrapPromise, activeLine, setActiveLine])
 
-  // Session + receptionists load in parallel when server stream is unavailable (client tab nav).
   useEffect(() => {
-    if (routingBootstrapPromise) return
+    if (bootstrap || routingBootstrapPromise) return
     let cancelled = false
     void Promise.all([
       fetch("/api/auth/session", { credentials: "include" })
@@ -149,14 +160,14 @@ export function DashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [receptionistsUrl, routingBootstrapPromise])
+  }, [bootstrap, receptionistsUrl, routingBootstrapPromise])
 
-  // Phone lines hydrate via SWR or server stream (`DashboardBusinessNumbersSync` in the shell).
   useEffect(() => {
+    if (bootstrap) return
     if (!businessNumbersLoading || businessNumbers.length > 0) {
       setNumbersRoutingFetchDone(true)
     }
-  }, [businessNumbersLoading, businessNumbers.length])
+  }, [bootstrap, businessNumbersLoading, businessNumbers.length])
 
   useEffect(() => {
     let cancelled = false
@@ -217,16 +228,17 @@ export function DashboardPage() {
 
   // If the selected line disappears (released number), snap back to the first remaining line.
   useEffect(() => {
-    if (businessNumbers.length === 0) return
-    if (!activeLine || !businessNumbers.some((b) => businessNumbersMatch(b.number, activeLine))) {
-      setActiveLine(businessNumbers[0].number)
+    const numbers = bootstrap?.phoneLines ?? businessNumbers
+    if (numbers.length === 0) return
+    if (!activeLine || !numbers.some((b) => businessNumbersMatch(b.number, activeLine))) {
+      setActiveLine(bootstrap?.routing.primaryLineNumber ?? numbers[0].number)
     }
-  }, [businessNumbers, activeLine, setActiveLine])
+  }, [bootstrap, businessNumbers, activeLine, setActiveLine])
 
   const ownerPhoneDisplay = formatPhoneDisplay(mainLinePhone)
   const selectedReceptionist = receptionists.find((c) => c.id === selectedReceptionistId) || null
   const isRoutingToOwner = !selectedReceptionist
-  const hasBusinessNumbers = businessNumbers.length > 0
+  const hasBusinessNumbers = routedNumbers.length > 0
   const hasReceptionists = receptionists.length > 0
   const isSetupComplete = hasBusinessNumbers && (hasReceptionists || Boolean(mainLinePhone))
   const activeFallbackMeta = fallbackOptions.find((o) => o.id === fallback)
@@ -388,7 +400,7 @@ export function DashboardPage() {
         isSetupComplete={isSetupComplete}
         hasBusinessNumbers={hasBusinessNumbers}
         hasReceptionists={hasReceptionists}
-        businessNumbers={businessNumbers}
+        businessNumbers={routedNumbers}
         routingBusinessNumber={activeLine}
         setRoutingBusinessNumber={setActiveLine}
         routingLineDetailLoading={routingLineDetailLoading}

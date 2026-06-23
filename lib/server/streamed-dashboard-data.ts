@@ -5,7 +5,7 @@ import {
   normalizePhoneNumberE164,
 } from "@/lib/db"
 import { isDashboardVisibleLineStatus, type DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
-import type { DashboardRoutingBootstrap } from "@/lib/dashboard-stream-types"
+import type { DashboardMainBootstrap, DashboardRoutingBootstrap } from "@/lib/dashboard-stream-types"
 import { dayKeyLocal } from "@/lib/scheduler-utils"
 import { requireSessionUser } from "@/lib/server/require-session-user"
 import {
@@ -24,7 +24,7 @@ import type {
   User,
 } from "@/lib/types"
 
-export type { DashboardRoutingBootstrap } from "@/lib/dashboard-stream-types"
+export type { DashboardMainBootstrap, DashboardRoutingBootstrap } from "@/lib/dashboard-stream-types"
 
 function phoneDigitsKey(phone: string): string {
   return normalizePhoneNumberE164(phone).replace(/\D/g, "")
@@ -146,6 +146,15 @@ async function loadRoutingBootstrap(user: User): Promise<DashboardRoutingBootstr
   }
 }
 
+async function loadDashboardMainBootstrap(user: User): Promise<DashboardMainBootstrap> {
+  const [organizations, phoneLines, routing] = await Promise.all([
+    getCachedOrganizations(user.id),
+    mapBusinessNumbers(user.id, user),
+    loadRoutingBootstrap(user),
+  ])
+  return { organizations, phoneLines, routing }
+}
+
 /** Non-blocking promise for phone lines (streamed via Suspense). */
 export function phoneLinesPromise(user?: User): Promise<DashboardBusinessNumber[]> {
   if (user) return mapBusinessNumbers(user.id, user)
@@ -162,6 +171,12 @@ export function organizationsPromise(user?: User): Promise<Organization[]> {
 export function routingBootstrapPromise(user?: User): Promise<DashboardRoutingBootstrap> {
   if (user) return loadRoutingBootstrap(user)
   return requireSessionUser().then(loadRoutingBootstrap)
+}
+
+/** Combined bootstrap for /dashboard — orgs, phone lines, and call-flow routing resolve in one flush. */
+export function dashboardMainBootstrapPromise(user?: User): Promise<DashboardMainBootstrap> {
+  if (user) return loadDashboardMainBootstrap(user)
+  return requireSessionUser().then(loadDashboardMainBootstrap)
 }
 
 /** Non-blocking promise for hopper jobs. */

@@ -1,4 +1,5 @@
-import type { FallbackType, RoutingStrategy } from "@/lib/types"
+import type { DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
+import type { FallbackType, Organization, RoutingStrategy } from "@/lib/types"
 
 /** Client-safe shape streamed from the server for the routing dashboard. */
 export type DashboardRoutingBootstrap = {
@@ -19,4 +20,11 @@ export type DashboardRoutingBootstrap = {
     allow_lyncr_network_fallback: boolean
   }
   primaryLineNumber: string | null
+}
+
+/** One server payload for the main /dashboard shell — orgs, lines, and routing load together. */
+export type DashboardMainBootstrap = {
+  organizations: Organization[]
+  phoneLines: DashboardBusinessNumber[]
+  routing: DashboardRoutingBootstrap
 }

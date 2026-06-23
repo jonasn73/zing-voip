@@ -2,10 +2,11 @@
 
 import { createContext, useContext, type ReactNode } from "react"
 import type { DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
-import type { DashboardRoutingBootstrap } from "@/lib/dashboard-stream-types"
+import type { DashboardMainBootstrap, DashboardRoutingBootstrap } from "@/lib/dashboard-stream-types"
 import type { ActivePipelineJob, Organization, UnassignedPoolJob } from "@/lib/types"
 
 type DashboardStreamContextValue = {
+  dashboardMainBootstrapPromise?: Promise<DashboardMainBootstrap>
   phoneLinesPromise?: Promise<DashboardBusinessNumber[]>
   routingBootstrapPromise?: Promise<DashboardRoutingBootstrap>
   organizationsPromise?: Promise<Organization[]>
@@ -16,6 +17,7 @@ type DashboardStreamContextValue = {
 const DashboardStreamContext = createContext<DashboardStreamContextValue>({})
 
 export function DashboardStreamProvider({
+  dashboardMainBootstrapPromise,
   phoneLinesPromise,
   routingBootstrapPromise,
   organizationsPromise,
@@ -26,6 +28,7 @@ export function DashboardStreamProvider({
   return (
     <DashboardStreamContext.Provider
       value={{
+        dashboardMainBootstrapPromise,
         phoneLinesPromise,
         routingBootstrapPromise,
         organizationsPromise,

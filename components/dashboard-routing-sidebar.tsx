@@ -3,6 +3,7 @@
 import { Suspense, memo } from "react"
 import { ChevronRight, Hash, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useDashboardBootstrapOptional } from "@/components/dashboard-bootstrap-context"
 import { useDashboardNumbersModal } from "@/components/dashboard-numbers-modal-context"
 import { useDashboardActivationOptional } from "@/components/dashboard-activation-context"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
@@ -26,14 +27,17 @@ export const DashboardRoutingSidebar = memo(function DashboardRoutingSidebar({
   onConfigureRouting?: () => void
 }) {
   const { openBuyModal, openManageModal } = useDashboardNumbersModal()
+  const bootstrap = useDashboardBootstrapOptional()
   const { businessNumbers, businessNumbersLoading } = useDashboardWorkspace()
+  const lines = bootstrap?.phoneLines ?? businessNumbers
+  const linesLoading = bootstrap ? false : businessNumbersLoading
   const activation = useDashboardActivationOptional()
   const subscriptionActive = activation?.subscriptionActive === true
   const lineCarrierLive = activation?.lineCarrierLive === true
 
-  const hasLines = phoneLinesHasLines(businessNumbers, activeLineDisplay)
-  const showEmptyState = !businessNumbersLoading && !hasLines
-  const subtitle = phoneLinesSubtitle(businessNumbers, businessNumbersLoading)
+  const hasLines = phoneLinesHasLines(lines, activeLineDisplay)
+  const showEmptyState = !linesLoading && !hasLines
+  const subtitle = phoneLinesSubtitle(lines, linesLoading)
 
   return (
     <>
@@ -92,7 +96,7 @@ export const DashboardRoutingSidebar = memo(function DashboardRoutingSidebar({
           >
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <span>Buy / manage numbers</span>
-              {hasLines && !businessNumbersLoading ? (
+              {hasLines && !linesLoading ? (
                 <span className="inline-flex items-center gap-1 rounded-md border border-primary/25 bg-primary/5 px-2 py-0.5 text-[11px] font-semibold text-primary">
                   <Plus className="h-3 w-3" aria-hidden />
                   Add

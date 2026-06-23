@@ -17,6 +17,8 @@ import {
   DashboardHeaderWorkspace,
   DashboardOrganizationsBootstrap,
 } from "@/components/dashboard-header-workspace"
+import { DashboardBootstrapSync } from "@/components/dashboard-bootstrap-context"
+import { DashboardMainStreamGate } from "@/components/dashboard-main-stream-gate"
 
 const VALID_PAGES: PageId[] = ["dashboard", "activity", "leads", "customers", "contacts", "pay", "settings", "scheduler", "help"]
 
@@ -112,21 +114,28 @@ export function DashboardShell({
         <DashboardChromeProvider activePage={activePage}>
           <SwrProvider>
             <DashboardWorkspaceProvider>
-              <DashboardBusinessNumbersSync />
-              <DashboardNumbersModalProvider>
-              <UpgradeSubscriptionModal />
-              <AddCarrierCreditModal />
-              <DashboardOrganizationsBootstrap />
-              <AppShell
+              <DashboardMainStreamGate
                 pathname={pathname}
-                accountHeader={accountHeader}
-                headerCenter={<DashboardHeaderWorkspace sessionBusinessName={sessionBusinessName} />}
+                sessionBusinessName={sessionBusinessName}
+                activePage={activePage}
               >
-                <DashboardMainContent activePage={activePage} routedChildren={children} />
-                <DashboardAnsweredCallPopup enabled={popupEnabled} />
-              </AppShell>
-            </DashboardNumbersModalProvider>
-          </DashboardWorkspaceProvider>
+                <DashboardBootstrapSync />
+                <DashboardBusinessNumbersSync />
+                <DashboardOrganizationsBootstrap />
+                <DashboardNumbersModalProvider>
+                  <UpgradeSubscriptionModal />
+                  <AddCarrierCreditModal />
+                  <AppShell
+                    pathname={pathname}
+                    accountHeader={accountHeader}
+                    headerCenter={<DashboardHeaderWorkspace sessionBusinessName={sessionBusinessName} />}
+                  >
+                    <DashboardMainContent activePage={activePage} routedChildren={children} />
+                    <DashboardAnsweredCallPopup enabled={popupEnabled} />
+                  </AppShell>
+                </DashboardNumbersModalProvider>
+              </DashboardMainStreamGate>
+            </DashboardWorkspaceProvider>
           </SwrProvider>
         </DashboardChromeProvider>
       </DashboardActivationProvider>

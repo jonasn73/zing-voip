@@ -9,6 +9,7 @@ import { isPlatformAdminUser } from "@/lib/platform-admin"
 import { userMayAccessDashboard } from "@/lib/server-onboarding-guard"
 import {
   activePipelinePromise,
+  dashboardMainBootstrapPromise,
   jobPoolPromise,
   organizationsPromise,
   phoneLinesPromise,
@@ -56,14 +57,24 @@ export default async function DashboardLayout({
   }
   if (isPlatformAdminUser(user)) redirect("/admin")
 
-  const linesPromise = phoneLinesPromise(user)
-  const routingPromise = isMainRoutingDashboard ? routingBootstrapPromise(user) : undefined
-  const orgsPromise = organizationsPromise(user)
+  const mainBootstrapPromise = isMainRoutingDashboard ? dashboardMainBootstrapPromise(user) : undefined
+  const linesPromise = mainBootstrapPromise
+    ? mainBootstrapPromise.then((b) => b.phoneLines)
+    : phoneLinesPromise(user)
+  const routingPromise = mainBootstrapPromise
+    ? mainBootstrapPromise.then((b) => b.routing)
+    : isMainRoutingDashboard
+      ? routingBootstrapPromise(user)
+      : undefined
+  const orgsPromise = mainBootstrapPromise
+    ? mainBootstrapPromise.then((b) => b.organizations)
+    : organizationsPromise(user)
   const hopperPromise = isSchedulerRoute ? jobPoolPromise(user) : undefined
   const pipelinePromise = isSchedulerRoute ? activePipelinePromise(user) : undefined
 
   return (
     <DashboardStreamProvider
+      dashboardMainBootstrapPromise={mainBootstrapPromise}
       phoneLinesPromise={linesPromise}
       routingBootstrapPromise={routingPromise}
       organizationsPromise={orgsPromise}

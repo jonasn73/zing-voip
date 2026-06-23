@@ -2,6 +2,7 @@
 
 import { Suspense, use, useCallback, useEffect } from "react"
 import { OrganizationSwitcher, OrganizationSwitcherPlaceholder } from "@/components/organization-switcher"
+import { useDashboardBootstrapOptional } from "@/components/dashboard-bootstrap-context"
 import { useDashboardStream } from "@/components/dashboard-stream-context"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { readActiveOrganizationId } from "@/lib/workspace-organizations"
@@ -30,6 +31,7 @@ function OrganizationSwitcherFromStream({
 
 /** Business workspace switcher mounted in the dashboard app header. */
 export function DashboardHeaderWorkspace({ sessionBusinessName }: { sessionBusinessName?: string }) {
+  const bootstrap = useDashboardBootstrapOptional()
   const { organizationsPromise } = useDashboardStream()
   const { setActiveOrganizationId, setOrganizations } = useDashboardWorkspace()
 
@@ -39,6 +41,17 @@ export function DashboardHeaderWorkspace({ sessionBusinessName }: { sessionBusin
     },
     [setActiveOrganizationId]
   )
+
+  if (bootstrap) {
+    return (
+      <OrganizationSwitcher
+        seedOrganizations={bootstrap.organizations}
+        skipInitialFetch
+        onOrganizationsLoaded={setOrganizations}
+        onOrganizationChange={handleOrganizationChange}
+      />
+    )
+  }
 
   if (organizationsPromise) {
     return (
@@ -69,11 +82,12 @@ export function DashboardHeaderWorkspace({ sessionBusinessName }: { sessionBusin
 
 /** Loads organizations into workspace context when server stream is unavailable (client tab nav). */
 export function DashboardOrganizationsBootstrap() {
-  const { organizationsPromise } = useDashboardStream()
+  const bootstrap = useDashboardBootstrapOptional()
+  const { organizationsPromise, dashboardMainBootstrapPromise } = useDashboardStream()
   const { setOrganizations, setActiveOrganizationId } = useDashboardWorkspace()
 
   useEffect(() => {
-    if (organizationsPromise) return
+    if (bootstrap || organizationsPromise || dashboardMainBootstrapPromise) return
     fetch("/api/organizations", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { data?: { organizations?: Organization[] } }) => {
@@ -86,7 +100,13 @@ export function DashboardOrganizationsBootstrap() {
         if (pick) setActiveOrganizationId(pick)
       })
       .catch(() => {})
-  }, [organizationsPromise, setOrganizations, setActiveOrganizationId])
+  }, [
+    bootstrap,
+    dashboardMainBootstrapPromise,
+    organizationsPromise,
+    setOrganizations,
+    setActiveOrganizationId,
+  ])
 
   return null
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
+import { useDashboardBootstrapOptional } from "@/components/dashboard-bootstrap-context"
 import { useDashboardStream } from "@/components/dashboard-stream-context"
 import {
   resolveActiveLineAfterNumbers,
@@ -25,7 +26,8 @@ export function DashboardBusinessNumbersSync() {
     setActiveLine,
   } = useDashboardWorkspace()
 
-  const { phoneLinesPromise } = useDashboardStream()
+  const bootstrap = useDashboardBootstrapOptional()
+  const { phoneLinesPromise, dashboardMainBootstrapPromise } = useDashboardStream()
   const { numbers, reservedNumber, isLoading, mutate } = useBusinessNumbersQuery(activeOrganizationId)
   const prevNumbersRef = useRef(numbers)
 
@@ -36,12 +38,16 @@ export function DashboardBusinessNumbersSync() {
   }, [numbers, setBusinessNumbers])
 
   useEffect(() => {
+    if (bootstrap || dashboardMainBootstrapPromise) {
+      if (!isLoading) setBusinessNumbersLoading(false)
+      return
+    }
     if (phoneLinesPromise) {
       if (!isLoading) setBusinessNumbersLoading(false)
       return
     }
     setBusinessNumbersLoading(isLoading)
-  }, [isLoading, phoneLinesPromise, setBusinessNumbersLoading])
+  }, [bootstrap, dashboardMainBootstrapPromise, isLoading, phoneLinesPromise, setBusinessNumbersLoading])
 
   useEffect(() => {
     const next = resolveActiveLineAfterNumbers(numbers, reservedNumber, activeLine)

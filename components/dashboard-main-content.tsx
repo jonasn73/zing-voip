@@ -27,5 +27,9 @@ export const DashboardMainContent = memo(function DashboardMainContent({
     )
   }
 
-  return <DashboardPageView animateEnter>{routedChildren}</DashboardPageView>
+  return (
+    <DashboardPageView animateEnter key={activePage}>
+      {routedChildren}
+    </DashboardPageView>
+  )
 })

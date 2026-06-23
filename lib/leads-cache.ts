@@ -24,12 +24,47 @@ export type LeadsWorkspaceCache = {
 
 const CACHE_KEY = persistedCacheKey("leads-workspace", "default")
 
+/** Stable snapshot for useSyncExternalStore — same sessionStorage string → same object reference. */
+let leadsCacheSnapshotRaw: string | null | undefined
+let leadsCacheSnapshotData: LeadsWorkspaceCache | undefined
+
+const leadsCacheListeners = new Set<() => void>()
+
+function notifyLeadsCacheListeners(): void {
+  leadsCacheSnapshotRaw = undefined
+  leadsCacheListeners.forEach((listener) => listener())
+}
+
+export function subscribeLeadsWorkspaceCache(onStoreChange: () => void): () => void {
+  leadsCacheListeners.add(onStoreChange)
+  return () => {
+    leadsCacheListeners.delete(onStoreChange)
+  }
+}
+
+export function getLeadsWorkspaceCacheSnapshot(): LeadsWorkspaceCache | undefined {
+  if (typeof window === "undefined") return undefined
+  let raw: string | null
+  try {
+    raw = sessionStorage.getItem(CACHE_KEY)
+  } catch {
+    return undefined
+  }
+  if (raw === leadsCacheSnapshotRaw) {
+    return leadsCacheSnapshotData
+  }
+  leadsCacheSnapshotRaw = raw
+  leadsCacheSnapshotData = raw ? readPersistedCache<LeadsWorkspaceCache>(CACHE_KEY) : undefined
+  return leadsCacheSnapshotData
+}
+
 export function readLeadsWorkspaceCache(): LeadsWorkspaceCache | undefined {
   return readPersistedCache<LeadsWorkspaceCache>(CACHE_KEY)
 }
 
 export function writeLeadsWorkspaceCache(data: LeadsWorkspaceCache): void {
   writePersistedCache(CACHE_KEY, data)
+  notifyLeadsCacheListeners()
 }
 
 /** Fetch leads + salvage and update session cache — safe to call from prefetch or the Leads tab. */

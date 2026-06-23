@@ -10,11 +10,12 @@ import type { Organization } from "@/lib/types"
 /** Loads organizations into workspace context when server stream is unavailable (client tab nav). */
 export function DashboardOrganizationsBootstrap() {
   const bootstrap = useDashboardBootstrapEffective()
+  const hasBootstrap = bootstrap != null
   const { organizationsPromise, dashboardMainBootstrapPromise } = useDashboardStream()
   const { setOrganizations, setActiveOrganizationId } = useDashboardWorkspace()
 
   useEffect(() => {
-    if (bootstrap || organizationsPromise || dashboardMainBootstrapPromise) return
+    if (hasBootstrap || organizationsPromise || dashboardMainBootstrapPromise) return
     fetch("/api/organizations", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { data?: { organizations?: Organization[] } }) => {
@@ -28,7 +29,7 @@ export function DashboardOrganizationsBootstrap() {
       })
       .catch(() => {})
   }, [
-    bootstrap,
+    hasBootstrap,
     dashboardMainBootstrapPromise,
     organizationsPromise,
     setOrganizations,

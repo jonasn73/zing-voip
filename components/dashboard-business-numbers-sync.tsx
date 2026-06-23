@@ -27,22 +27,23 @@ export function DashboardBusinessNumbersSync() {
   } = useDashboardWorkspace()
 
   const bootstrap = useDashboardBootstrapEffective()
+  const hasBootstrap = bootstrap != null
   const { phoneLinesPromise, dashboardMainBootstrapPromise } = useDashboardStream()
-  const skipNumbersFetch = Boolean(bootstrap || dashboardMainBootstrapPromise)
+  const skipNumbersFetch = Boolean(hasBootstrap || dashboardMainBootstrapPromise)
   const { numbers, reservedNumber, isLoading, mutate } = useBusinessNumbersQuery(activeOrganizationId, {
     skipInitialFetch: skipNumbersFetch,
   })
   const prevNumbersRef = useRef(numbers)
 
   useEffect(() => {
-    if (bootstrap) return
+    if (hasBootstrap) return
     if (numbersUnchanged(prevNumbersRef.current, numbers)) return
     prevNumbersRef.current = numbers
     setBusinessNumbers(numbers)
-  }, [bootstrap, numbers, setBusinessNumbers])
+  }, [hasBootstrap, numbers, setBusinessNumbers])
 
   useEffect(() => {
-    if (bootstrap) {
+    if (hasBootstrap) {
       setBusinessNumbersLoading(false)
       return
     }
@@ -55,13 +56,13 @@ export function DashboardBusinessNumbersSync() {
       return
     }
     setBusinessNumbersLoading(isLoading)
-  }, [bootstrap, dashboardMainBootstrapPromise, isLoading, phoneLinesPromise, setBusinessNumbersLoading])
+  }, [hasBootstrap, dashboardMainBootstrapPromise, isLoading, phoneLinesPromise, setBusinessNumbersLoading])
 
   useEffect(() => {
-    if (bootstrap) return
+    if (hasBootstrap) return
     const next = resolveActiveLineAfterNumbers(numbers, reservedNumber, activeLine)
     if (next !== activeLine) setActiveLine(next)
-  }, [bootstrap, numbers, reservedNumber, activeLine, setActiveLine])
+  }, [hasBootstrap, numbers, reservedNumber, activeLine, setActiveLine])
 
   useEffect(() => {
     const onChanged = () => {

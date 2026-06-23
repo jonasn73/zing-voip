@@ -186,16 +186,16 @@ export function DashboardShell({
         <DashboardChromeProvider activePage={activePage}>
           <SwrProvider>
             <DashboardWorkspaceProvider initialBootstrap={initialBootstrap}>
-              <DashboardBusinessNumbersSync />
-              <DashboardLeadsPrefetch />
-              <DashboardOrganizationsBootstrap />
-              <DashboardNumbersModalProvider>
-                <UpgradeSubscriptionModal />
-                <AddCarrierCreditModal />
-                <Suspense fallback={null}>
-                  <DashboardSettingsModalsLazyHost sessionSeed={settingsSessionSeed} />
-                </Suspense>
-                <DashboardBootstrapShellGate initialBootstrap={initialBootstrap}>
+              <DashboardBootstrapShellGate initialBootstrap={initialBootstrap}>
+                <DashboardBusinessNumbersSync />
+                <DashboardLeadsPrefetch />
+                <DashboardOrganizationsBootstrap />
+                <DashboardNumbersModalProvider>
+                  <UpgradeSubscriptionModal />
+                  <AddCarrierCreditModal />
+                  <Suspense fallback={null}>
+                    <DashboardSettingsModalsLazyHost sessionSeed={settingsSessionSeed} />
+                  </Suspense>
                   <LeadsWorkspaceInitialProvider initial={initialLeadsCache}>
                     <AppShell
                       pathname={pathname}
@@ -208,8 +208,8 @@ export function DashboardShell({
                       <DashboardAnsweredCallPopup enabled={popupEnabled} />
                     </AppShell>
                   </LeadsWorkspaceInitialProvider>
-                </DashboardBootstrapShellGate>
-              </DashboardNumbersModalProvider>
+                </DashboardNumbersModalProvider>
+              </DashboardBootstrapShellGate>
             </DashboardWorkspaceProvider>
           </SwrProvider>
         </DashboardChromeProvider>

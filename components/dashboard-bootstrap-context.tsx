@@ -28,30 +28,21 @@ function pickActiveOrganizationId(organizations: DashboardMainBootstrap["organiz
   return pickActiveOrganizationIdFromBootstrap(organizations)
 }
 
-/** Hydrates workspace from bootstrap once — avoids update loops from workspace state deps. */
+/** Applies bootstrap to workspace once per snapshot — workspace may already be seeded from layout. */
 function DashboardBootstrapWorkspaceSync({ bootstrap }: { bootstrap: DashboardMainBootstrap }) {
-  const { hydrateWorkspaceFromBootstrap, activeLine, businessNumbers, organizations } = useDashboardWorkspace()
+  const { hydrateWorkspaceFromBootstrap } = useDashboardWorkspace()
   const syncedBootstrapRef = useRef<DashboardMainBootstrap | null>(null)
 
   useLayoutEffect(() => {
     if (syncedBootstrapRef.current === bootstrap) return
-
-    const alreadySeeded =
-      businessNumbers.length === bootstrap.phoneLines.length &&
-      organizations.length === bootstrap.organizations.length &&
-      (activeLine === bootstrap.routing.primaryLineNumber ||
-        (!activeLine && !bootstrap.routing.primaryLineNumber))
-
     syncedBootstrapRef.current = bootstrap
-    if (alreadySeeded) return
-
     hydrateWorkspaceFromBootstrap({
       organizations: bootstrap.organizations,
       phoneLines: bootstrap.phoneLines,
       activeOrganizationId: pickActiveOrganizationId(bootstrap.organizations),
       activeLine: bootstrap.routing.primaryLineNumber,
     })
-  }, [bootstrap, hydrateWorkspaceFromBootstrap, activeLine, businessNumbers.length, organizations.length])
+  }, [bootstrap, hydrateWorkspaceFromBootstrap])
 
   return null
 }
@@ -75,12 +66,25 @@ export function useDashboardBootstrapOptional(): DashboardMainBootstrap | null {
   return useContext(DashboardBootstrapContext)
 }
 
-/** Context first, then session cache — same data the header uses for instant paint. */
+/** Context first, then session cache — stable reference so effects do not loop. */
 export function useDashboardBootstrapEffective(): DashboardMainBootstrap | null {
   const ctx = useContext(DashboardBootstrapContext)
+  const stableCacheRef = useRef<DashboardMainBootstrap | null>(null)
+
   if (ctx) return ctx
+
   if (typeof window === "undefined") return null
-  return readDashboardBootstrapCache() ?? null
+
+  const fresh = readDashboardBootstrapCache() ?? null
+  if (!fresh) {
+    stableCacheRef.current = null
+    return null
+  }
+  if (stableCacheRef.current && dashboardBootstrapEquivalent(stableCacheRef.current, fresh)) {
+    return stableCacheRef.current
+  }
+  stableCacheRef.current = fresh
+  return fresh
 }
 
 /** Bootstrap known on first paint (server snapshot or session cache) with silent refresh. */
@@ -97,7 +101,9 @@ function DashboardBootstrapSeededProvider({
 
   useEffect(() => {
     writeDashboardBootstrapCache(seed)
-  }, [seed])
+    // seed is fixed at mount — avoid re-running when parent re-parses sessionStorage
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!refreshPromise) return
@@ -172,12 +178,13 @@ export function DashboardBootstrapShellGate({
 }) {
   const { dashboardMainBootstrapPromise } = useDashboardStream()
   const existing = useDashboardBootstrapOptional()
+  const [seed] = useState(
+    () => initialBootstrap ?? readDashboardBootstrapCache() ?? null
+  )
 
   if (existing) {
     return <>{children}</>
   }
-
-  const seed = initialBootstrap ?? readDashboardBootstrapCache() ?? null
 
   if (seed) {
     return (

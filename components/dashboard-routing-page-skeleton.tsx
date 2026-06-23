@@ -9,10 +9,10 @@ import {
 } from "@/components/workspace-content-skeletons"
 import { CALL_FLOW_STEPS_MIN_H } from "@/components/dashboard-workspace-ui"
 
-/** Full /dashboard routing layout skeleton — matches sidebar + call flow structure. */
+/** Routing layout skeleton — matches DashboardPage + DashboardRoutingSurface structure. */
 export function DashboardRoutingPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 sm:gap-14">
       <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
         <aside
           className="w-full shrink-0 rounded-2xl border border-white/8 bg-neutral-950/50 p-4 shadow-sm ring-1 ring-white/5 backdrop-blur-md lg:w-56 xl:w-60"
@@ -35,7 +35,7 @@ export function DashboardRoutingPageSkeleton() {
           <section className="min-h-[22rem] overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-lg ring-1 ring-border/40">
             <header className="border-b border-border/50 bg-gradient-to-b from-muted/20 to-transparent px-5 py-5 sm:px-8 sm:py-6">
               <div className="flex flex-col items-center gap-4">
-                <div className="h-10 w-full max-w-xs sigo-skeleton-breathe rounded-xl bg-zinc-800/60" aria-hidden />
+                <div className="h-10 w-full max-w-xs rounded-xl bg-zinc-800/50" aria-hidden />
                 <CallFlowLinePickerSkeleton />
               </div>
             </header>

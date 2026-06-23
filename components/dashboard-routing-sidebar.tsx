@@ -59,7 +59,7 @@ export const DashboardRoutingSidebar = memo(function DashboardRoutingSidebar({
           </div>
         </div>
 
-        <Suspense fallback={<PhoneLinesSkeleton />}>
+        <Suspense fallback={bootstrap ? null : <PhoneLinesSkeleton />}>
           <PhoneLinesList
             routingStrategy={routingStrategy}
             activeLineDisplay={activeLineDisplay}

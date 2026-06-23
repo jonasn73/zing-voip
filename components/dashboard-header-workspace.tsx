@@ -7,6 +7,16 @@ import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import type { DashboardMainBootstrap } from "@/lib/dashboard-stream-types"
 import type { Organization } from "@/lib/types"
 
+function headerSeedOrganization(name: string): Organization {
+  return {
+    id: "__header-seed__",
+    owner_user_id: "",
+    name,
+    is_default: true,
+    created_at: new Date(0).toISOString(),
+  }
+}
+
 /** Header org switcher — shares the same bootstrap promise as the main stream gate for one flush. */
 function HeaderOrganizationsFromMainBootstrap({
   bootstrapPromise,
@@ -127,7 +137,14 @@ export function DashboardHeaderWorkspace({ sessionBusinessName }: { sessionBusin
 
   if (dashboardMainBootstrapPromise) {
     return (
-      <Suspense fallback={<OrganizationSwitcherPlaceholder label={placeholderLabel} />}>
+      <Suspense
+        fallback={
+          <OrganizationSwitcher
+            seedOrganizations={[headerSeedOrganization(placeholderLabel)]}
+            skipInitialFetch
+          />
+        }
+      >
         <HeaderOrganizationsFromMainBootstrap
           bootstrapPromise={dashboardMainBootstrapPromise}
           sessionBusinessName={sessionBusinessName}

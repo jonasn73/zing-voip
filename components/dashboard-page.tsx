@@ -30,6 +30,8 @@ export function DashboardPage() {
   } = useDashboardWorkspace()
   const { routingBootstrapPromise } = useDashboardStream()
   const routedNumbers = bootstrap?.phoneLines ?? businessNumbers
+  const routingLine =
+    bootstrap?.routing.primaryLineNumber ?? activeLine
 
   const receptionistsUrl = useCallback(() => {
     const base = "/api/receptionists"
@@ -82,11 +84,11 @@ export function DashboardPage() {
 
   // Platform-admin inbound override for the active line only (scoped per workspace / DID — not global).
   const adminRoutingOverridePhone = useMemo(() => {
-    if (!activeLine) return null
-    const row = routedNumbers.find((b) => businessNumbersMatch(b.number, activeLine))
+    if (!routingLine) return null
+    const row = routedNumbers.find((b) => businessNumbersMatch(b.number, routingLine))
     const raw = row?.admin_routing_override_phone?.trim()
     return raw || null
-  }, [routedNumbers, activeLine])
+  }, [routedNumbers, routingLine])
 
   useEffect(() => {
     if (bootstrap || !routingBootstrapPromise) return
@@ -401,7 +403,7 @@ export function DashboardPage() {
         hasBusinessNumbers={hasBusinessNumbers}
         hasReceptionists={hasReceptionists}
         businessNumbers={routedNumbers}
-        routingBusinessNumber={activeLine}
+        routingBusinessNumber={routingLine}
         setRoutingBusinessNumber={setActiveLine}
         routingLineDetailLoading={routingLineDetailLoading}
         isRoutingToOwner={isRoutingToOwner}

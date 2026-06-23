@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { getDailyCallTelemetryForOwner } from "@/lib/db"
-import { formatAvgTalkTime } from "@/lib/daily-call-telemetry"
+import { formatAvgTalkTime, formatTalkDuration } from "@/lib/daily-call-telemetry"
 
 export const dynamic = "force-dynamic"
 
@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
       data: {
         ...metrics,
         avg_talk_time_display: formatAvgTalkTime(metrics.avg_talk_seconds),
+        daily_talk_time_display: formatTalkDuration(metrics.daily_talk_seconds),
+        weekly_talk_time_display: formatTalkDuration(metrics.weekly_talk_seconds),
         owner_user_id: userId,
         organization_id: organizationId,
       },

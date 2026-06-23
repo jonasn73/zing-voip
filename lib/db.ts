@@ -3291,7 +3291,13 @@ export async function getCallQualitySummary(userId: string, days = 7): Promise<{
 export async function getDailyCallTelemetryForOwner(
   ownerUserId: string,
   organizationId?: string | null
-): Promise<{ daily_calls: number; missed_calls: number; avg_talk_seconds: number }> {
+): Promise<{
+  daily_calls: number
+  missed_calls: number
+  avg_talk_seconds: number
+  daily_talk_seconds: number
+  weekly_talk_seconds: number
+}> {
   const sql = getSql()
   const orgUuid =
     organizationId && !organizationId.startsWith("legacy-") ? organizationId.trim() : null
@@ -3307,47 +3313,81 @@ export async function getDailyCallTelemetryForOwner(
       ),
     ]
     if (lineNumbers.length === 0) {
-      return { daily_calls: 0, missed_calls: 0, avg_talk_seconds: 0 }
+      return {
+        daily_calls: 0,
+        missed_calls: 0,
+        avg_talk_seconds: 0,
+        daily_talk_seconds: 0,
+        weekly_talk_seconds: 0,
+      }
     }
   }
+
+  const answeredFilter = sql`duration_seconds > 0 AND status IN ('completed', 'answered', 'in-progress')`
 
   const rows = lineNumbers
     ? await sql`
         SELECT
-          COUNT(*)::int AS daily_calls,
+          COUNT(*) FILTER (WHERE created_at >= date_trunc('day', now()))::int AS daily_calls,
           COUNT(*) FILTER (
-            WHERE call_type = 'missed'
-              OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+            WHERE created_at >= date_trunc('day', now())
+              AND (
+                call_type = 'missed'
+                OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+              )
           )::int AS missed_calls,
           COALESCE(
             AVG(duration_seconds) FILTER (
-              WHERE duration_seconds > 0
-                AND status IN ('completed', 'answered', 'in-progress')
+              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
             ),
             0
-          )::float8 AS avg_talk_seconds
+          )::float8 AS avg_talk_seconds,
+          COALESCE(
+            SUM(duration_seconds) FILTER (
+              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
+            ),
+            0
+          )::int AS daily_talk_seconds,
+          COALESCE(
+            SUM(duration_seconds) FILTER (
+              WHERE created_at >= date_trunc('week', now()) AND ${answeredFilter}
+            ),
+            0
+          )::int AS weekly_talk_seconds
         FROM call_logs
         WHERE user_id = ${ownerUserId}
-          AND created_at >= date_trunc('day', now())
           AND to_number = ANY(${lineNumbers}::text[])
       `
     : await sql`
         SELECT
-          COUNT(*)::int AS daily_calls,
+          COUNT(*) FILTER (WHERE created_at >= date_trunc('day', now()))::int AS daily_calls,
           COUNT(*) FILTER (
-            WHERE call_type = 'missed'
-              OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+            WHERE created_at >= date_trunc('day', now())
+              AND (
+                call_type = 'missed'
+                OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+              )
           )::int AS missed_calls,
           COALESCE(
             AVG(duration_seconds) FILTER (
-              WHERE duration_seconds > 0
-                AND status IN ('completed', 'answered', 'in-progress')
+              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
             ),
             0
-          )::float8 AS avg_talk_seconds
+          )::float8 AS avg_talk_seconds,
+          COALESCE(
+            SUM(duration_seconds) FILTER (
+              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
+            ),
+            0
+          )::int AS daily_talk_seconds,
+          COALESCE(
+            SUM(duration_seconds) FILTER (
+              WHERE created_at >= date_trunc('week', now()) AND ${answeredFilter}
+            ),
+            0
+          )::int AS weekly_talk_seconds
         FROM call_logs
         WHERE user_id = ${ownerUserId}
-          AND created_at >= date_trunc('day', now())
       `
 
   const row = rows[0] as Record<string, unknown> | undefined
@@ -3355,6 +3395,8 @@ export async function getDailyCallTelemetryForOwner(
     daily_calls: Number(row?.daily_calls ?? 0),
     missed_calls: Number(row?.missed_calls ?? 0),
     avg_talk_seconds: Number(row?.avg_talk_seconds ?? 0),
+    daily_talk_seconds: Number(row?.daily_talk_seconds ?? 0),
+    weekly_talk_seconds: Number(row?.weekly_talk_seconds ?? 0),
   }
 }
 

@@ -1,10 +1,10 @@
 "use client"
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
-import { Activity, Clock, Phone, PhoneIncoming, PhoneMissed, Truck } from "lucide-react"
+import { Activity, CalendarRange, Clock, Phone, PhoneIncoming, PhoneMissed, Truck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
-import { formatAvgTalkTime } from "@/lib/daily-call-telemetry"
+import { formatTalkDuration } from "@/lib/daily-call-telemetry"
 import { isDashboardVisibleLineStatus, type DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
 import { getPusherClient } from "@/lib/realtime/pusher-client"
 import { isActivePortingOrder } from "@/lib/porting-lifecycle"
@@ -59,7 +59,8 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
   const [pendingPorts, setPendingPorts] = useState(0)
   const [dailyCalls, setDailyCalls] = useState(0)
   const [missedCalls, setMissedCalls] = useState(0)
-  const [avgTalkDisplay, setAvgTalkDisplay] = useState("0:00")
+  const [dailyTalkDisplay, setDailyTalkDisplay] = useState("0:00")
+  const [weeklyTalkDisplay, setWeeklyTalkDisplay] = useState("0:00")
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null)
 
   const activeLines = businessNumbers.filter(
@@ -85,7 +86,8 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
         data?: {
           daily_calls?: number
           missed_calls?: number
-          avg_talk_time_display?: string
+          daily_talk_time_display?: string
+          weekly_talk_time_display?: string
           owner_user_id?: string
         }
       }
@@ -93,12 +95,14 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
       if (!data) return
       setDailyCalls(Number(data.daily_calls ?? 0))
       setMissedCalls(Number(data.missed_calls ?? 0))
-      setAvgTalkDisplay(data.avg_talk_time_display ?? formatAvgTalkTime(0))
+      setDailyTalkDisplay(data.daily_talk_time_display ?? formatTalkDuration(0))
+      setWeeklyTalkDisplay(data.weekly_talk_time_display ?? formatTalkDuration(0))
       if (data.owner_user_id) setOwnerUserId(String(data.owner_user_id))
     } catch {
       setDailyCalls(0)
       setMissedCalls(0)
-      setAvgTalkDisplay("0:00")
+      setDailyTalkDisplay("0:00")
+      setWeeklyTalkDisplay("0:00")
     }
   }, [activeOrganizationId])
 
@@ -202,7 +206,8 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
         tone={missedCalls > 0 ? "amber" : "default"}
         valueClassName={missedCalls > 0 ? "text-amber-400" : undefined}
       />
-      <TelemetryPill label="Avg talk time" value={avgTalkDisplay} icon={Clock} />
+      <TelemetryPill label="Daily talk" value={dailyTalkDisplay} icon={Clock} tone="teal" />
+      <TelemetryPill label="Weekly talk" value={weeklyTalkDisplay} icon={CalendarRange} />
       <TelemetryPill
         label="Pending ports"
         value={pendingPorts}

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   SCHEDULER_STATUS_LABEL,
   schedulerLifecyclePhase,
@@ -24,10 +24,14 @@ type JobDetailDrawerProps = {
   onSaved?: (event: SchedulerEvent) => void
 }
 
+const fieldBlockClass = "flex flex-col mb-4 min-w-0"
+const labelClass = "text-xs font-medium text-zinc-400 mb-1.5"
 const inputClass =
   "w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-
-const labelClass = "text-xs font-medium text-zinc-400"
+const addressTextareaClass =
+  "w-full resize-none break-words whitespace-normal text-sm bg-zinc-900/50 border-zinc-800 min-h-[72px] rounded-lg border px-3 py-2 text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+const notesTextareaClass =
+  "w-full resize-none break-words whitespace-normal text-sm bg-zinc-900/50 border-zinc-800 min-h-[64px] rounded-lg border px-3 py-2 text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 
 function startLocalFromIso(iso: string | null | undefined): string {
   if (!iso) return ""
@@ -146,7 +150,7 @@ export function JobDetailDrawer({
     <div className="fixed inset-0 z-[120] flex justify-end bg-black/50" role="presentation" onClick={onClose}>
       <aside
         className={cn(
-          "flex h-full w-full max-w-md flex-col border-l border-border bg-card shadow-xl",
+          "flex h-full w-full min-w-0 max-w-md flex-col border-l border-border bg-card shadow-xl",
           "animate-in slide-in-from-right duration-200"
         )}
         onClick={(e) => e.stopPropagation()}
@@ -177,11 +181,11 @@ export function JobDetailDrawer({
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <div className="space-y-1.5">
-            <Label className={labelClass} htmlFor="job-customer-name">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
+          <div className={fieldBlockClass}>
+            <label className={labelClass} htmlFor="job-customer-name">
               Customer name
-            </Label>
+            </label>
             <Input
               id="job-customer-name"
               className={inputClass}
@@ -191,10 +195,10 @@ export function JobDetailDrawer({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className={labelClass} htmlFor="job-customer-phone">
+          <div className={fieldBlockClass}>
+            <label className={labelClass} htmlFor="job-customer-phone">
               Phone
-            </Label>
+            </label>
             <Input
               id="job-customer-phone"
               type="tel"
@@ -205,10 +209,10 @@ export function JobDetailDrawer({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className={labelClass} htmlFor="job-type">
+          <div className={fieldBlockClass}>
+            <label className={labelClass} htmlFor="job-type">
               Service type
-            </Label>
+            </label>
             <Input
               id="job-type"
               className={inputClass}
@@ -218,75 +222,80 @@ export function JobDetailDrawer({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="space-y-1.5">
-              <Label className={labelClass} htmlFor="job-vehicle-year">
-                Year
-              </Label>
-              <Input
-                id="job-vehicle-year"
-                className={inputClass}
-                value={vehicleYear}
-                onChange={(e) => setVehicleYear(e.target.value)}
-                placeholder="2023"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className={labelClass} htmlFor="job-vehicle-make">
-                Make
-              </Label>
-              <Input
-                id="job-vehicle-make"
-                className={inputClass}
-                value={vehicleMake}
-                onChange={(e) => setVehicleMake(e.target.value)}
-                placeholder="Honda"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className={labelClass} htmlFor="job-vehicle-model">
-                Model
-              </Label>
-              <Input
-                id="job-vehicle-model"
-                className={inputClass}
-                value={vehicleModel}
-                onChange={(e) => setVehicleModel(e.target.value)}
-                placeholder="Civic"
-              />
+          <div className={fieldBlockClass}>
+            <label className={labelClass}>Vehicle specs</label>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex min-w-0 flex-col">
+                <label className={labelClass} htmlFor="job-vehicle-year">
+                  Year
+                </label>
+                <Input
+                  id="job-vehicle-year"
+                  className={inputClass}
+                  value={vehicleYear}
+                  onChange={(e) => setVehicleYear(e.target.value)}
+                  placeholder="2023"
+                />
+              </div>
+              <div className="flex min-w-0 flex-col">
+                <label className={labelClass} htmlFor="job-vehicle-make">
+                  Make
+                </label>
+                <Input
+                  id="job-vehicle-make"
+                  className={inputClass}
+                  value={vehicleMake}
+                  onChange={(e) => setVehicleMake(e.target.value)}
+                  placeholder="Honda"
+                />
+              </div>
+              <div className="flex min-w-0 flex-col">
+                <label className={labelClass} htmlFor="job-vehicle-model">
+                  Model
+                </label>
+                <Input
+                  id="job-vehicle-model"
+                  className={inputClass}
+                  value={vehicleModel}
+                  onChange={(e) => setVehicleModel(e.target.value)}
+                  placeholder="Civic"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label className={labelClass} htmlFor="job-location">
+          <div className={fieldBlockClass}>
+            <label className={labelClass} htmlFor="job-location">
               Address
-            </Label>
-            <textarea
+            </label>
+            <Textarea
               id="job-location"
-              className={cn(inputClass, "min-h-[72px] resize-y")}
+              className={addressTextareaClass}
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="Street address"
+              rows={3}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className={labelClass} htmlFor="job-notes">
+          <div className={fieldBlockClass}>
+            <label className={labelClass} htmlFor="job-notes">
               Notes
-            </Label>
-            <textarea
+            </label>
+            <Textarea
               id="job-notes"
-              className={cn(inputClass, "min-h-[64px] resize-y")}
+              className={notesTextareaClass}
               value={jobNotes}
               onChange={(e) => setJobNotes(e.target.value)}
               placeholder="Gate code, symptoms, etc."
+              rows={2}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className={labelClass} htmlFor="job-start">
+          <div className={fieldBlockClass}>
+            <label className={labelClass} htmlFor="job-start">
               Start time
-            </Label>
+            </label>
             <Input
               id="job-start"
               type="datetime-local"
@@ -296,41 +305,43 @@ export function JobDetailDrawer({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className={labelClass} htmlFor="job-duration">
-                Duration
-              </Label>
-              <select
-                id="job-duration"
-                className={inputClass}
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
-              >
-                {SCHEDULER_DURATION_OPTIONS.map((opt) => (
-                  <option key={opt.minutes} value={opt.minutes}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className={labelClass} htmlFor="job-tech">
-                Assigned tech
-              </Label>
-              <select
-                id="job-tech"
-                className={inputClass}
-                value={assignedTechId}
-                onChange={(e) => setAssignedTechId(e.target.value)}
-              >
-                <option value="">Unassigned</option>
-                {assignableTechs.map((t) => (
-                  <option key={t.portal_user_id!} value={t.portal_user_id!}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+          <div className={cn(fieldBlockClass, "mb-0")}>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex min-w-0 flex-col">
+                <label className={labelClass} htmlFor="job-duration">
+                  Duration
+                </label>
+                <select
+                  id="job-duration"
+                  className={inputClass}
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
+                >
+                  {SCHEDULER_DURATION_OPTIONS.map((opt) => (
+                    <option key={opt.minutes} value={opt.minutes}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex min-w-0 flex-col">
+                <label className={labelClass} htmlFor="job-tech">
+                  Assigned tech
+                </label>
+                <select
+                  id="job-tech"
+                  className={inputClass}
+                  value={assignedTechId}
+                  onChange={(e) => setAssignedTechId(e.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {assignableTechs.map((t) => (
+                    <option key={t.portal_user_id!} value={t.portal_user_id!}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 

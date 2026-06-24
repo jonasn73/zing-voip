@@ -419,44 +419,5 @@
   }
 }
 
-/* Dispatch map — Leaflet / Mapbox popup dark theme (native DOM overrides). */
-.leaflet-popup-content,
-.mapboxgl-popup-content {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: auto !important;
-  max-width: 320px !important;
-  color: #f4f4f5 !important;
-}
-
-.leaflet-popup-content-wrapper,
-.mapboxgl-popup-content-wrapper {
-  background-color: #09090b !important;
-  border: 1px solid #27272a !important;
-  border-radius: 0.5rem !important;
-  overflow: hidden !important;
-  padding: 0 !important;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
-}
-
-.leaflet-popup-tip,
-.mapboxgl-popup-tip {
-  background-color: #09090b !important;
-  border: 1px solid #27272a !important;
-  box-shadow: none !important;
-}
-
-.leaflet-popup-close-button,
-.mapboxgl-popup-close-button,
-.lyncr-job-map-popup a.leaflet-popup-close-button {
-  color: #a1a1aa !important;
-  padding: 8px 12px !important;
-}
-
-.leaflet-popup-close-button:hover,
-.mapboxgl-popup-close-button:hover,
-.lyncr-job-map-popup a.leaflet-popup-close-button:hover,
-.lyncr-job-map-popup a.leaflet-popup-close-button:focus {
-  color: #f4f4f5 !important;
-  background: transparent !important;
-}
+/* Dispatch map popup overrides — source file imported after Leaflet in map components. */
+@import "./leaflet-popup-overrides.css";

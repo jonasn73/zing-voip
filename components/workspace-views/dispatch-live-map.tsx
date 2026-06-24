@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { MapPinned, X, Loader2, Phone } from "lucide-react"
 import "leaflet/dist/leaflet.css"
+import "@/app/leaflet-popup-overrides.css"
 import type { Map as LeafletMap, Marker } from "leaflet"
 import { WorkspacePanel } from "@/components/dashboard-workspace-ui"
 import { getPusherClient } from "@/lib/realtime/pusher-client"

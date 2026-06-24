@@ -1,0 +1,44 @@
+/* Leaflet / Mapbox popup — load AFTER leaflet/dist/leaflet.css so these rules win the cascade. */
+
+/* Force override on the mapping framework layout targets */
+.leaflet-container .leaflet-popup-content-wrapper,
+.leaflet-container .mapboxgl-popup-content,
+.mapboxgl-popup-content-wrapper {
+  background-color: #09090b !important;
+  border: 1px solid #27272a !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.leaflet-container .leaflet-popup-content,
+.leaflet-container .mapboxgl-popup-content-wrapper {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 300px !important;
+  max-width: 300px !important;
+  color: #f4f4f5 !important;
+}
+
+/* Fix directional arrow pointer coloration under the card */
+.leaflet-container .leaflet-popup-tip,
+.leaflet-container .mapboxgl-popup-tip {
+  border-top-color: #09090b !important;
+  background-color: #09090b !important;
+  border: 1px solid #27272a !important;
+  box-shadow: none !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button,
+.mapboxgl-popup-close-button {
+  color: #a1a1aa !important;
+  padding: 8px 12px !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover,
+.leaflet-container a.leaflet-popup-close-button:focus,
+.mapboxgl-popup-close-button:hover {
+  color: #f4f4f5 !important;
+  background: transparent !important;
+}

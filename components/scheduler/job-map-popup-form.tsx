@@ -134,7 +134,7 @@ export function JobMapPopupForm({ job, technicians, onCancel, onSaved }: JobMapP
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4 min-w-[280px] text-zinc-100">
+    <div className="flex w-[300px] flex-col gap-3 rounded-xl bg-zinc-950 p-4 text-zinc-100">
       <div className="space-y-2 border-b border-zinc-800 pb-2 pr-6">
         <p className="truncate text-sm font-bold text-zinc-100">
           {job.customer_name?.trim() || "Customer"}

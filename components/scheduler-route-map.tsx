@@ -6,6 +6,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { createRoot, type Root } from "react-dom/client"
 import { Loader2, MapPinned } from "lucide-react"
 import "leaflet/dist/leaflet.css"
+import "@/app/leaflet-popup-overrides.css"
 import type { Map as LeafletMap, Marker, Polyline, Popup } from "leaflet"
 import { JobMapPopupForm, type JobMapPopupSource } from "@/components/scheduler/job-map-popup-form"
 import { MapMarkerHoverCard } from "@/components/scheduler/map-marker-hover-card"
@@ -493,8 +494,8 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
     const popup = L.popup({
       className: "lyncr-job-map-popup",
       closeButton: true,
-      maxWidth: 320,
-      minWidth: 240,
+      maxWidth: 300,
+      minWidth: 300,
       autoClose: false,
       closeOnClick: false,
     })

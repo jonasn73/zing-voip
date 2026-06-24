@@ -654,22 +654,22 @@ export function SchedulerWorkspaceView() {
         <Button
           type="button"
           size="sm"
-          variant={viewMode === "grid" ? "default" : "ghost"}
-          className="gap-1.5 px-3 text-xs"
-          onClick={() => setViewMode("grid")}
-        >
-          <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
-          Grid View
-        </Button>
-        <Button
-          type="button"
-          size="sm"
           variant={viewMode === "map" ? "default" : "ghost"}
           className="gap-1.5 px-3 text-xs"
           onClick={() => setViewMode("map")}
         >
           <MapIcon className="h-3.5 w-3.5" aria-hidden />
           Map Route View
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={viewMode === "grid" ? "default" : "ghost"}
+          className="gap-1.5 px-3 text-xs"
+          onClick={() => setViewMode("grid")}
+        >
+          <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
+          Grid View
         </Button>
       </div>
       <Button type="button" size="sm" className="gap-1.5" onClick={openBookingDefault}>
@@ -695,22 +695,22 @@ export function SchedulerWorkspaceView() {
           <Button
             type="button"
             size="sm"
-            variant={viewMode === "grid" ? "default" : "ghost"}
-            className="flex-1 gap-1 text-xs"
-            onClick={() => setViewMode("grid")}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
-            Grid
-          </Button>
-          <Button
-            type="button"
-            size="sm"
             variant={viewMode === "map" ? "default" : "ghost"}
             className="flex-1 gap-1 text-xs"
             onClick={() => setViewMode("map")}
           >
             <MapIcon className="h-3.5 w-3.5" aria-hidden />
             Map
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={viewMode === "grid" ? "default" : "ghost"}
+            className="flex-1 gap-1 text-xs"
+            onClick={() => setViewMode("grid")}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
+            Grid
           </Button>
         </div>
       </div>

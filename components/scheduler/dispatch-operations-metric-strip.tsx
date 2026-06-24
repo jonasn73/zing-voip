@@ -10,40 +10,20 @@ import type { ActivePipelineJob, SchedulerEvent, UnassignedPoolJob } from "@/lib
 type MetricCellProps = {
   label: string
   value: number
-  tone?: "default" | "teal" | "amber" | "sky" | "gold" | "muted"
+  valueClassName?: string
 }
 
-function MetricCell({ label, value, tone = "default" }: MetricCellProps) {
+function MetricCell({ label, value, valueClassName }: MetricCellProps) {
   return (
-    <div className="inline-flex min-w-0 items-baseline gap-2">
-      <span
-        className={cn(
-          "text-[10px] font-semibold uppercase tracking-[0.12em]",
-          tone === "teal" && "text-teal-400/90",
-          tone === "amber" && "text-amber-400/90",
-          tone === "sky" && "text-sky-400/90",
-          tone === "gold" && "text-yellow-400/90",
-          tone === "muted" && "text-zinc-500",
-          tone === "default" && "text-zinc-400"
-        )}
-      >
-        {label}
-      </span>
-      <span
-        className={cn(
-          "text-sm font-bold tabular-nums",
-          tone === "teal" && "text-teal-300",
-          tone === "amber" && "text-amber-300",
-          tone === "sky" && "text-sky-300",
-          tone === "gold" && "text-yellow-300",
-          tone === "muted" && "text-zinc-500",
-          tone === "default" && "text-foreground"
-        )}
-      >
-        {value}
-      </span>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-xs font-medium text-zinc-400">{label}</span>
+      <span className={cn("text-sm font-bold tabular-nums text-zinc-100", valueClassName)}>{value}</span>
     </div>
   )
+}
+
+function MetricDivider() {
+  return <div className="hidden h-4 w-px shrink-0 bg-zinc-800 sm:block" aria-hidden />
 }
 
 export const DispatchOperationsMetricStrip = memo(function DispatchOperationsMetricStrip({
@@ -76,11 +56,14 @@ export const DispatchOperationsMetricStrip = memo(function DispatchOperationsMet
       )}
       aria-label="Live dispatch operations summary"
     >
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-2 overflow-x-auto border-b border-zinc-800 bg-zinc-900/90 px-5 py-2.5 text-xs backdrop-blur sm:px-8">
-        <MetricCell label="Active Dispatches" value={metrics.activeDispatches} tone="teal" />
-        <MetricCell label="Unassigned Pool" value={metrics.unassignedPool} tone="amber" />
-        <MetricCell label="On-Site" value={metrics.onSite} tone="gold" />
-        <MetricCell label="Completed Today" value={metrics.completedToday} tone="muted" />
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 overflow-x-auto border-b border-zinc-800 bg-zinc-900/90 px-5 py-3 backdrop-blur sm:gap-x-8 sm:px-8">
+        <MetricCell label="Active Dispatches" value={metrics.activeDispatches} valueClassName="text-sky-300" />
+        <MetricDivider />
+        <MetricCell label="Unassigned Pool" value={metrics.unassignedPool} valueClassName="text-amber-300" />
+        <MetricDivider />
+        <MetricCell label="On-Site" value={metrics.onSite} valueClassName="text-yellow-300" />
+        <MetricDivider />
+        <MetricCell label="Completed Today" value={metrics.completedToday} valueClassName="text-zinc-400" />
       </div>
     </div>
   )

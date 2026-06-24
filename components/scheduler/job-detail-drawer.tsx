@@ -38,14 +38,15 @@ const STATUS_SEGMENTS: {
   { phase: "completed", jobStatus: "completed", label: "Completed" },
 ]
 
-const fieldBlockClass = "flex w-full min-w-0 flex-col mb-4 overflow-hidden"
-const labelClass = "text-xs font-medium text-zinc-400 mb-1.5"
+const fieldBlockClass = "flex w-full min-w-0 flex-col"
+const labelClass = "mb-1.5 text-xs font-medium text-zinc-400"
+const sectionClass = "mb-4 rounded-lg border border-zinc-800/60 bg-zinc-900/30 p-4"
+const sectionTitleClass = "mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500"
 const inputClass =
-  "w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+  "w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
 const addressTextareaClass =
-  "w-full max-w-[calc(100%-4px)] box-border block break-words whitespace-normal px-3 py-2 text-sm bg-zinc-900/50 border border-zinc-800 rounded-md resize-none min-h-[72px] text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-const notesTextareaClass =
-  "box-border block w-full max-w-full resize-none break-words whitespace-normal text-sm bg-zinc-900/50 border-zinc-800 min-h-[64px] rounded-lg border px-3 py-2 text-foreground placeholder:text-zinc-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+  "box-border block min-h-[72px] w-full max-w-full resize-none break-words whitespace-normal rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
+const notesTextareaClass = addressTextareaClass
 
 function startLocalFromIso(iso: string | null | undefined): string {
   if (!iso) return ""
@@ -221,38 +222,6 @@ export function JobDetailDrawer({
             {statusLabel}
           </span>
 
-          <div className="mt-4 flex flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
-            {STATUS_SEGMENTS.map((segment) => {
-              const active = lifecyclePhase === segment.phase
-              const disabled =
-                statusUpdating ||
-                (segment.jobStatus !== "completed" && !hasAssignedTech && segment.phase !== "scheduled")
-              return (
-                <button
-                  key={segment.jobStatus}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => void handleStatusChange(segment.jobStatus)}
-                  className={cn(
-                    "flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors",
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-zinc-400 hover:bg-zinc-800/80 hover:text-foreground",
-                    disabled && !active && "cursor-not-allowed opacity-40"
-                  )}
-                >
-                  {segment.label}
-                </button>
-              )
-            })}
-          </div>
-          {statusUpdating ? (
-            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-zinc-500">
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-              Updating status…
-            </p>
-          ) : null}
-
           <button
             type="button"
             aria-label="Close"
@@ -264,170 +233,216 @@ export function JobDetailDrawer({
         </header>
 
         <div className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
-          <div className={fieldBlockClass}>
-            <label className={labelClass} htmlFor="job-customer-name">
-              Customer name
-            </label>
-            <Input
-              id="job-customer-name"
-              className={inputClass}
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Customer name"
-            />
-          </div>
-
-          <div className={fieldBlockClass}>
-            <label className={labelClass} htmlFor="job-customer-phone">
-              Phone
-            </label>
-            <Input
-              id="job-customer-phone"
-              type="tel"
-              className={inputClass}
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="(502) 555-0100"
-            />
-          </div>
-
-          <div className={fieldBlockClass}>
-            <label className={labelClass} htmlFor="job-type">
-              Service type
-            </label>
-            <Input
-              id="job-type"
-              className={inputClass}
-              value={jobType}
-              onChange={(e) => setJobType(e.target.value)}
-              placeholder="Key replacement"
-            />
-          </div>
-
-          <div className={fieldBlockClass}>
-            <label className={labelClass}>Vehicle specs</label>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="flex min-w-0 flex-col">
-                <label className={labelClass} htmlFor="job-vehicle-year">
-                  Year
+          <section className={sectionClass}>
+            <h3 className={sectionTitleClass}>Customer Information</h3>
+            <div className="space-y-3">
+              <div className={fieldBlockClass}>
+                <label className={labelClass} htmlFor="job-customer-name">
+                  Customer name
                 </label>
                 <Input
-                  id="job-vehicle-year"
+                  id="job-customer-name"
                   className={inputClass}
-                  value={vehicleYear}
-                  onChange={(e) => setVehicleYear(e.target.value)}
-                  placeholder="2023"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Customer name"
                 />
               </div>
-              <div className="flex min-w-0 flex-col">
-                <label className={labelClass} htmlFor="job-vehicle-make">
-                  Make
+              <div className={fieldBlockClass}>
+                <label className={labelClass} htmlFor="job-customer-phone">
+                  Phone
                 </label>
                 <Input
-                  id="job-vehicle-make"
+                  id="job-customer-phone"
+                  type="tel"
                   className={inputClass}
-                  value={vehicleMake}
-                  onChange={(e) => setVehicleMake(e.target.value)}
-                  placeholder="Honda"
-                />
-              </div>
-              <div className="flex min-w-0 flex-col">
-                <label className={labelClass} htmlFor="job-vehicle-model">
-                  Model
-                </label>
-                <Input
-                  id="job-vehicle-model"
-                  className={inputClass}
-                  value={vehicleModel}
-                  onChange={(e) => setVehicleModel(e.target.value)}
-                  placeholder="Civic"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="(502) 555-0100"
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className={fieldBlockClass}>
-            <label className={labelClass} htmlFor="job-location">
-              Address
-            </label>
-            <textarea
-              id="job-location"
-              className={addressTextareaClass}
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Street address"
-              rows={3}
-            />
-          </div>
-
-          <div className={fieldBlockClass}>
-            <label className={labelClass} htmlFor="job-notes">
-              Notes
-            </label>
-            <Textarea
-              id="job-notes"
-              className={notesTextareaClass}
-              value={jobNotes}
-              onChange={(e) => setJobNotes(e.target.value)}
-              placeholder="Gate code, symptoms, etc."
-              rows={2}
-            />
-          </div>
-
-          <div className={fieldBlockClass}>
-            <label className={labelClass} htmlFor="job-start">
-              Start time
-            </label>
-            <Input
-              id="job-start"
-              type="datetime-local"
-              className={inputClass}
-              value={startLocal}
-              onChange={(e) => setStartLocal(e.target.value)}
-            />
-          </div>
-
-          <div className={cn(fieldBlockClass, "mb-0")}>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex min-w-0 flex-col">
-                <label className={labelClass} htmlFor="job-duration">
-                  Duration
+          <section className={sectionClass}>
+            <h3 className={sectionTitleClass}>Service Profile</h3>
+            <div className="space-y-3">
+              <div className={fieldBlockClass}>
+                <label className={labelClass} htmlFor="job-type">
+                  Service type
                 </label>
-                <select
-                  id="job-duration"
+                <Input
+                  id="job-type"
                   className={inputClass}
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
-                >
-                  {SCHEDULER_DURATION_OPTIONS.map((opt) => (
-                    <option key={opt.minutes} value={opt.minutes}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  value={jobType}
+                  onChange={(e) => setJobType(e.target.value)}
+                  placeholder="Key replacement"
+                />
               </div>
-              <div className="flex min-w-0 flex-col">
-                <label className={labelClass} htmlFor="job-tech">
-                  Assigned tech
+
+              <div className={fieldBlockClass}>
+                <label className={labelClass}>Vehicle specs</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="flex min-w-0 flex-col">
+                    <label className={labelClass} htmlFor="job-vehicle-year">
+                      Year
+                    </label>
+                    <Input
+                      id="job-vehicle-year"
+                      className={inputClass}
+                      value={vehicleYear}
+                      onChange={(e) => setVehicleYear(e.target.value)}
+                      placeholder="2023"
+                    />
+                  </div>
+                  <div className="flex min-w-0 flex-col">
+                    <label className={labelClass} htmlFor="job-vehicle-make">
+                      Make
+                    </label>
+                    <Input
+                      id="job-vehicle-make"
+                      className={inputClass}
+                      value={vehicleMake}
+                      onChange={(e) => setVehicleMake(e.target.value)}
+                      placeholder="Honda"
+                    />
+                  </div>
+                  <div className="flex min-w-0 flex-col">
+                    <label className={labelClass} htmlFor="job-vehicle-model">
+                      Model
+                    </label>
+                    <Input
+                      id="job-vehicle-model"
+                      className={inputClass}
+                      value={vehicleModel}
+                      onChange={(e) => setVehicleModel(e.target.value)}
+                      placeholder="Civic"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className={fieldBlockClass}>
+                <label className={labelClass}>Status controls</label>
+                <div className="flex flex-wrap gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+                  {STATUS_SEGMENTS.map((segment) => {
+                    const active = lifecyclePhase === segment.phase
+                    const disabled =
+                      statusUpdating ||
+                      (segment.jobStatus !== "completed" && !hasAssignedTech && segment.phase !== "scheduled")
+                    return (
+                      <button
+                        key={segment.jobStatus}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => void handleStatusChange(segment.jobStatus)}
+                        className={cn(
+                          "flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors",
+                          active
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-zinc-400 hover:bg-zinc-800/80 hover:text-foreground",
+                          disabled && !active && "cursor-not-allowed opacity-40"
+                        )}
+                      >
+                        {segment.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                {statusUpdating ? (
+                  <p className="mt-2 flex items-center gap-1.5 text-[10px] text-zinc-500">
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    Updating status…
+                  </p>
+                ) : null}
+              </div>
+
+              <div className={fieldBlockClass}>
+                <label className={labelClass} htmlFor="job-start">
+                  Start time
                 </label>
-                <select
-                  id="job-tech"
+                <Input
+                  id="job-start"
+                  type="datetime-local"
                   className={inputClass}
-                  value={assignedTechId}
-                  onChange={(e) => setAssignedTechId(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {assignableTechs.map((t) => (
-                    <option key={t.portal_user_id!} value={t.portal_user_id!}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                  value={startLocal}
+                  onChange={(e) => setStartLocal(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className={fieldBlockClass}>
+                  <label className={labelClass} htmlFor="job-duration">
+                    Duration
+                  </label>
+                  <select
+                    id="job-duration"
+                    className={inputClass}
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
+                  >
+                    {SCHEDULER_DURATION_OPTIONS.map((opt) => (
+                      <option key={opt.minutes} value={opt.minutes}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={fieldBlockClass}>
+                  <label className={labelClass} htmlFor="job-tech">
+                    Assigned tech
+                  </label>
+                  <select
+                    id="job-tech"
+                    className={inputClass}
+                    value={assignedTechId}
+                    onChange={(e) => setAssignedTechId(e.target.value)}
+                  >
+                    <option value="">Unassigned</option>
+                    {assignableTechs.map((t) => (
+                      <option key={t.portal_user_id!} value={t.portal_user_id!}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
 
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          <section className={cn(sectionClass, "mb-0")}>
+            <h3 className={sectionTitleClass}>Logistics</h3>
+            <div className="space-y-3">
+              <div className={fieldBlockClass}>
+                <label className={labelClass} htmlFor="job-location">
+                  Address
+                </label>
+                <textarea
+                  id="job-location"
+                  className={addressTextareaClass}
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Street address"
+                  rows={3}
+                />
+              </div>
+              <div className={fieldBlockClass}>
+                <label className={labelClass} htmlFor="job-notes">
+                  Notes
+                </label>
+                <Textarea
+                  id="job-notes"
+                  className={notesTextareaClass}
+                  value={jobNotes}
+                  onChange={(e) => setJobNotes(e.target.value)}
+                  placeholder="Gate code, symptoms, etc."
+                  rows={2}
+                />
+              </div>
+            </div>
+          </section>
+
+          {error ? <p className="mt-4 text-sm text-red-400">{error}</p> : null}
         </div>
 
         <div className="flex gap-2 border-t border-border/60 px-5 py-4">

@@ -3,13 +3,14 @@
 // Group active pipeline jobs by execution phase for the map split-view left panel.
 
 import { useMemo } from "react"
-import { Car, Clock, MapPin, User } from "lucide-react"
+import { Car, Clock, MapPin, Phone, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { vehicleLabelFromParts } from "@/lib/job-pool"
 import {
   PIPELINE_PANEL_GROUP_ORDER,
   PIPELINE_PANEL_GROUP_TITLE,
-  SCHEDULER_CARD_STYLE,
+  SCHEDULER_BADGE_STYLE,
+  SCHEDULER_LIST_CARD_SHELL,
   SCHEDULER_STATUS_LABEL,
   schedulerLifecyclePhase,
   type SchedulerLifecyclePhase,
@@ -91,53 +92,61 @@ export function ActivePipelinePanel({ jobs, loading, highlightId, onFocusJob }: 
               const phase = jobPhase(job)
               const vehicle = vehicleLabelFromParts(job.vehicle_year, job.vehicle_make, job.vehicle_model)
               const highlighted = highlightId === job.id
+              const displayName = job.customer_name?.trim() || "Unknown customer"
+              const phone = formatPhone(job.customer_phone)
               return (
                 <li key={job.id}>
                   <button
                     type="button"
                     onClick={() => onFocusJob(job)}
                     className={cn(
-                      "w-full rounded-xl border px-3 py-3 text-left transition-[box-shadow,transform] hover:brightness-110 motion-safe:active:scale-[0.99]",
-                      SCHEDULER_CARD_STYLE[phase],
+                      SCHEDULER_LIST_CARD_SHELL,
+                      "motion-safe:active:scale-[0.99]",
                       highlighted && "ring-2 ring-primary ring-offset-1 ring-offset-background"
                     )}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 flex-1 truncate text-sm font-semibold">
-                        {job.customer_name || formatPhone(job.customer_phone)}
+                    <p className="truncate pr-2 text-sm font-medium text-zinc-100">{displayName}</p>
+
+                    <div className="mt-2 space-y-1">
+                      <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                        <Phone className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                        <span className="truncate">{phone}</span>
                       </p>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                          SCHEDULER_CARD_STYLE[phase]
-                        )}
-                      >
-                        {SCHEDULER_STATUS_LABEL[phase]}
-                      </span>
+                      <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                        <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                        <span className="truncate">
+                          {formatTime(job.scheduled_at)}
+                          {job.job_type ? ` · ${job.job_type}` : ""}
+                        </span>
+                      </p>
+                      {vehicle ? (
+                        <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                          <Car className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                          <span className="truncate">{vehicle}</span>
+                        </p>
+                      ) : null}
+                      {job.assigned_tech_name ? (
+                        <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                          <User className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                          <span className="truncate">{job.assigned_tech_name}</span>
+                        </p>
+                      ) : null}
+                      {job.location ? (
+                        <p className="flex items-start gap-1.5 text-xs text-zinc-500">
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-600" aria-hidden />
+                          <span className="line-clamp-2">{job.location}</span>
+                        </p>
+                      ) : null}
                     </div>
-                    <p className="mt-1 flex items-center gap-1 text-xs opacity-90">
-                      <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                      {formatTime(job.scheduled_at)}
-                      {job.job_type ? ` · ${job.job_type}` : ""}
-                    </p>
-                    {vehicle ? (
-                      <p className="mt-0.5 flex items-center gap-1 text-xs opacity-80">
-                        <Car className="h-3 w-3 shrink-0" aria-hidden />
-                        {vehicle}
-                      </p>
-                    ) : null}
-                    {job.assigned_tech_name ? (
-                      <p className="mt-0.5 flex items-center gap-1 text-xs opacity-80">
-                        <User className="h-3 w-3 shrink-0" aria-hidden />
-                        {job.assigned_tech_name}
-                      </p>
-                    ) : null}
-                    {job.location ? (
-                      <p className="mt-1 flex items-start gap-1 text-[11px] opacity-75">
-                        <MapPin className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-                        <span className="line-clamp-2">{job.location}</span>
-                      </p>
-                    ) : null}
+
+                    <span
+                      className={cn(
+                        "absolute bottom-2.5 right-2.5 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                        SCHEDULER_BADGE_STYLE[phase]
+                      )}
+                    >
+                      {SCHEDULER_STATUS_LABEL[phase]}
+                    </span>
                   </button>
                 </li>
               )

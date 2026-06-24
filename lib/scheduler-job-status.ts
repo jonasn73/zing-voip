@@ -26,6 +26,18 @@ export function schedulerLifecyclePhase(params: {
   return "scheduled"
 }
 
+export const SCHEDULER_BADGE_STYLE: Record<SchedulerLifecyclePhase, string> = {
+  unassigned: "border-amber-500/40 bg-amber-500/10 text-amber-300",
+  scheduled: "border-teal-500/40 bg-teal-500/10 text-teal-300",
+  en_route: "border-sky-500/40 bg-sky-500/10 text-sky-300",
+  on_site: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300",
+  completed: "border-zinc-600/40 bg-zinc-700/20 text-zinc-400",
+}
+
+/** Subtle list-card shell — phase color only on the status badge, not the whole row. */
+export const SCHEDULER_LIST_CARD_SHELL =
+  "relative w-full rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 pb-9 pt-3 text-left transition-colors hover:bg-zinc-900/50"
+
 /** Tailwind classes for hourly grid blocks + day summary chips. */
 export const SCHEDULER_CARD_STYLE: Record<SchedulerLifecyclePhase, string> = {
   unassigned: "border-amber-500/50 bg-amber-500/15 text-amber-100",

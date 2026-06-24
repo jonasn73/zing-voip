@@ -42,3 +42,12 @@
   color: #f4f4f5 !important;
   background: transparent !important;
 }
+
+/* Keep popups above marker pins and tech badges. */
+.leaflet-container .leaflet-popup-pane {
+  z-index: 1000 !important;
+}
+
+.leaflet-container .leaflet-marker-pane {
+  z-index: 900 !important;
+}

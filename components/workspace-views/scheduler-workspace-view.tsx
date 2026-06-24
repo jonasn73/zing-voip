@@ -4,7 +4,7 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { LayoutGrid, Loader2, Map as MapIcon, Plus } from "lucide-react"
+import { ChevronDown, LayoutGrid, Loader2, Map as MapIcon, Plus } from "lucide-react"
 import { getPusherClient } from "@/lib/realtime/pusher-client"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
@@ -219,6 +219,13 @@ export function SchedulerWorkspaceView() {
     }
   }, [viewMode, drawerPoolJob, drawerScheduledEvent, techLocations])
 
+  function flyMapToJob(job: { latitude?: number | null; longitude?: number | null }) {
+    const lat = typeof job.latitude === "number" ? job.latitude : Number.parseFloat(String(job.latitude ?? ""))
+    const lng = typeof job.longitude === "number" ? job.longitude : Number.parseFloat(String(job.longitude ?? ""))
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    mapRef.current?.flyTo(lat, lng, 14)
+  }
+
   function selectJobOnMap(jobId: string) {
     setHighlightId(jobId)
     setDrawerPoolJob(null)
@@ -414,6 +421,7 @@ export function SchedulerWorkspaceView() {
       return
     }
     selectJobOnMap(ev.id)
+    flyMapToJob(ev)
   }
 
   function focusPipelineJob(job: ActivePipelineJob) {
@@ -424,6 +432,7 @@ export function SchedulerWorkspaceView() {
       return
     }
     selectJobOnMap(job.id)
+    flyMapToJob(job)
   }
 
   function applyJobEventUpdate(event: SchedulerEvent) {
@@ -474,6 +483,7 @@ export function SchedulerWorkspaceView() {
       if (poolMatch) {
         if (viewMode === "map") {
           selectJobOnMap(poolMatch.id)
+          flyMapToJob(poolMatch)
         } else {
           setHighlightId(poolMatch.id)
           setDrawerPoolJob(poolMatch)
@@ -485,6 +495,7 @@ export function SchedulerWorkspaceView() {
       if (scheduledMatch) {
         if (viewMode === "map") {
           selectJobOnMap(scheduledMatch.id)
+          flyMapToJob(scheduledMatch)
         } else {
           setHighlightId(scheduledMatch.id)
           setDrawerScheduledEvent(scheduledMatch)
@@ -717,30 +728,46 @@ export function SchedulerWorkspaceView() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
-        <WorkspacePanel className="p-3">
-          <Calendar
-            mode="single"
-            selected={selectedDay}
-            onSelect={(d) => d && setSelectedDay(d)}
-            month={visibleMonth}
-            onMonthChange={setVisibleMonth}
-            modifiers={{ hasJob: [...daysWithEvents] }}
-            modifiersClassNames={{
-              hasJob:
-                "relative after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary",
-            }}
-            className="mx-auto"
-          />
-          {loading ? (
-            <SchedulerCalendarStatsSkeleton />
-          ) : (
-            <p className="mt-2 text-center text-xs text-zinc-500">
-              {events.length} scheduled this month
-              {poolJobs.length > 0
-                ? ` · ${poolJobs.length} in hopper`
-                : ""}
-            </p>
-          )}
+        <WorkspacePanel className="flex flex-col p-3">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
+              <span>
+                {selectedDay.toLocaleDateString([], {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+              <ChevronDown
+                className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180"
+                aria-hidden
+              />
+            </summary>
+            <div className="mt-2">
+              <Calendar
+                mode="single"
+                selected={selectedDay}
+                onSelect={(d) => d && setSelectedDay(d)}
+                month={visibleMonth}
+                onMonthChange={setVisibleMonth}
+                modifiers={{ hasJob: [...daysWithEvents] }}
+                modifiersClassNames={{
+                  hasJob:
+                    "relative after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary",
+                }}
+                className="mx-auto"
+              />
+              {loading ? (
+                <SchedulerCalendarStatsSkeleton />
+              ) : (
+                <p className="mt-2 text-center text-xs text-zinc-500">
+                  {events.length} scheduled this month
+                  {poolJobs.length > 0 ? ` · ${poolJobs.length} in hopper` : ""}
+                </p>
+              )}
+            </div>
+          </details>
         </WorkspacePanel>
 
         <WorkspacePanel className="flex flex-col overflow-hidden">
@@ -790,7 +817,7 @@ export function SchedulerWorkspaceView() {
             </>
           ) : (
             <div className="flex min-h-[min(720px,70vh)] flex-1 flex-col lg:flex-row">
-              <div className="max-h-[min(360px,45vh)] w-full shrink-0 overflow-y-auto border-b border-border/60 bg-card/40 lg:max-h-none lg:w-[40%] lg:border-b-0 lg:border-r">
+              <div className="min-h-0 flex-1 overflow-y-auto border-b border-border/60 bg-card/40 lg:w-[40%] lg:flex-none lg:border-b-0 lg:border-r">
                 <ActivePipelinePanelStream
                   dayKey={pipelineDayKey}
                   useStreamedInitialDay={useStreamedPipeline}

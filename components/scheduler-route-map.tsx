@@ -97,6 +97,20 @@ function techInitials(name: string): string {
 /** Default zoom when an operator selects a job on the dispatch map. */
 const JOB_SELECT_ZOOM = 14
 
+/** Smooth fly duration (seconds) when centering on a selected job pin. */
+const JOB_FLY_DURATION_SEC = 1.2
+
+/** Parse latitude/longitude from a job record for map camera moves. */
+function resolveMapJobCoordinates(
+  latitude: number | string | null | undefined,
+  longitude: number | string | null | undefined
+): { lat: number; lng: number } | null {
+  const lat = typeof latitude === "number" ? latitude : Number.parseFloat(String(latitude ?? ""))
+  const lng = typeof longitude === "number" ? longitude : Number.parseFloat(String(longitude ?? ""))
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  return { lat, lng }
+}
+
 type MapEdgePadding = {
   top?: number
   right?: number
@@ -284,7 +298,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       flyTo(lat: number, lng: number, zoom = JOB_SELECT_ZOOM) {
         const map = mapRef.current
         if (!map) return
-        map.flyTo([lat, lng], zoom, { animate: true, duration: 0.75 })
+        map.flyTo([lat, lng], zoom, { animate: true, duration: JOB_FLY_DURATION_SEC })
       },
       fitDrivingRoute(focus: DrivingRouteFocus) {
         void (async () => {
@@ -473,7 +487,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       return
     }
 
-    map.flyTo([lat, lng], JOB_SELECT_ZOOM, { animate: true, duration: 0.75 })
+    map.flyTo([lat, lng], JOB_SELECT_ZOOM, { animate: true, duration: JOB_FLY_DURATION_SEC })
     setHovered(null)
     setTooltipPos(null)
 
@@ -498,6 +512,8 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       minWidth: 300,
       autoClose: false,
       closeOnClick: false,
+      autoPan: true,
+      keepInView: true,
     })
       .setLatLng([lat, lng])
       .setContent(container)
@@ -671,7 +687,16 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
         setHovered(null)
         setTooltipPos(null)
       })
-      marker.on("click", () => onSelectPoolJob?.(pin.job))
+      marker.on("click", () => {
+        const coords = resolveMapJobCoordinates(pin.job.latitude, pin.job.longitude)
+        if (coords) {
+          map.flyTo([coords.lat, coords.lng], JOB_SELECT_ZOOM, {
+            animate: true,
+            duration: JOB_FLY_DURATION_SEC,
+          })
+        }
+        onSelectPoolJob?.(pin.job)
+      })
       markersRef.current.push(marker)
       latLngs.push([pin.lat, pin.lng])
     }
@@ -704,7 +729,16 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
         setHovered(null)
         setTooltipPos(null)
       })
-      marker.on("click", () => onSelectEvent?.(stop.event))
+      marker.on("click", () => {
+        const coords = resolveMapJobCoordinates(stop.event.latitude, stop.event.longitude)
+        if (coords) {
+          map.flyTo([coords.lat, coords.lng], JOB_SELECT_ZOOM, {
+            animate: true,
+            duration: JOB_FLY_DURATION_SEC,
+          })
+        }
+        onSelectEvent?.(stop.event)
+      })
       markersRef.current.push(marker)
       latLngs.push([stop.lat, stop.lng])
     }
@@ -722,7 +756,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       }).addTo(map)
     }
 
-    if (latLngs.length > 0 && !routeFocus) {
+    if (latLngs.length > 0 && !routeFocus && !popupJobId && !highlightId) {
       const bounds = L.latLngBounds(expandBoundsForPins(latLngs))
       let maxZoom = 14
       if (poolPins.length > 1 && routeStops.length === 0) {
@@ -730,7 +764,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
         maxZoom = spanM > 3000 ? 11 : 12
       }
       map.fitBounds(bounds, { padding: [56, 56], maxZoom })
-    } else {
+    } else if (latLngs.length === 0 && !routeFocus && !popupJobId && !highlightId) {
       map.setView([LOUISVILLE_MAP_CENTER.lat, LOUISVILLE_MAP_CENTER.lng], LOUISVILLE_DEFAULT_ZOOM)
     }
     requestAnimationFrame(() => map.invalidateSize({ animate: false }))

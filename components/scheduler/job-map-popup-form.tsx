@@ -134,8 +134,8 @@ export function JobMapPopupForm({ job, technicians, onCancel, onSaved }: JobMapP
   }
 
   return (
-    <div className="w-[min(280px,78vw)] bg-zinc-950 text-zinc-100">
-      <div className="space-y-2 border-b border-zinc-800 pb-2">
+    <div className="flex min-w-[280px] flex-col gap-3 p-4 text-zinc-100">
+      <div className="space-y-2 border-b border-zinc-800 pb-2 pr-6">
         <p className="truncate text-sm font-bold text-zinc-100">
           {job.customer_name?.trim() || "Customer"}
         </p>
@@ -154,7 +154,7 @@ export function JobMapPopupForm({ job, technicians, onCancel, onSaved }: JobMapP
         </div>
       </div>
 
-      <div className="mt-2 space-y-2">
+      <div className="space-y-2">
         <div className="flex flex-wrap gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 p-0.5">
           {STATUS_SEGMENTS.map((segment) => {
             const active = pendingStatus === segment.jobStatus
@@ -200,9 +200,9 @@ export function JobMapPopupForm({ job, technicians, onCancel, onSaved }: JobMapP
         </label>
       </div>
 
-      {error ? <p className="mt-2 text-[11px] text-red-400">{error}</p> : null}
+      {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
 
-      <div className="mt-3 flex gap-2">
+      <div className="flex gap-2">
         <button
           type="button"
           disabled={saving}
@@ -221,7 +221,7 @@ export function JobMapPopupForm({ job, technicians, onCancel, onSaved }: JobMapP
         </button>
       </div>
 
-      <p className="mt-1.5 text-[10px] text-zinc-600">
+      <p className="text-[10px] text-zinc-600">
         {SCHEDULER_STATUS_LABEL[schedulerLifecyclePhase({
           job_status: pendingStatus,
           dispatch_status: job.dispatch_status,

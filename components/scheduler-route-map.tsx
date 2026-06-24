@@ -96,24 +96,6 @@ function techInitials(name: string): string {
 /** Default zoom when an operator selects a job on the dispatch map. */
 const JOB_SELECT_ZOOM = 14
 
-const JOB_MAP_POPUP_CSS = `
-.lyncr-job-map-popup .leaflet-popup-content-wrapper {
-  background: rgb(9 9 11);
-  border: 1px solid rgb(39 39 42);
-  border-radius: 0.5rem;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  padding: 0;
-}
-.lyncr-job-map-popup .leaflet-popup-content {
-  margin: 0;
-  width: auto !important;
-}
-.lyncr-job-map-popup .leaflet-popup-tip {
-  background: rgb(9 9 11);
-  box-shadow: none;
-}
-`
-
 type MapEdgePadding = {
   top?: number
   right?: number
@@ -497,7 +479,6 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
     closeMapPopup()
 
     const container = document.createElement("div")
-    container.className = "rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-zinc-100"
     popupContainerRef.current = container
     popupRootRef.current = createRoot(container)
     popupRootRef.current.render(
@@ -788,7 +769,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
 
   return (
     <div className="relative flex h-full min-h-[320px] flex-col">
-      <style>{MAP_MARKER_ANIMATION_CSS + JOB_MAP_POPUP_CSS}</style>
+      <style>{MAP_MARKER_ANIMATION_CSS}</style>
       {!embedded ? (
         <div className="flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
           <p className="text-xs font-medium text-zinc-400">

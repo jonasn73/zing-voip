@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactNode } from "react"
+import { type HTMLAttributes, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 export { WORKSPACE_SHEET_CLASS } from "@/lib/workspace-sheet-classes"
 
@@ -12,8 +12,19 @@ export const WORKSPACE_MOBILE_BLEED =
 export const MOBILE_PANEL_VIEWPORT_MIN_H =
   "min-h-[calc(100dvh-15rem-env(safe-area-inset-bottom,0px)-4rem)] md:min-h-[calc(100dvh-15rem)]"
 
-export function WorkspacePage({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("mx-auto flex w-full max-w-7xl flex-col gap-6 sm:gap-8", className)}>{children}</div>
+export function WorkspacePage({
+  children,
+  className,
+  ...rest
+}: {
+  children: ReactNode
+  className?: string
+} & HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cn("mx-auto flex w-full max-w-7xl flex-col gap-6 sm:gap-8", className)} {...rest}>
+      {children}
+    </div>
+  )
 }
 
 export function WorkspacePageHeader({

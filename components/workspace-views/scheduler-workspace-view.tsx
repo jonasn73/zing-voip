@@ -680,17 +680,27 @@ export function SchedulerWorkspaceView() {
 
   useEffect(() => {
     if (!isMobile || viewMode !== "map") return
+    const page = document.querySelector<HTMLElement>("[data-scheduler-mobile-map]")
     const main = document.querySelector<HTMLElement>("main")
-    const previousOverflow = main?.style.overflow
+    const previousMainOverflow = main?.style.overflow
+    const previousPageOverflow = page?.style.overflow
     if (main) main.style.overflow = "hidden"
+    if (page) page.style.overflow = "hidden"
     return () => {
-      if (main) main.style.overflow = previousOverflow ?? ""
+      if (main) main.style.overflow = previousMainOverflow ?? ""
+      if (page) page.style.overflow = previousPageOverflow ?? ""
     }
   }, [isMobile, viewMode])
 
+  const isMobileMap = isMobile && viewMode === "map"
+
   const headerAction = (
     <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
-      <PhoneLookupBar organizationId={orgId} onResults={handlePhoneLookupResults} className="order-first w-full sm:order-none sm:mr-1" />
+      <PhoneLookupBar
+        organizationId={orgId}
+        onResults={handlePhoneLookupResults}
+        className={cn("order-first w-full sm:order-none sm:mr-1", isMobileMap && "hidden")}
+      />
       <div className="hidden rounded-md border border-border/70 p-0.5 sm:flex">
         <Button
           type="button"
@@ -722,12 +732,28 @@ export function SchedulerWorkspaceView() {
 
   return (
     <WorkspacePage
+      data-scheduler-mobile-map={isMobileMap ? "" : undefined}
       className={cn(
-        isMobile && viewMode === "map" && "max-h-[calc(100dvh-4rem-env(safe-area-inset-bottom,0px))] overflow-hidden"
+        isMobileMap &&
+          "-mx-4 flex h-[calc(100dvh-8.75rem-env(safe-area-inset-bottom,0px))] max-h-[calc(100dvh-8.75rem-env(safe-area-inset-bottom,0px))] flex-col gap-2 overflow-hidden px-4 sm:mx-auto sm:h-auto sm:max-h-none sm:gap-6 sm:overflow-visible"
       )}
     >
-      <WorkspacePageHeader eyebrow="Dispatch" title="Scheduler" action={headerAction} />
-      <p className="-mt-4 text-sm text-zinc-500">
+      {isMobileMap ? (
+        <div className="flex shrink-0 items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Dispatch</p>
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">Scheduler</h1>
+          </div>
+          <Button type="button" size="sm" className="shrink-0 gap-1" onClick={openBookingDefault}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Create
+          </Button>
+        </div>
+      ) : (
+        <WorkspacePageHeader eyebrow="Dispatch" title="Scheduler" action={headerAction} />
+      )}
+
+      <p className={cn("-mt-4 text-sm text-zinc-500", isMobileMap && "hidden")}>
         {intakeProfile === "locksmith"
           ? "Locksmith workspace — vehicle cascade, VIN lookup, AKL / key-type flags, and validated job addresses."
           : intakeProfile === "detailing"
@@ -735,7 +761,7 @@ export function SchedulerWorkspaceView() {
             : "Automotive field jobs with industry-specific intake fields and route map."}
       </p>
 
-      <div className="flex gap-2 sm:hidden">
+      <div className={cn("flex gap-2 sm:hidden", isMobileMap && "shrink-0")}>
         <div className="flex w-full rounded-md border border-border/70 p-0.5">
           <Button
             type="button"
@@ -765,11 +791,13 @@ export function SchedulerWorkspaceView() {
       ) : null}
 
       {viewMode === "map" ? (
-        <DispatchOperationsMetricStrip
-          poolJobs={poolJobs}
-          activePipelineJobs={activePipelineJobs}
-          dayEvents={dayEvents}
-        />
+        <div className={cn(isMobileMap && "shrink-0")}>
+          <DispatchOperationsMetricStrip
+            poolJobs={poolJobs}
+            activePipelineJobs={activePipelineJobs}
+            dayEvents={dayEvents}
+          />
+        </div>
       ) : null}
 
       {viewMode === "grid" ? (
@@ -940,9 +968,9 @@ export function SchedulerWorkspaceView() {
             </WorkspacePanel>
           </div>
 
-          {isMobile ? (
-            <div className="flex h-screen max-h-screen w-full flex-col overflow-hidden md:hidden">
-              <div className="h-[40vh] w-full shrink-0 overflow-hidden">
+          {isMobileMap ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="min-h-[9rem] w-full flex-[0_0_42%] overflow-hidden">
                 <div className="h-full w-full [&>div]:!min-h-0 [&>div]:h-full">
                   <SchedulerRouteMap
                     key="mobile-dispatch-map"
@@ -961,14 +989,14 @@ export function SchedulerWorkspaceView() {
                   />
                 </div>
               </div>
-              <section className="h-[60vh] w-full overflow-y-auto pb-6">
-                <div className="shrink-0 border-b border-border/60 bg-card/95 px-4 py-3">
+              <section className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain border-t border-border/60 pb-2">
+                <div className="sticky top-0 z-10 shrink-0 border-b border-border/60 bg-card/95 px-3 py-2">
                   <h2 className="text-sm font-semibold text-foreground">
                     {selectedDay.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
                   </h2>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="mt-0.5 text-xs text-zinc-500">
                     {activePipelineJobs.length} active job
-                    {activePipelineJobs.length === 1 ? "" : "s"} in the pool
+                    {activePipelineJobs.length === 1 ? "" : "s"}
                   </p>
                 </div>
                 <ActivePipelinePanelStream

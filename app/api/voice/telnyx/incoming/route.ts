@@ -15,8 +15,11 @@ import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { SITE_NAME } from "@/lib/brand"
 import { texmlSayNatural } from "@/lib/texml-say-voice"
 import {
-  buildInboundCallerGreetingText,
+  buildInboundGreetingFirstPassResult,
+  inboundGreetingPassDone,
+  resolveCallerGreetingForDialPass,
   resolveWorkspaceDisplayName,
+  shouldPlayInboundGreetingFirstPass,
 } from "@/lib/inbound-branded-greeting"
 import { buildTelnyxDialFromDisplayName } from "@/lib/telnyx-caller-display"
 import {
@@ -265,6 +268,19 @@ type IncomingCallResult = { kind: "twiml"; texml: TwimlInstance } | { kind: "raw
 
 type IncomingRoutingRowNonNull = NonNullable<Awaited<ReturnType<typeof getIncomingRoutingByNumber>>>
 
+type InboundWebhookContext = {
+  incomingUrl: string
+  greetingPassDone: boolean
+}
+
+function inboundWebhookContextFromUrl(url: string): InboundWebhookContext {
+  const parsed = new URL(url)
+  return {
+    incomingUrl: url,
+    greetingPassDone: inboundGreetingPassDone(parsed.searchParams),
+  }
+}
+
 /** When set, dial the admin override PSTN (E.164 + prefix) and skip owner / receptionist / pool routing. */
 function tryAdminRoutingOverrideDial(params: {
   routing: IncomingRoutingRowNonNull
@@ -275,6 +291,7 @@ function tryAdminRoutingOverrideDial(params: {
   callerName: string | null
   appUrl: string
   perfStartMs?: number
+  greetingPassDone?: boolean
 }): IncomingCallResult | null {
   const built = buildAdminRoutingOverrideDial({
     routing: params.routing,
@@ -284,6 +301,7 @@ function tryAdminRoutingOverrideDial(params: {
     callerName: params.callerName,
     appUrl: params.appUrl,
     resolveOutboundCallerId: resolveInboundOutboundCallerId,
+    greetingPassDone: params.greetingPassDone,
   })
   if (!built) return null
 
@@ -397,8 +415,10 @@ function tryFastInboundPstnDial(params: {
   callerName: string | null
   appUrl: string
   perfStartMs?: number
+  greetingPassDone?: boolean
 }): IncomingCallResult | null {
-  const { routing, businessLineE164, calledNumber, callerNumber, callSid, callerName, appUrl, perfStartMs } = params
+  const { routing, businessLineE164, calledNumber, callerNumber, callSid, callerName, appUrl, perfStartMs, greetingPassDone } =
+    params
   const hasReceptionist = Boolean(routing.selected_receptionist_id?.trim())
   const dialE164 = resolveReceptionistDialE164(routing.receptionist_phone || routing.owner_phone || "")
   if (!dialE164) return null
@@ -433,7 +453,7 @@ function tryFastInboundPstnDial(params: {
   const action = `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${modeQuery}${ownerLegQuery}${origFromQuery}`
 
   const workspaceName = resolveWorkspaceDisplayName(routing)
-  const callerGreeting = buildInboundCallerGreetingText(workspaceName)
+  const callerGreeting = resolveCallerGreetingForDialPass(workspaceName, greetingPassDone ?? false)
 
   // When dialing a known platform receptionist, hand Telnyx a per-leg answer URL so
   // their HUD pops the live intake form the instant their cell phone connects.
@@ -468,7 +488,7 @@ function tryFastInboundPstnDial(params: {
         action,
         sipUri: webSipUri,
         answerUrl,
-        callerGreeting,
+        ...(callerGreeting ? { callerGreeting } : {}),
       })
     : buildFastReceptionistDialTexml({
         ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
@@ -477,7 +497,7 @@ function tryFastInboundPstnDial(params: {
         action,
         receptionistE164: dialE164,
         answerUrl,
-        callerGreeting,
+        ...(callerGreeting ? { callerGreeting } : {}),
       })
 
   after(() => {
@@ -527,8 +547,10 @@ async function tryRoutingPoolInboundDial(params: {
   callerName: string | null
   appUrl: string
   perfStartMs?: number
+  greetingPassDone?: boolean
 }): Promise<IncomingCallResult | null> {
-  const { routing, businessLineE164, calledNumber, callerNumber, callSid, callerName, appUrl, perfStartMs } = params
+  const { routing, businessLineE164, calledNumber, callerNumber, callSid, callerName, appUrl, perfStartMs, greetingPassDone } =
+    params
   const line = await getActivePhoneNumberByE164(businessLineE164 || calledNumber)
   if (!line) return null
 
@@ -560,14 +582,14 @@ async function tryRoutingPoolInboundDial(params: {
   const action = `${fallbackPathBase}?callSid=${encodeURIComponent(callSid)}${bnQuery}${fbQuery}${modeQuery}&pool=1${networkAlreadyTriedQuery}${origFromQuery}`
 
   const workspaceName = resolveWorkspaceDisplayName(routing)
-  const callerGreeting = buildInboundCallerGreetingText(workspaceName)
+  const callerGreeting = resolveCallerGreetingForDialPass(workspaceName, greetingPassDone ?? false)
 
   const xml = buildRoutingPoolDialResponse({
     match,
     ...(isReasonablePstnDialString(pstnDialCallerE164) ? { callerId: pstnDialCallerE164 } : {}),
     timeout: dialTimeoutSec,
     action,
-    callerGreeting,
+    ...(callerGreeting ? { callerGreeting } : {}),
     answer: {
       appUrl,
       callSid,
@@ -698,7 +720,8 @@ async function handleIncomingCall(
   callSid: string,
   callerName: string | null,
   webhookFieldKeys: string[],
-  webhookFields: Record<string, string>
+  webhookFields: Record<string, string>,
+  inboundCtx?: InboundWebhookContext
 ): Promise<IncomingCallResult> {
   const texml = new VoiceResponse()
   const appUrl = VOICE_WEBHOOK_APP_URL
@@ -744,6 +767,15 @@ async function handleIncomingCall(
       return { kind: "raw", xml: buildSuspendedInboundRejectTexml() }
     }
 
+    if (
+      shouldPlayInboundGreetingFirstPass(inboundCtx?.greetingPassDone ?? false) &&
+      inboundCtx?.incomingUrl
+    ) {
+      return buildInboundGreetingFirstPassResult(routing, inboundCtx.incomingUrl)
+    }
+
+    const greetingPassDone = inboundCtx?.greetingPassDone ?? false
+
     const adminOverrideDial = tryAdminRoutingOverrideDial({
       routing,
       businessLineE164,
@@ -752,6 +784,7 @@ async function handleIncomingCall(
       callSid,
       callerName,
       appUrl,
+      greetingPassDone,
     })
     if (adminOverrideDial) return adminOverrideDial
 
@@ -768,6 +801,7 @@ async function handleIncomingCall(
           callSid,
           callerName,
           appUrl,
+          greetingPassDone,
         })
         if (poolDial) return poolDial
       } else {
@@ -786,6 +820,7 @@ async function handleIncomingCall(
           callSid,
           callerName,
           appUrl,
+          greetingPassDone,
         })
         if (fast) return fast
       }
@@ -1238,7 +1273,10 @@ async function handleIncomingCall(
     const pstnNumberAttrs = buildInboundPstnNumberAttributes()
 
     const workspaceName = resolveWorkspaceDisplayName(routing)
-    texmlSayNatural(texml, buildInboundCallerGreetingText(workspaceName))
+    const callerGreeting = resolveCallerGreetingForDialPass(workspaceName, greetingPassDone)
+    if (callerGreeting) {
+      texmlSayNatural(texml, callerGreeting)
+    }
 
     if (hasReceptionist) {
       const recPhone = receptionistDialE164
@@ -1313,7 +1351,8 @@ function texmlResponseBody(out: IncomingCallResult): string {
 /** DB-backed fast path: resolve routing then return raw `<Dial>` before heavy handleIncomingCall. */
 async function tryFastInboundReceptionistResponse(
   fields: Record<string, string>,
-  perfStartMs?: number
+  perfStartMs?: number,
+  inboundCtx?: InboundWebhookContext
 ): Promise<NextResponse | null> {
   if (inboundWebhookLooksLikeDialRepeat(fields)) return null
   if (readInboundRoutingCfgOverlayEnabled()) return null
@@ -1335,6 +1374,18 @@ async function tryFastInboundReceptionistResponse(
     })
   }
 
+  if (
+    shouldPlayInboundGreetingFirstPass(inboundCtx?.greetingPassDone ?? false) &&
+    inboundCtx?.incomingUrl
+  ) {
+    const greetingPass = buildInboundGreetingFirstPassResult(routing, inboundCtx.incomingUrl)
+    return new NextResponse(texmlResponseBody(greetingPass), {
+      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
+    })
+  }
+
+  const greetingPassDone = inboundCtx?.greetingPassDone ?? false
+
   const callSidRaw = pickField(fields, ["CallSid", "CallControlId", "call_control_id"])
   const callSid = callSidRaw.trim() || `zing-${randomUUID()}`
   const callerNumber = pickField(fields, ["From", "from", "Caller", "caller", "RemoteParty"])
@@ -1350,6 +1401,7 @@ async function tryFastInboundReceptionistResponse(
     callerName,
     appUrl: VOICE_WEBHOOK_APP_URL,
     perfStartMs,
+    greetingPassDone,
   })
   if (adminOverrideDial) {
     return new NextResponse(texmlResponseBody(adminOverrideDial), {
@@ -1395,6 +1447,7 @@ async function tryFastInboundReceptionistResponse(
       callerName,
       appUrl: VOICE_WEBHOOK_APP_URL,
       perfStartMs,
+      greetingPassDone,
     })
     if (poolDial) {
       return new NextResponse(texmlResponseBody(poolDial), {
@@ -1418,6 +1471,7 @@ async function tryFastInboundReceptionistResponse(
     callerName,
     appUrl: VOICE_WEBHOOK_APP_URL,
     perfStartMs,
+    greetingPassDone,
   })
   if (!fast) return null
 
@@ -1455,6 +1509,7 @@ export async function POST(req: NextRequest) {
 
 async function processInboundPost(req: NextRequest, perfStartMs: number): Promise<NextResponse> {
   const handlerT0 = Date.now()
+  const inboundCtx = inboundWebhookContextFromUrl(req.url)
   const contentType = (req.headers.get("content-type") || "").toLowerCase()
   let fields: Record<string, string>
 
@@ -1465,7 +1520,7 @@ async function processInboundPost(req: NextRequest, perfStartMs: number): Promis
     fields = parseTelnyxFormBodyFast(raw)
     // Single-pass: evaluate cache + routing matrix on the FIRST inbound POST and return the
     // final <Dial> TeXML immediately (no early-media <Redirect> round-trip to a second pass).
-    const hot = await tryFastInboundReceptionistResponse(fields, perfStartMs)
+    const hot = await tryFastInboundReceptionistResponse(fields, perfStartMs, inboundCtx)
     if (hot) {
       console.log(JSON.stringify({ zing: "telnyx-incoming-post-timing", totalMs: Date.now() - handlerT0, path: "fast" }))
       return hot
@@ -1473,7 +1528,7 @@ async function processInboundPost(req: NextRequest, perfStartMs: number): Promis
     fields = parseTelnyxFormBody(raw)
   }
 
-  const hot = await tryFastInboundReceptionistResponse(fields, perfStartMs)
+  const hot = await tryFastInboundReceptionistResponse(fields, perfStartMs, inboundCtx)
   if (hot) {
     console.log(JSON.stringify({ zing: "telnyx-incoming-post-timing", totalMs: Date.now() - handlerT0, path: "fast" }))
     return hot
@@ -1504,7 +1559,15 @@ async function processInboundPost(req: NextRequest, perfStartMs: number): Promis
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const out = await handleIncomingCall(calledNumberRaw, callerNumber, callSid, callerName, Object.keys(fields), fields)
+  const out = await handleIncomingCall(
+    calledNumberRaw,
+    callerNumber,
+    callSid,
+    callerName,
+    Object.keys(fields),
+    fields,
+    inboundCtx
+  )
   const body = texmlResponseBody(out)
 
   return new NextResponse(body, {
@@ -1514,8 +1577,9 @@ async function processInboundPost(req: NextRequest, perfStartMs: number): Promis
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
+  const inboundCtx = inboundWebhookContextFromUrl(req.url)
   const fields = searchParamsToFields(url)
-  const hot = await tryFastInboundReceptionistResponse(fields)
+  const hot = await tryFastInboundReceptionistResponse(fields, undefined, inboundCtx)
   if (hot) return hot
 
   const calledNumberRaw = resolveCalledParty(fields)
@@ -1536,7 +1600,15 @@ export async function GET(req: NextRequest) {
   }
   const callerName = pickField(fields, ["CallerName", "CallerIDName"]) || null
 
-  const out = await handleIncomingCall(calledNumberRaw, callerNumber, callSid, callerName, Object.keys(fields), fields)
+  const out = await handleIncomingCall(
+    calledNumberRaw,
+    callerNumber,
+    callSid,
+    callerName,
+    Object.keys(fields),
+    fields,
+    inboundCtx
+  )
   const body = texmlResponseBody(out)
 
   return new NextResponse(body, {

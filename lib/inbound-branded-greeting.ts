@@ -50,3 +50,60 @@ export function prependInboundCallerGreetingToResponseTexml(texmlXml: string, gr
   }
   return texmlXml
 }
+
+/**
+ * Two-pass inbound greeting (default on): pass 1 plays `<Say>` then `<Redirect>` before any `<Dial>`.
+ * Stops US ringback from overlapping the branded greeting. Disable with `ZING_INBOUND_GREETING_FIRST=0`.
+ */
+export function readInboundGreetingFirstPassEnabled(): boolean {
+  const raw = (process.env.ZING_INBOUND_GREETING_FIRST || "1").trim().toLowerCase()
+  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off"
+}
+
+/** True when pass 1 already played the greeting (`?zingGreet=1` on the inbound webhook). */
+export function inboundGreetingPassDone(searchParams: { get(name: string): string | null }): boolean {
+  const v = searchParams.get("zingGreet")?.trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes"
+}
+
+/** Pass-2 continue URL — preserves Telnyx query params and marks greeting complete. */
+export function buildInboundGreetingContinueUrl(incomingUrl: string): string {
+  const url = new URL(incomingUrl)
+  url.searchParams.set("zingGreet", "1")
+  return url.toString()
+}
+
+/** Pass 1 TeXML — speak the greeting, then redirect to routing pass 2 (no `<Dial>` yet). */
+export function buildInboundCallerGreetingOnlyTexml(greetingText: string, continueUrl: string): string {
+  const say = buildTexmlCallerGreetingSayTag(greetingText.trim())
+  const safeUrl = escapeXmlAttr(continueUrl)
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  ${say}
+  <Redirect method="POST">${safeUrl}</Redirect>
+</Response>`
+}
+
+/** Branded `<Say>` on the same response as `<Dial>` — only when two-pass greeting is disabled. */
+export function resolveCallerGreetingForDialPass(
+  workspaceName: string,
+  greetingPassDone: boolean
+): string | undefined {
+  if (readInboundGreetingFirstPassEnabled() || greetingPassDone) return undefined
+  return buildInboundCallerGreetingText(workspaceName)
+}
+
+/** Pass 1 result when two-pass greeting is enabled and greeting has not played yet. */
+export function buildInboundGreetingFirstPassResult(
+  routing: InboundWorkspaceRoutingLike,
+  incomingUrl: string
+): { kind: "raw"; xml: string } {
+  const workspaceName = resolveWorkspaceDisplayName(routing)
+  const greeting = buildInboundCallerGreetingText(workspaceName)
+  const continueUrl = buildInboundGreetingContinueUrl(incomingUrl)
+  return { kind: "raw", xml: buildInboundCallerGreetingOnlyTexml(greeting, continueUrl) }
+}
+
+export function shouldPlayInboundGreetingFirstPass(greetingPassDone: boolean): boolean {
+  return !greetingPassDone && readInboundGreetingFirstPassEnabled()
+}

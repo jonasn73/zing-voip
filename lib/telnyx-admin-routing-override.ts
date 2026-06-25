@@ -2,7 +2,7 @@
 
 import { isReasonablePstnDialString } from "@/lib/db"
 import {
-  buildInboundCallerGreetingText,
+  resolveCallerGreetingForDialPass,
   resolveWorkspaceDisplayName,
   type InboundWorkspaceRoutingLike,
 } from "@/lib/inbound-branded-greeting"
@@ -42,6 +42,7 @@ export function buildAdminRoutingOverrideDial(params: {
   callSid: string
   appUrl: string
   callerName?: string | null
+  greetingPassDone?: boolean
   resolveOutboundCallerId: (
     routing: AdminRoutingOverrideRoutingLike & { primary_phone_number?: string; active_phone_count?: number },
     businessLineE164: string
@@ -51,7 +52,7 @@ export function buildAdminRoutingOverrideDial(params: {
   if (!overrideE164) return null
 
   const workspaceName = resolveWorkspaceDisplayName(params.routing)
-  const callerGreeting = buildInboundCallerGreetingText(workspaceName)
+  const callerGreeting = resolveCallerGreetingForDialPass(workspaceName, params.greetingPassDone ?? false)
 
   const wantsAiAfterNoAnswer = String(params.routing.fallback_type ?? "").toLowerCase() === "ai"
   const effectiveRingTimeout = Number(params.routing.ring_timeout_seconds ?? 30) || 30
@@ -90,7 +91,7 @@ export function buildAdminRoutingOverrideDial(params: {
     action,
     receptionistE164: overrideE164,
     answerUrl,
-    callerGreeting,
+    ...(callerGreeting ? { callerGreeting } : {}),
   })
 
   return { kind: "raw", xml }

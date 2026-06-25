@@ -2,7 +2,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { requireSessionUser } from "@/lib/admin-api-guard"
-import { updateMasterToggleMode } from "@/lib/db"
+import { adminSetUserPlatformAdminFlag, updateMasterToggleMode } from "@/lib/db"
+import { canUseMasterToggleProfile } from "@/lib/master-toggle-access"
+import { isLyncrAdminUser } from "@/lib/lyncr-admin"
 import type { MasterToggleMode } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -18,7 +20,7 @@ export async function PUT(req: NextRequest) {
   const ctx = await requireSessionUser(req)
   if (ctx instanceof NextResponse) return ctx
 
-  if (!ctx.user.is_platform_admin) {
+  if (!canUseMasterToggleProfile(ctx.user)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -38,6 +40,9 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
+    if (isLyncrAdminUser(ctx.user) && !ctx.user.is_platform_admin) {
+      await adminSetUserPlatformAdminFlag(ctx.userId, true)
+    }
     await updateMasterToggleMode(ctx.userId, mode)
     return NextResponse.json({ data: { master_toggle_mode: mode } })
   } catch (e) {
@@ -51,7 +56,7 @@ export async function GET(req: NextRequest) {
   const ctx = await requireSessionUser(req)
   if (ctx instanceof NextResponse) return ctx
 
-  if (!ctx.user.is_platform_admin) {
+  if (!canUseMasterToggleProfile(ctx.user)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

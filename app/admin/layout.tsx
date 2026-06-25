@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getSessionUser } from "@/lib/server-session-user"
 import { isLyncrAdminUser, LYNCR_ADMIN_EMAIL } from "@/lib/lyncr-admin"
+import { canUseMasterToggleProfile } from "@/lib/master-toggle-access"
 import { AdminChrome } from "@/components/admin-chrome"
 import { AdminAccessGuard } from "@/components/admin-access-guard"
 
@@ -20,7 +21,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <AdminChrome
       userName={displayName}
       userEmail={user.email}
-      masterToggleMode={user.is_platform_admin ? user.master_toggle_mode ?? "admin" : undefined}
+      masterToggleMode={
+        canUseMasterToggleProfile(user) ? user.master_toggle_mode ?? "admin" : undefined
+      }
     >
       <AdminAccessGuard>{children}</AdminAccessGuard>
     </AdminChrome>

@@ -1,6 +1,7 @@
 // Server-side owner notification filtering for platform admins (master_toggle_mode).
 
 import { getUser } from "@/lib/db"
+import { canUseMasterToggleProfile } from "@/lib/master-toggle-access"
 import type { MasterToggleDelivery, MasterToggleMode, User } from "@/lib/types"
 import type { OwnerChannelEvent } from "@/lib/realtime/pusher-server"
 
@@ -73,7 +74,7 @@ export async function prepareOwnerEventForDelivery(
   userHint?: User | null
 ): Promise<PreparedOwnerEvent> {
   const user = userHint ?? (await getUser(ownerId))
-  if (!user?.is_platform_admin) {
+  if (!user || !canUseMasterToggleProfile(user)) {
     return { publish: true, payload }
   }
 
@@ -113,7 +114,7 @@ export async function prepareOwnerEventForDelivery(
 
 /** Gate outbound lead SMS for platform admins based on master toggle mode. */
 export function shouldSendLeadSmsForPlatformAdmin(user: User): boolean {
-  if (!user.is_platform_admin) return true
+  if (!canUseMasterToggleProfile(user)) return true
   const mode = user.master_toggle_mode ?? DEFAULT_MODE
   return mode === "tech"
 }

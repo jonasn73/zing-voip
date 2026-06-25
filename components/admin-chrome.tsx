@@ -29,7 +29,9 @@ function AdminTopBar({
         <p className="truncate text-xs text-slate-500">{userEmail}</p>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        {masterToggleMode ? <MasterProfileToggle initialMode={masterToggleMode} /> : null}
+        {masterToggleMode ? (
+          <MasterProfileToggle initialMode={masterToggleMode} variant="admin" />
+        ) : null}
         <Button asChild variant="ghost" size="sm" className="text-slate-400 hover:bg-slate-800 hover:text-slate-100">
           <Link href="/dashboard">App</Link>
         </Button>

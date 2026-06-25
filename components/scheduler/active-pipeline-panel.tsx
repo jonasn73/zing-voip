@@ -45,9 +45,17 @@ type ActivePipelinePanelProps = {
   loading?: boolean
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
+  layout?: "default" | "mobileSheet"
 }
 
-export function ActivePipelinePanel({ jobs, loading, highlightId, onFocusJob }: ActivePipelinePanelProps) {
+export function ActivePipelinePanel({
+  jobs,
+  loading,
+  highlightId,
+  onFocusJob,
+  layout = "default",
+}: ActivePipelinePanelProps) {
+  const isMobileSheet = layout === "mobileSheet"
   const grouped = useMemo(() => {
     const buckets = new Map<SchedulerLifecyclePhase, ActivePipelineJob[]>()
     for (const phase of PIPELINE_PANEL_GROUP_ORDER) {
@@ -80,14 +88,14 @@ export function ActivePipelinePanel({ jobs, loading, highlightId, onFocusJob }: 
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-4 p-4">
+    <div className={cn("flex flex-col", isMobileSheet ? "gap-4" : "min-h-0 gap-4 p-4")}>
       {grouped.map((group) => (
-        <section key={group.phase} aria-label={group.title} className="min-h-0 shrink-0">
+        <section key={group.phase} aria-label={group.title} className="shrink-0">
           <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
             {group.title}
             <span className="ml-2 font-normal text-zinc-600">({group.jobs.length})</span>
           </h3>
-          <ul className="flex flex-col gap-2">
+          <ul className={cn("flex flex-col", isMobileSheet ? "gap-3" : "gap-2")}>
             {group.jobs.map((job) => {
               const phase = jobPhase(job)
               const vehicle = vehicleLabelFromParts(job.vehicle_year, job.vehicle_make, job.vehicle_model)
@@ -95,19 +103,23 @@ export function ActivePipelinePanel({ jobs, loading, highlightId, onFocusJob }: 
               const displayName = job.customer_name?.trim() || "Unknown customer"
               const phone = formatPhone(job.customer_phone)
               return (
-                <li key={job.id}>
+                <li key={job.id} className="w-full">
                   <button
                     type="button"
                     onClick={() => onFocusJob(job)}
                     className={cn(
                       SCHEDULER_LIST_CARD_SHELL,
+                      "w-full",
+                      isMobileSheet ? "px-4 py-3" : "px-3 pb-9 pt-3",
                       "motion-safe:active:scale-[0.99]",
                       highlighted && "ring-2 ring-primary ring-offset-1 ring-offset-background"
                     )}
                   >
-                    <p className="truncate pr-2 text-sm font-medium text-zinc-100">{displayName}</p>
+                    <p className={cn("font-medium text-zinc-100", isMobileSheet ? "text-base" : "truncate pr-2 text-sm")}>
+                      {displayName}
+                    </p>
 
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-2 space-y-1.5">
                       <p className="flex items-center gap-1.5 text-xs text-zinc-400">
                         <Phone className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
                         <span className="truncate">{phone}</span>
@@ -134,15 +146,16 @@ export function ActivePipelinePanel({ jobs, loading, highlightId, onFocusJob }: 
                       {job.location ? (
                         <p className="flex items-start gap-1.5 text-xs text-zinc-500">
                           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-600" aria-hidden />
-                          <span className="line-clamp-2">{job.location}</span>
+                          <span className={isMobileSheet ? "break-words" : "line-clamp-2"}>{job.location}</span>
                         </p>
                       ) : null}
                     </div>
 
                     <span
                       className={cn(
-                        "absolute bottom-2.5 right-2.5 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                        SCHEDULER_BADGE_STYLE[phase]
+                        "rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                        SCHEDULER_BADGE_STYLE[phase],
+                        isMobileSheet ? "mt-3 inline-flex" : "absolute bottom-2.5 right-2.5"
                       )}
                     >
                       {SCHEDULER_STATUS_LABEL[phase]}

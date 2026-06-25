@@ -48,6 +48,7 @@ import type { SchedulerRouteMapHandle, DrivingRouteFocus } from "@/components/sc
 import { PhoneLookupBar } from "@/components/scheduler/phone-lookup-bar"
 import { TechnicianSwimlaneBoard } from "@/components/scheduler/technician-swimlane-board"
 import { JobMapMobileSheet } from "@/components/scheduler/job-map-mobile-sheet"
+import { SchedulerMobileDispatchShell } from "@/components/scheduler/scheduler-mobile-dispatch-shell"
 import type { JobMapPopupSource } from "@/components/scheduler/job-map-popup-form"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type {
@@ -731,29 +732,31 @@ export function SchedulerWorkspaceView() {
   )
 
   return (
-    <WorkspacePage
-      data-scheduler-mobile-map={isMobileMap ? "" : undefined}
-      className={cn(
-        isMobileMap &&
-          "-mx-4 flex h-[calc(100dvh-8.75rem-env(safe-area-inset-bottom,0px))] max-h-[calc(100dvh-8.75rem-env(safe-area-inset-bottom,0px))] flex-col gap-2 overflow-hidden px-4 sm:mx-auto sm:h-auto sm:max-h-none sm:gap-6 sm:overflow-visible"
-      )}
-    >
+    <>
       {isMobileMap ? (
-        <div className="flex shrink-0 items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Dispatch</p>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">Scheduler</h1>
-          </div>
-          <Button type="button" size="sm" className="shrink-0 gap-1" onClick={openBookingDefault}>
-            <Plus className="h-4 w-4" aria-hidden />
-            Create
-          </Button>
-        </div>
+        <SchedulerMobileDispatchShell
+          mapRef={mapRef}
+          dayEvents={dayEvents}
+          activePipelineJobs={activePipelineJobs}
+          poolJobs={poolJobs}
+          techLocations={techLocations}
+          selectedDayLabel={selectedDayLabel}
+          selectedDay={selectedDay}
+          highlightId={highlightId}
+          pipelineDayKey={pipelineDayKey}
+          useStreamedPipeline={useStreamedPipeline}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onCreate={openBookingDefault}
+          onFocusJob={focusPipelineJob}
+          onSelectEvent={focusScheduledMapJob}
+          onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
+        />
       ) : (
-        <WorkspacePageHeader eyebrow="Dispatch" title="Scheduler" action={headerAction} />
-      )}
+        <WorkspacePage>
+      <WorkspacePageHeader eyebrow="Dispatch" title="Scheduler" action={headerAction} />
 
-      <p className={cn("-mt-4 text-sm text-zinc-500", isMobileMap && "hidden")}>
+      <p className="-mt-4 text-sm text-zinc-500">
         {intakeProfile === "locksmith"
           ? "Locksmith workspace — vehicle cascade, VIN lookup, AKL / key-type flags, and validated job addresses."
           : intakeProfile === "detailing"
@@ -761,7 +764,7 @@ export function SchedulerWorkspaceView() {
             : "Automotive field jobs with industry-specific intake fields and route map."}
       </p>
 
-      <div className={cn("flex gap-2 sm:hidden", isMobileMap && "shrink-0")}>
+      <div className="flex gap-2 sm:hidden">
         <div className="flex w-full rounded-md border border-border/70 p-0.5">
           <Button
             type="button"
@@ -791,13 +794,11 @@ export function SchedulerWorkspaceView() {
       ) : null}
 
       {viewMode === "map" ? (
-        <div className={cn(isMobileMap && "shrink-0")}>
-          <DispatchOperationsMetricStrip
-            poolJobs={poolJobs}
-            activePipelineJobs={activePipelineJobs}
-            dayEvents={dayEvents}
-          />
-        </div>
+        <DispatchOperationsMetricStrip
+          poolJobs={poolJobs}
+          activePipelineJobs={activePipelineJobs}
+          dayEvents={dayEvents}
+        />
       ) : null}
 
       {viewMode === "grid" ? (
@@ -967,48 +968,10 @@ export function SchedulerWorkspaceView() {
               </div>
             </WorkspacePanel>
           </div>
-
-          {isMobileMap ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="min-h-[9rem] w-full flex-[0_0_42%] overflow-hidden">
-                <div className="h-full w-full [&>div]:!min-h-0 [&>div]:h-full">
-                  <SchedulerRouteMap
-                    key="mobile-dispatch-map"
-                    ref={mapRef}
-                    events={dayEvents}
-                    pipelineJobs={activePipelineJobs}
-                    poolJobs={poolJobs}
-                    techLocations={techLocations}
-                    selectedDayLabel={selectedDayLabel}
-                    highlightId={highlightId}
-                    routeFocus={null}
-                    embedded
-                    disableHoverTooltips
-                    onSelectEvent={focusScheduledMapJob}
-                    onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
-                  />
-                </div>
-              </div>
-              <section className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain border-t border-border/60 pb-2">
-                <div className="sticky top-0 z-10 shrink-0 border-b border-border/60 bg-card/95 px-3 py-2">
-                  <h2 className="text-sm font-semibold text-foreground">
-                    {selectedDay.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
-                  </h2>
-                  <p className="mt-0.5 text-xs text-zinc-500">
-                    {activePipelineJobs.length} active job
-                    {activePipelineJobs.length === 1 ? "" : "s"}
-                  </p>
-                </div>
-                <ActivePipelinePanelStream
-                  dayKey={pipelineDayKey}
-                  useStreamedInitialDay={useStreamedPipeline}
-                  highlightId={highlightId}
-                  onFocusJob={focusPipelineJob}
-                />
-              </section>
-            </div>
-          ) : null}
         </>
+      )}
+
+        </WorkspacePage>
       )}
 
       <JobMapMobileSheet
@@ -1135,6 +1098,6 @@ export function SchedulerWorkspaceView() {
           onStatusChanged={applyJobEventUpdate}
         />
       ) : null}
-    </WorkspacePage>
+    </>
   )
 }

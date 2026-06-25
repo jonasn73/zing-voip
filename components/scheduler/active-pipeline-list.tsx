@@ -11,12 +11,13 @@ type ActivePipelineListProps = {
   dayKey: string
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
+  layout?: "default" | "mobileSheet"
 }
 
-function ActivePipelineListInner({ dayKey, highlightId, onFocusJob }: ActivePipelineListProps) {
+function ActivePipelineListInner({ dayKey, highlightId, onFocusJob, layout }: ActivePipelineListProps) {
   const { activeOrganizationId } = useDashboardWorkspace()
   const jobs = useActivePipelineSuspenseQuery(activeOrganizationId, dayKey, true)
-  return <ActivePipelinePanel jobs={jobs} highlightId={highlightId} onFocusJob={onFocusJob} />
+  return <ActivePipelinePanel jobs={jobs} highlightId={highlightId} onFocusJob={onFocusJob} layout={layout} />
 }
 
 export function ActivePipelineList(props: ActivePipelineListProps) {

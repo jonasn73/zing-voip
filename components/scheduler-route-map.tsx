@@ -189,6 +189,8 @@ type SchedulerRouteMapProps = {
   embedded?: boolean
   /** Mobile map view — skip hover tooltips; use bottom sheet from parent instead. */
   disableHoverTooltips?: boolean
+  /** Fill parent on mobile — map sits behind a floating job sheet. */
+  mobileFullBleed?: boolean
   onSelectEvent?: (event: SchedulerEvent) => void
   onSelectPoolJob?: (job: UnassignedPoolJob | ActivePipelineJob) => void
 }
@@ -205,6 +207,7 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
       routeFocus,
       embedded = false,
       disableHoverTooltips = false,
+      mobileFullBleed = false,
       onSelectEvent,
       onSelectPoolJob,
     },
@@ -691,8 +694,22 @@ export const SchedulerRouteMap = forwardRef<SchedulerRouteMapHandle, SchedulerRo
     hopperSource.filter((j) => j.latitude == null || j.longitude == null).length
 
   return (
-    <div className="relative flex h-full min-h-[320px] flex-col">
+    <div
+      className={cn(
+        "relative flex flex-col",
+        mobileFullBleed ? "absolute inset-0 h-full w-full min-h-0" : "h-full min-h-[320px]",
+        mobileFullBleed && "scheduler-mobile-full-bleed"
+      )}
+    >
       <style>{MAP_MARKER_ANIMATION_CSS}</style>
+      {mobileFullBleed ? (
+        <style>{`
+          .scheduler-mobile-full-bleed .leaflet-top.leaflet-left {
+            top: 6.5rem !important;
+            left: 0.5rem !important;
+          }
+        `}</style>
+      ) : null}
       {!embedded ? (
         <div className="flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
           <p className="text-xs font-medium text-zinc-400">

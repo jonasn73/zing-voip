@@ -120,7 +120,13 @@ export function CarrierRegistrationModal({ open, onOpenChange }: Props) {
               onEdit={summary.lifecycle_stage === "rejected" ? () => setForceForm(true) : undefined}
             />
           ) : (
-            <SmsRegistrationForm variant="modal" onSubmitted={() => onOpenChange(false)} />
+            <SmsRegistrationForm
+              variant="modal"
+              onSubmitted={() => {
+                setForceForm(false)
+                void load()
+              }}
+            />
           )}
         </div>
       </DialogContent>

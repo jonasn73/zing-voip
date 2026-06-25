@@ -8,9 +8,14 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { WorkspacePanel, workspaceFieldClass } from "@/components/dashboard-workspace-ui"
 import { SmsRegistrationStatusView } from "@/components/dashboard/sms-registration-status-view"
+import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { readActiveOrganizationId } from "@/lib/workspace-organizations"
 import { notifyCarrierRegistrationUpdated } from "@/lib/settings-modals-events"
-import { SMS_ENTITY_TYPE_OPTIONS } from "@/lib/sms-registration-constants"
+import {
+  requiresSmsRegistrationEin,
+  SMS_ENTITY_TYPE_OPTIONS,
+  validateSmsRegistrationInput,
+} from "@/lib/sms-registration-constants"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import type { SmsRegistrationSubmissionSummary } from "@/lib/sms-registration-submission-summary-types"
@@ -28,8 +33,10 @@ type Props = {
 export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
   const { toast } = useToast()
   const router = useRouter()
+  const { activeOrganizationId } = useDashboardWorkspace()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [existing, setExisting] = useState<SmsRegistration | null>(null)
   const [pending, setPending] = useState(false)
   const [submissionSummary, setSubmissionSummary] = useState<SmsRegistrationSubmissionSummary | null>(null)
@@ -44,8 +51,13 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
   const [postal, setPostal] = useState("")
   const [useCase, setUseCase] = useState(DEFAULT_USE_CASE)
 
+  /** Prefer React workspace context; fall back to localStorage for legacy callers. */
+  const resolveOrganizationId = useCallback((): string | null => {
+    return activeOrganizationId ?? readActiveOrganizationId()
+  }, [activeOrganizationId])
+
   const load = useCallback(async () => {
-    const orgId = readActiveOrganizationId()
+    const orgId = resolveOrganizationId()
     const qs = orgId ? `?organization_id=${encodeURIComponent(orgId)}` : ""
     const res = await fetch(`/api/settings/10dlc${qs}`, { credentials: "include" })
     const json = (await res.json().catch(() => ({}))) as {
@@ -75,7 +87,7 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
       setUseCase(reg.use_case_description || DEFAULT_USE_CASE)
     }
     setLoading(false)
-  }, [])
+  }, [resolveOrganizationId])
 
   useEffect(() => {
     void load()
@@ -85,32 +97,49 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
     const onOrgChanged = () => {
       if (variant === "page") setLoading(true)
       setForceForm(false)
+      setSubmitError(null)
       void load()
     }
     window.addEventListener("lyncr-organization-changed", onOrgChanged)
     return () => window.removeEventListener("lyncr-organization-changed", onOrgChanged)
   }, [load, variant])
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (busy || pending) return
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (busy) return
+    if (pending) {
+      const msg = "This workspace is already pending carrier review."
+      setSubmitError(msg)
+      toast({ title: "Already submitted", description: msg, variant: "destructive" })
+      return
+    }
+
+    const payload = {
+      organization_id: resolveOrganizationId(),
+      legal_business_name: legalName,
+      entity_type: entityType,
+      tax_id_ein: taxId,
+      street,
+      city,
+      state: stateCode,
+      postal_code: postal,
+      use_case_description: useCase,
+    }
+    const validationError = validateSmsRegistrationInput(payload)
+    if (validationError) {
+      setSubmitError(validationError)
+      toast({ title: "Check the form", description: validationError, variant: "destructive" })
+      return
+    }
+
+    setSubmitError(null)
     setBusy(true)
     try {
       const res = await fetch("/api/settings/10dlc", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organization_id: readActiveOrganizationId(),
-          legal_business_name: legalName,
-          entity_type: entityType,
-          tax_id_ein: taxId,
-          street,
-          city,
-          state: stateCode,
-          postal_code: postal,
-          use_case_description: useCase,
-        }),
+        body: JSON.stringify(payload),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || "Could not submit registration")
@@ -121,11 +150,14 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
         description: "Carriers are reviewing your business profile. SMS alerts unlock after approval.",
       })
       notifyCarrierRegistrationUpdated()
+      await load()
       onSubmitted?.()
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Try again"
+      setSubmitError(message)
       toast({
         title: "Submission failed",
-        description: err instanceof Error ? err.message : "Try again",
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -177,6 +209,7 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
           onChange={(e) => setTaxId(e.target.value)}
           inputMode="numeric"
           placeholder="12-3456789"
+          required={requiresSmsRegistrationEin(entityType)}
           className={workspaceFieldClass}
         />
         <span className="text-[10px] text-zinc-500">Required for LLC, Corp, and Partnership</span>
@@ -289,7 +322,7 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
   }
 
   return (
-    <form onSubmit={submit} className={variant === "modal" ? "space-y-5" : "space-y-6"}>
+    <form onSubmit={(e) => void handleSubmit(e)} noValidate className={variant === "modal" ? "space-y-5" : "space-y-6"}>
       {loading && variant === "modal" ? (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -346,16 +379,23 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
         )}
       </div>
 
+      {submitError ? (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300" role="alert">
+          {submitError}
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-3">
         <button
-          type="submit"
-          disabled={busy}
+          type="button"
+          disabled={busy || loading}
+          onClick={() => void handleSubmit()}
           className={cn(
             "inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/30 hover:bg-violet-500 disabled:opacity-50 sm:w-auto sm:px-5"
           )}
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-          Submit Campaign Registration
+          {busy ? "Submitting…" : "Submit Campaign Registration"}
         </button>
         {variant === "page" ? (
           <button

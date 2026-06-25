@@ -15,12 +15,9 @@ import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { SITE_NAME } from "@/lib/brand"
 import { texmlSayNatural } from "@/lib/texml-say-voice"
 import {
-  buildInboundGreetingFirstPassResult,
-  buildInstantGenericGreetingFirstPassResult,
   inboundGreetingPassDone,
   resolveCallerGreetingForDialPass,
   resolveWorkspaceDisplayName,
-  shouldPlayInboundGreetingFirstPass,
   shouldPlayCallerRingbackDuringDial,
 } from "@/lib/inbound-branded-greeting"
 import { buildTelnyxDialFromDisplayName } from "@/lib/telnyx-caller-display"
@@ -1351,39 +1348,6 @@ function texmlResponseBody(out: IncomingCallResult): string {
   return out.kind === "raw" ? raw : finalizeInboundTexmlXml(raw)
 }
 
-/**
- * Pass 1 — return TeXML immediately (memory cache only, never Neon).
- * Telnyx cannot play audio until this response arrives; any await here = caller hears a ring first.
- */
-function tryInstantInboundGreetingPass(
-  fields: Record<string, string>,
-  inboundCtx: InboundWebhookContext
-): NextResponse | null {
-  if (!shouldPlayInboundGreetingFirstPass(inboundCtx.greetingPassDone)) return null
-  if (inboundWebhookLooksLikeDialRepeat(fields)) return null
-
-  const calledNumberRaw = resolveCalledParty(fields)
-  const memHit = calledNumberRaw.trim() ? peekIncomingRoutingCache(calledNumberRaw) : null
-
-  if (memHit) {
-    const statusFromJoin = parseAccountStatus(memHit.account_status)
-    if (statusFromJoin && isAccountRoutingBlocked(statusFromJoin)) {
-      return new NextResponse(buildSuspendedInboundRejectTexml(), {
-        headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
-      })
-    }
-    const greetingPass = buildInboundGreetingFirstPassResult(memHit, inboundCtx.incomingUrl)
-    return new NextResponse(texmlResponseBody(greetingPass), {
-      headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
-    })
-  }
-
-  const genericPass = buildInstantGenericGreetingFirstPassResult(inboundCtx.incomingUrl)
-  return new NextResponse(texmlResponseBody(genericPass), {
-    headers: { "Content-Type": "text/xml", "Cache-Control": "no-store" },
-  })
-}
-
 /** DB-backed fast path: resolve routing then return raw `<Dial>` before heavy handleIncomingCall. */
 async function tryFastInboundReceptionistResponse(
   fields: Record<string, string>,
@@ -1541,20 +1505,10 @@ async function processInboundPost(req: NextRequest, perfStartMs: number): Promis
 
   if (contentType.includes("application/json")) {
     fields = await readWebhookFields(req)
-    const instant = tryInstantInboundGreetingPass(fields, inboundCtx)
-    if (instant) return instant
   } else {
     const raw = await req.text()
     fields = parseTelnyxFormBodyFast(raw)
-    const instant = tryInstantInboundGreetingPass(fields, inboundCtx)
-    if (instant) {
-      console.log(
-        JSON.stringify({ zing: "telnyx-incoming-post-timing", totalMs: Date.now() - handlerT0, path: "instant-greet" })
-      )
-      return instant
-    }
-    // Single-pass: evaluate cache + routing matrix on pass 2 (`zingGreet=1`) and return the
-    // final <Dial> TeXML (pass 1 already played greeting with zero DB).
+    // Pass 1 greeting is handled in Edge middleware; pass 2 (`zingGreet=1`) routes here.
     const hot = await tryFastInboundReceptionistResponse(fields, perfStartMs, inboundCtx)
     if (hot) {
       console.log(JSON.stringify({ zing: "telnyx-incoming-post-timing", totalMs: Date.now() - handlerT0, path: "fast" }))
@@ -1614,8 +1568,6 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const inboundCtx = inboundWebhookContextFromUrl(req.url)
   const fields = searchParamsToFields(url)
-  const instant = tryInstantInboundGreetingPass(fields, inboundCtx)
-  if (instant) return instant
   const hot = await tryFastInboundReceptionistResponse(fields, undefined, inboundCtx)
   if (hot) return hot
 

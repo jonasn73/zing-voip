@@ -7,12 +7,30 @@
 
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import {
+  buildEdgeInstantGreetingTexml,
+  buildEdgeInboundGreetingContinueUrl,
+  shouldEdgeInstantGreetingIntercept,
+} from "@/lib/inbound-instant-greet-edge"
 
 /** Must match lib/auth.ts COOKIE_NAME */
 const ZING_SESSION = "zing_session"
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Pass 1 inbound greeting — Edge response before Node.js (avoids cold-start ring while Telnyx waits).
+  if (shouldEdgeInstantGreetingIntercept(pathname, request.nextUrl, request.method)) {
+    const continueUrl = buildEdgeInboundGreetingContinueUrl(request.url)
+    const xml = buildEdgeInstantGreetingTexml(continueUrl)
+    return new NextResponse(xml, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    })
+  }
 
   // Forward real URL into the request so the dashboard layout + shell can match
   // the active tab to the same route as `children` on first paint (avoids a
@@ -50,6 +68,18 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Voice webhooks (/api/voice/*) are intentionally excluded — Telnyx needs raw TeXML with zero cookie/session work.
-  matcher: ["/dashboard", "/dashboard/:path*", "/admin", "/admin/:path*", "/onboarding", "/onboarding/:path*", "/receptionist", "/receptionist/:path*", "/tech", "/tech/:path*"],
+  matcher: [
+    "/api/voice/telnyx/incoming",
+    "/api/voice/incoming",
+    "/dashboard",
+    "/dashboard/:path*",
+    "/admin",
+    "/admin/:path*",
+    "/onboarding",
+    "/onboarding/:path*",
+    "/receptionist",
+    "/receptionist/:path*",
+    "/tech",
+    "/tech/:path*",
+  ],
 }

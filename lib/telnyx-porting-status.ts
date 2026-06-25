@@ -48,6 +48,20 @@ export function normalizeTelnyxPortStatus(raw: string): string {
   return s
 }
 
+/** Read a Telnyx status field that may be a plain string or `{ value, details }` object. */
+function pushPortingStatusField(out: string[], field: unknown): void {
+  if (field == null || field === "") return
+  if (typeof field === "string") {
+    out.push(normalizeTelnyxPortStatus(field))
+    return
+  }
+  if (typeof field === "object" && !Array.isArray(field)) {
+    const row = field as Record<string, unknown>
+    if (typeof row.value === "string") out.push(normalizeTelnyxPortStatus(row.value))
+    if (typeof row.status === "string") out.push(normalizeTelnyxPortStatus(row.status))
+  }
+}
+
 /**
  * Collect every status string Telnyx might send on the order or on nested phone rows.
  */
@@ -57,15 +71,9 @@ export function collectPortingStatuses(order: Record<string, unknown>): string[]
     if (v == null || v === "") return
     if (typeof v === "string") out.push(normalizeTelnyxPortStatus(v))
   }
-  const pos = order.porting_order_status
-  if (pos && typeof pos === "object" && !Array.isArray(pos)) {
-    const row = pos as Record<string, unknown>
-    push(row.value)
-    push(row.status)
-  } else {
-    push(pos)
-  }
-  push(order.status)
+  // Telnyx v2 GET /porting_orders/{id} uses `status: { value: "ported" }`.
+  pushPortingStatusField(out, order.porting_order_status)
+  pushPortingStatusField(out, order.status)
   const phones = order.phone_numbers
   if (Array.isArray(phones)) {
     for (const p of phones) {

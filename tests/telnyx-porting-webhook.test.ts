@@ -4,6 +4,7 @@ import {
   findZingCustomerReference,
   extractEventType,
   extractTelnyxEventId,
+  extractPortingOrderRecord,
 } from "@/lib/telnyx-porting-webhook"
 import {
   collectPortingStatuses,
@@ -32,6 +33,23 @@ describe("telnyx-porting-webhook", () => {
     expect(extractEventType(body)).toBe("porting_order.status_changed")
     expect(extractTelnyxEventId(body)).toBe("evt_test_1")
   })
+
+  it("extracts porting order from Telnyx v2 data.payload webhooks", () => {
+    const body = {
+      data: {
+        event_type: "porting_order.status_changed",
+        payload: {
+          id: "3594c6c3-51a7-4306-b715-ca3765f13464",
+          customer_reference: "zing-aaaaaaaa-bbbb-cccc-dddddddddddd",
+          status: { value: "ported", details: [] },
+          support_key: "sr_a11eda",
+        },
+      },
+    }
+    const record = extractPortingOrderRecord(body)
+    expect(record?.support_key).toBe("sr_a11eda")
+    expect(pickBestPortingStatus(collectPortingStatuses(record!))).toBe("ported")
+  })
 })
 
 describe("telnyx-porting-status", () => {
@@ -46,5 +64,15 @@ describe("telnyx-porting-status", () => {
 
   it("normalizes US spelling canceled → cancelled", () => {
     expect(normalizeTelnyxPortStatus("Canceled")).toBe("cancelled")
+  })
+
+  it("reads ported from Telnyx v2 status object on GET /porting_orders", () => {
+    const live = {
+      id: "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+      status: { value: "ported", details: [] },
+      phone_numbers: [{ porting_phone_number_status: "foc-date-confirmed" }],
+    }
+    const best = pickBestPortingStatus(collectPortingStatuses(live))
+    expect(best).toBe("ported")
   })
 })

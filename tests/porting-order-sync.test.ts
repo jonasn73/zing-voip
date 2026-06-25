@@ -60,4 +60,15 @@ describe("porting-order-sync", () => {
     expect(resolveLiveTelnyxPortStatus(live)).toBe("exception")
     expect(labelForPortingStatus(resolveLiveTelnyxPortStatus(live))).toBe("Rejected or action needed")
   })
+
+  it("resolves object status.value from Telnyx v2 live order payloads", () => {
+    const live = {
+      status: {
+        value: "ported",
+        details: [{ description: "Passcode/pin must be provided for wireless port." }],
+      },
+    }
+    expect(resolveLiveTelnyxPortStatus(live)).toBe("ported")
+    expect(mapTelnyxStatusToPortingOrderStatus(resolveLiveTelnyxPortStatus(live))).toBe("completed")
+  })
 })

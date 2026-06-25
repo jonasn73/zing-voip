@@ -365,11 +365,25 @@ export function extractPortingOrderRecord(body: Record<string, unknown>): Record
   if (record && typeof record === "object" && !Array.isArray(record)) {
     return record as Record<string, unknown>
   }
+  // Telnyx v2 port-in notifications nest the order under data.payload.
+  const payload = data?.payload
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    return payload as Record<string, unknown>
+  }
   const po = body.porting_order ?? data?.porting_order
   if (po && typeof po === "object" && !Array.isArray(po)) {
     return po as Record<string, unknown>
   }
   return deepFindPortingOrderRecord(body)
+}
+
+function portingOrderStatusObject(value: unknown): value is Record<string, unknown> {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).value === "string"
+  )
 }
 
 function deepFindPortingOrderRecord(obj: unknown, depth = 0): Record<string, unknown> | null {
@@ -383,10 +397,15 @@ function deepFindPortingOrderRecord(obj: unknown, depth = 0): Record<string, unk
     return null
   }
   const o = obj as Record<string, unknown>
+  const statusObject = portingOrderStatusObject(o.status)
   const hasOrderStatus =
     typeof o.porting_order_status === "string" ||
+    statusObject ||
     (typeof o.status === "string" && (o.phone_numbers != null || o.id != null))
-  if (hasOrderStatus && (o.phone_numbers != null || o.porting_order_status != null)) {
+  if (
+    hasOrderStatus &&
+    (o.phone_numbers != null || o.porting_order_status != null || statusObject)
+  ) {
     return o
   }
   for (const v of Object.values(o)) {

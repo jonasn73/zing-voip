@@ -274,6 +274,7 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
     const patched = await patchPortingOrderFields(order.id, {
       status: "completed",
       telnyx_status: telnyxToWrite ?? order.telnyx_status,
+      carrier_rejection_reason: null,
       ...(carrierPatch ? { current_carrier: carrierPatch } : {}),
     })
     const result = patched ?? order
@@ -414,6 +415,7 @@ export async function syncPortingOrderFromTelnyxLive(order: PortingOrder): Promi
   const patched = await patchPortingOrderFields(order.id, {
     status: nextStatus,
     telnyx_status: telnyxStatus ?? order.telnyx_status,
+    ...(nextStatus === "completed" ? { carrier_rejection_reason: null } : {}),
     ...(carrierPatch ? { current_carrier: carrierPatch } : {}),
   })
   const result = patched ?? order

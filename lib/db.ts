@@ -4654,6 +4654,10 @@ export async function updatePortingOrderByTelnyxOrderId(
         status = ${updates.status},
         telnyx_status = ${updates.telnyx_status},
         current_carrier = COALESCE(${updates.current_carrier ?? null}, current_carrier),
+        carrier_rejection_reason = CASE
+          WHEN ${updates.status} = 'completed' THEN NULL
+          ELSE carrier_rejection_reason
+        END,
         updated_at = now()
       WHERE owner_user_id = ${ownerUserId} AND telnyx_order_id = ${telnyxOrderId}
       RETURNING *

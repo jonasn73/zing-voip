@@ -14,9 +14,11 @@ import {
   retryProvisionOnboardingBuyLine,
   effectiveAdminRoutingOverrideForPhoneLine,
   repairMisassignedDefaultOrgPhoneLines,
+  archiveOwnerCellMirroredBusinessLines,
   listCompletedPortPhoneNumbersForOwner,
 } from "@/lib/db"
 import { syncMissingTelnyxNumbersForUser } from "@/lib/telnyx-number-sync"
+import { filterInboundBusinessLines } from "@/lib/owner-cell-line-filter"
 import { reconcileCompletedPortLinesForOwner } from "@/lib/port-number-finalize"
 import { pickPreferredCustomerLine } from "@/lib/preferred-business-line"
 import { orderPhoneLinesForOrganization } from "@/lib/workspace-phone-lines"
@@ -29,6 +31,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const orgParam = req.nextUrl.searchParams.get("organization_id")?.trim() || null
+
     // Background maintenance — never block the JSON response on Telnyx/cloud APIs.
     void Promise.all([
       ensureOnboardingLineFromProfile(userId).catch((e) => {
@@ -51,7 +55,6 @@ export async function GET(req: NextRequest) {
       }),
     ])
 
-    const orgParam = req.nextUrl.searchParams.get("organization_id")?.trim() || null
     const [numbers, account, profile, completedPortTargets] = await Promise.all([
       getPhoneNumbers(userId, orgParam),
       getUser(userId),
@@ -82,8 +85,12 @@ export async function GET(req: NextRequest) {
 
     // Primary line for this workspace — ported main DID beats temp placeholder.
     const globalReserved = profile?.reserved_number?.trim() || null
-    const visible = numbersWithRouting.filter((n) =>
-      n.status === "active" || n.status === "pending" || n.status === "porting"
+    const ownerPhone = account?.phone?.trim() || null
+    const visible = filterInboundBusinessLines(
+      numbersWithRouting.filter((n) =>
+        n.status === "active" || n.status === "pending" || n.status === "porting"
+      ),
+      ownerPhone
     )
     const orderedVisible = orderPhoneLinesForOrganization(
       visible.map((row) => ({

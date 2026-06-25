@@ -8,6 +8,7 @@ import {
 } from "@/lib/db"
 import { isDashboardVisibleLineStatus, type DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
 import type { DashboardMainBootstrap, DashboardRoutingBootstrap } from "@/lib/dashboard-stream-types"
+import { filterInboundBusinessLines } from "@/lib/owner-cell-line-filter"
 import { dayKeyLocal } from "@/lib/scheduler-utils"
 import { pickPreferredCustomerLine } from "@/lib/preferred-business-line"
 import { orderPhoneLinesForOrganization } from "@/lib/workspace-phone-lines"
@@ -105,7 +106,10 @@ async function mapBusinessNumbers(userId: string, account?: User | null): Promis
     } satisfies DashboardBusinessNumber
   })
 
-  return numbersWithRouting.filter((n) => isDashboardVisibleLineStatus(n.status))
+  return filterInboundBusinessLines(
+    numbersWithRouting.filter((n) => isDashboardVisibleLineStatus(n.status)),
+    account?.phone ?? null
+  )
 }
 
 function mapRoutingFields(cfg: RoutingConfig | null): DashboardRoutingBootstrap["routing"] {

@@ -3,6 +3,7 @@
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import {
   clearIncomingRoutingCache,
+  archiveOwnerCellMirroredBusinessLines,
   getOnboardingProfile,
   normalizePhoneNumberE164,
   updateOnboardingProfile,
@@ -29,6 +30,7 @@ export async function promotePortedLineAsPrimary(params: {
     reserved_number_display: formatPhoneDisplay(e164),
     reserved_number_method: "port",
   })
+  await archiveOwnerCellMirroredBusinessLines(params.ownerUserId, e164)
   clearIncomingRoutingCache()
 
   void publishOwnerEvent(params.ownerUserId, "porting-update", {

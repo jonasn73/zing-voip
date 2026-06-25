@@ -13,6 +13,7 @@ import { parseAdminNotificationPreferences } from "@/lib/admin-notification-pref
 import { resolveNeonDatabaseUrl } from "@/lib/neon-database-url"
 import { formatAdminRoutingOverridePhoneForTelnyx, resolveScopedAdminRoutingOverrideE164 } from "@/lib/phone-e164"
 import { SITE_NAME } from "@/lib/brand"
+import { lineMatchesOwnerCell } from "@/lib/owner-cell-line-filter"
 import { parseRoutingPoolMode, parseSkillsArray, normalizeRoutingPoolSkillTag, routingSkillTagFromCertCode } from "@/lib/routing-pool-skills"
 import type {
   CompanyBriefing,
@@ -5159,11 +5160,53 @@ export async function markPhoneNumberReleasedForUser(
 }
 
 /**
+ * Hide mistaken `phone_numbers` rows that mirror the owner's cell once a real inbound DID exists.
+ * Does not call Telnyx release — the owner's cell is not a purchased business line.
+ */
+export async function archiveOwnerCellMirroredBusinessLines(
+  ownerUserId: string,
+  preferredInboundE164?: string | null
+): Promise<number> {
+  const user = await getUser(ownerUserId)
+  const ownerPhone = user?.phone?.trim()
+  if (!ownerPhone) return 0
+
+  const numbers = await getPhoneNumbers(ownerUserId)
+  const realInbound = numbers.filter(
+    (row) =>
+      (row.status === "active" || row.status === "pending" || row.status === "porting") &&
+      !lineMatchesOwnerCell(row.number, ownerPhone)
+  )
+  if (realInbound.length === 0) return 0
+
+  const preferred = preferredInboundE164?.trim()
+    ? normalizePhoneNumberE164(preferredInboundE164)
+    : null
+
+  let archived = 0
+  for (const row of numbers) {
+    if (row.status !== "active" && row.status !== "pending" && row.status !== "porting") continue
+    if (!lineMatchesOwnerCell(row.number, ownerPhone)) continue
+    if (preferred && normalizePhoneNumberE164(row.number) === preferred) continue
+    const ok = await markPhoneNumberReleasedForUser(row.id, ownerUserId)
+    if (ok) archived += 1
+  }
+  return archived
+}
+
+/**
  * First active business DID for this user — used when Telnyx Dial `action` webhook loses `bn` or sends `To` as the owner’s cell (so per-number AI fallback was misread as default voicemail).
  */
 export async function getPrimaryActiveBusinessNumberE164(userId: string): Promise<string | null> {
+  const user = await getUser(userId)
   const list = await getPhoneNumbers(userId)
-  const row = list.find((p) => p.status === "active") ?? list[0]
+  const ownerPhone = user?.phone?.trim() || null
+  const candidates = list.filter(
+    (p) =>
+      p.status === "active" &&
+      !lineMatchesOwnerCell(p.number, ownerPhone)
+  )
+  const row = candidates[0] ?? list.find((p) => p.status === "active") ?? list[0]
   if (!row?.number?.trim()) return null
   return normalizePhoneNumberE164(row.number)
 }

@@ -3,7 +3,13 @@
 import Link from "next/link"
 import { memo, useLayoutEffect, useRef, useState, type MutableRefObject, type RefObject } from "react"
 import { cn } from "@/lib/utils"
-import { DASHBOARD_PAGE_HREF, dashboardNavItems, type PageId } from "@/lib/dashboard-nav"
+import {
+  DASHBOARD_PAGE_HREF,
+  dashboardNavItems,
+  mobileBottomNavItems,
+  type DashboardNavItem,
+  type PageId,
+} from "@/lib/dashboard-nav"
 import { useDashboardActivePage } from "@/components/dashboard-shell-chrome-context"
 import { COMMAND_DOCK_ACCENT, SHELL_ACRYLIC_SURFACE } from "@/lib/shell-chrome-styles"
 
@@ -19,12 +25,13 @@ function useDockIndicator(
   navRef: RefObject<HTMLElement | null>,
   itemRefs: MutableRefObject<(HTMLAnchorElement | HTMLButtonElement | null)[]>,
   activePage: PageId,
-  orientation: DockOrientation
+  orientation: DockOrientation,
+  items: DashboardNavItem[]
 ) {
   const [indicator, setIndicator] = useState<DockIndicator>({ offset: 0, size: 44, visible: true })
 
   useLayoutEffect(() => {
-    const idx = dashboardNavItems.findIndex((item) => item.id === activePage)
+    const idx = items.findIndex((item) => item.id === activePage)
     const el = itemRefs.current[idx]
     const nav = navRef.current
     if (!el || !nav || idx < 0) {
@@ -46,12 +53,13 @@ function useDockIndicator(
       size: elRect.width,
       visible: true,
     })
-  }, [activePage, itemRefs, navRef, orientation])
+  }, [activePage, itemRefs, items, navRef, orientation])
 
   return indicator
 }
 
 const DockNavItems = memo(function DockNavItems({
+  items,
   activePage,
   useLinks,
   onNavigate,
@@ -59,6 +67,7 @@ const DockNavItems = memo(function DockNavItems({
   navRef,
   itemRefs,
 }: {
+  items: DashboardNavItem[]
   activePage: PageId
   useLinks: boolean
   onNavigate?: (page: PageId) => void
@@ -67,7 +76,7 @@ const DockNavItems = memo(function DockNavItems({
   itemRefs: MutableRefObject<(HTMLAnchorElement | HTMLButtonElement | null)[]>
 }) {
   const isVertical = orientation === "vertical"
-  const indicator = useDockIndicator(navRef, itemRefs, activePage, orientation)
+  const indicator = useDockIndicator(navRef, itemRefs, activePage, orientation, items)
 
   return (
     <>
@@ -86,7 +95,7 @@ const DockNavItems = memo(function DockNavItems({
         }
       />
 
-      {dashboardNavItems.map((item, index) => {
+      {items.map((item, index) => {
         const Icon = item.icon
         const isActive = activePage === item.id
         const className = cn(
@@ -95,7 +104,7 @@ const DockNavItems = memo(function DockNavItems({
           "motion-safe:active:scale-[0.96]",
           isVertical
             ? "h-11 w-11 flex-col"
-            : "min-w-0 flex-1 flex-col gap-0.5 rounded-lg py-1.5",
+            : "min-w-[4.5rem] flex-col gap-1 px-2 py-1",
           isActive
             ? "bg-primary/12 text-primary"
             : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
@@ -115,7 +124,7 @@ const DockNavItems = memo(function DockNavItems({
             ) : (
               <span
                 className={cn(
-                  "max-w-full truncate px-0.5 text-[9px] font-medium leading-none",
+                  "max-w-full truncate text-[10px] font-medium leading-none",
                   isActive ? "text-primary" : "text-muted-foreground"
                 )}
               >
@@ -187,7 +196,7 @@ const CommandDockInner = memo(function CommandDockInner({
   onNavigate?: (page: PageId) => void
 }) {
   const desktopNavRef = useRef<HTMLElement>(null)
-  const mobileNavRef = useRef<HTMLDivElement>(null)
+  const mobileNavRef = useRef<HTMLElement>(null)
   const desktopItemRefs = useRef<(HTMLAnchorElement | HTMLButtonElement | null)[]>([])
   const mobileItemRefs = useRef<(HTMLAnchorElement | HTMLButtonElement | null)[]>([])
 
@@ -195,7 +204,7 @@ const CommandDockInner = memo(function CommandDockInner({
     <>
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 hidden w-[4.25rem] flex-col border-r md:flex",
+          "fixed inset-y-0 left-0 z-50 hidden w-[4.25rem] border-r md:flex md:flex-col",
           SHELL_ACRYLIC_SURFACE
         )}
         aria-label="Command dock"
@@ -207,6 +216,7 @@ const CommandDockInner = memo(function CommandDockInner({
           aria-label="Main navigation"
         >
           <DockNavItems
+            items={dashboardNavItems}
             activePage={activePage}
             useLinks={useLinks}
             onNavigate={onNavigate}
@@ -218,19 +228,17 @@ const CommandDockInner = memo(function CommandDockInner({
       </aside>
 
       <nav
+        ref={mobileNavRef}
         className={cn(
-          "fixed inset-x-0 bottom-0 z-50 flex border-t md:hidden",
-          "pb-[max(env(safe-area-inset-bottom),0.25rem)]",
-          SHELL_ACRYLIC_SURFACE
+          "fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-zinc-900 bg-zinc-950 md:hidden",
+          "pb-[env(safe-area-inset-bottom,0px)]"
         )}
         role="navigation"
         aria-label="Main navigation"
       >
-        <div
-          ref={mobileNavRef}
-          className="relative flex w-full items-stretch justify-between gap-0 px-0.5 pt-1"
-        >
+        <div className="relative flex h-full w-full items-center justify-around">
           <DockNavItems
+            items={mobileBottomNavItems}
             activePage={activePage}
             useLinks={useLinks}
             onNavigate={onNavigate}

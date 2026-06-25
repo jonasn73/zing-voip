@@ -283,7 +283,7 @@ function AppShellInner({
           className={cn(
             "min-h-0 flex-1 overflow-y-auto overscroll-y-contain",
             "bg-gradient-to-b from-background to-muted/15",
-            "pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
+            "pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0"
           )}
         >
           {children}

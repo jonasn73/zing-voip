@@ -38,6 +38,14 @@ export const dashboardNavItems: DashboardNavItem[] = [
   { id: "settings", label: "Settings", icon: Settings },
 ]
 
+/** Mobile bottom bar — four primary destinations so icons are not squished on narrow screens. */
+export const mobileBottomNavItems: DashboardNavItem[] = [
+  { id: "dashboard", label: "Lines", icon: Zap },
+  { id: "scheduler", label: "Scheduler", icon: CalendarDays },
+  { id: "pay", label: "Analytics", icon: BarChart3 },
+  { id: "settings", label: "Settings", icon: Settings },
+]
+
 /** Href for each tab — App Router Link targets for instant client navigation. */
 export const DASHBOARD_PAGE_HREF: Record<PageId, string> = {
   dashboard: "/dashboard",

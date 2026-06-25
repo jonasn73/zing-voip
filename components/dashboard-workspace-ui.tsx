@@ -10,7 +10,7 @@ export const WORKSPACE_MOBILE_BLEED =
 
 /** Min height for full-bleed panels below the sticky header + mobile bottom command dock. */
 export const MOBILE_PANEL_VIEWPORT_MIN_H =
-  "min-h-[calc(100dvh-15rem-env(safe-area-inset-bottom,0px)-4.25rem)] md:min-h-[calc(100dvh-15rem)]"
+  "min-h-[calc(100dvh-15rem-env(safe-area-inset-bottom,0px)-4rem)] md:min-h-[calc(100dvh-15rem)]"
 
 export function WorkspacePage({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("mx-auto flex w-full max-w-7xl flex-col gap-6 sm:gap-8", className)}>{children}</div>

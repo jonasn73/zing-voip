@@ -1,10 +1,7 @@
+import { isPhoneNumberCarrierLive } from "@/lib/phone-carrier-live"
 import { getPhoneNumbers, normalizePhoneNumberE164 } from "@/lib/db"
-import type { PhoneNumber } from "@/lib/types"
 
-/** True when Telnyx (or Twilio) owns the DID and the line is active — calls can route. */
-export function isPhoneNumberCarrierLive(row: Pick<PhoneNumber, "provider_number_sid" | "status">): boolean {
-  return Boolean(row.provider_number_sid?.trim()) && row.status === "active"
-}
+export { isPhoneNumberCarrierLive } from "@/lib/phone-carrier-live"
 
 /** Whether the onboarding reserved DID is provisioned on the carrier (not Neon-only). */
 export async function isReservedLineCarrierLive(

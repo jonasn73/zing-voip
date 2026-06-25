@@ -5,7 +5,7 @@ import {
   isDashboardVisibleLineStatus,
   type DashboardBusinessNumber,
 } from "@/lib/dashboard-routing-utils"
-import { isPhoneNumberCarrierLive } from "@/lib/onboarding-line-carrier-status"
+import { isPhoneNumberCarrierLive } from "@/lib/phone-carrier-live"
 import type { PhoneNumber } from "@/lib/types"
 
 /** Minimal row shape for line ranking (dashboard + DB). */

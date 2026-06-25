@@ -237,7 +237,7 @@ export function LandingPage({ signupUrl, loginUrl, appUrl }: LandingPageProps) {
             </p>
 
             <p className="mt-8 text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Start here</p>
-            <div className="mx-auto mt-3 grid max-w-xl grid-cols-3 gap-2 text-left sm:gap-3">
+            <div className="mx-auto mt-3 grid max-w-xl grid-cols-1 gap-2 text-left sm:grid-cols-3 sm:gap-3">
               {[
                 { n: "1", t: "Account", d: "Free signup" },
                 { n: "2", t: "Number", d: "Buy or port" },

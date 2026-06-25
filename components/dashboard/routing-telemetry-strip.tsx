@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { CalendarRange, Clock, Phone, PhoneIncoming, PhoneMissed } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { WORKSPACE_MOBILE_BLEED } from "@/components/dashboard-workspace-ui"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { formatTalkDuration } from "@/lib/daily-call-telemetry"
 import { isDashboardVisibleLineStatus, type DashboardBusinessNumber } from "@/lib/dashboard-routing-utils"
@@ -187,7 +188,7 @@ export const RoutingTelemetryStrip = memo(function RoutingTelemetryStrip({
     <section
       className={cn(
         "flex flex-nowrap overflow-x-auto snap-x snap-mandatory gap-2 rounded-2xl border border-white/5 bg-neutral-950/40 px-3 py-2 backdrop-blur-md [-ms-overflow-style:none] [scrollbar-width:none] sm:px-4 md:flex-wrap md:overflow-visible [&::-webkit-scrollbar]:hidden",
-        "-mx-4 w-[calc(100%+2rem)] sm:-mx-8 sm:w-[calc(100%+4rem)] md:mx-0 md:w-full",
+        WORKSPACE_MOBILE_BLEED,
         className
       )}
       aria-label="Workspace telemetry"

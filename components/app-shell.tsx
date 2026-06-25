@@ -104,9 +104,7 @@ const AppShellHeader = memo(function AppShellHeader({
       </div>
 
       {headerCenter ? (
-        <div className="flex min-w-0 max-w-[11.5rem] justify-center justify-self-center px-1 sm:max-w-none sm:px-2">
-          {headerCenter}
-        </div>
+        <div className="flex min-w-0 justify-center justify-self-center px-1 sm:px-2">{headerCenter}</div>
       ) : (
         <div aria-hidden />
       )}
@@ -283,7 +281,7 @@ function AppShellInner({
         <main
           ref={mainRef}
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain",
+            "min-h-0 flex-1 overflow-y-auto overscroll-y-contain",
             "bg-gradient-to-b from-background to-muted/15",
             "pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
           )}

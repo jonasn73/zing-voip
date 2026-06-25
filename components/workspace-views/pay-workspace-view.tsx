@@ -282,7 +282,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
               Each plan maps to a Stripe price — Starter ($19), Professional ($49), or Business ($99) per month.
             </p>
           </div>
-          <div className="grid gap-3 p-5 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-3">
             {CHECKOUT_TIER_OPTIONS.map((plan) => {
               const isCurrentPlan =
                 subscriptionActive &&
@@ -334,7 +334,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
               balance updates automatically.
             </p>
           </div>
-          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
             {(billing?.suggested_credit_packs_cents ?? [1000, 2500, 5000, 10000]).map((cents) => (
               <button
                 key={cents}
@@ -373,7 +373,7 @@ export const PayWorkspaceView = memo(function PayWorkspaceView() {
               Live operator minutes deducted from your balance, billed at {rateLabel}/min.
             </p>
           </div>
-          <WorkspaceTableWrap>
+          <WorkspaceTableWrap bleed>
             <colgroup>
               <col className="w-[28%]" />
               <col className="w-[34%]" />

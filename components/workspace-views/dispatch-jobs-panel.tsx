@@ -117,13 +117,13 @@ export function DispatchJobsPanel() {
                 )}
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
                 {savingId === job.id && <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />}
                 <select
                   value={job.assigned_tech_id || ""}
                   onChange={(e) => void assign(job, e.target.value)}
                   disabled={techs.length === 0}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-violet-500 disabled:opacity-50"
+                  className="w-full min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-violet-500 disabled:opacity-50 sm:w-auto"
                 >
                   <option value="">{techs.length === 0 ? "No techs yet" : "Unassigned"}</option>
                   {techs.map((t) => (

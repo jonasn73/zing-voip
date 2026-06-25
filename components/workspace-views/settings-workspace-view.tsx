@@ -223,7 +223,7 @@ const SettingsWorkspaceBody = memo(function SettingsWorkspaceBody({
 
       <section className="space-y-3">
         <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">System</p>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           <ToggleRow label="Push" icon={Bell} checked={pushEnabled} onChange={setPushEnabled} />
           <ToggleRow label="SMS" icon={MessageSquare} checked={smsEnabled} onChange={setSmsEnabled} />
           <ToggleRow

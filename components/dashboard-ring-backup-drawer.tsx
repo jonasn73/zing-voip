@@ -183,7 +183,7 @@ export function DashboardRingBackupDrawer({
       <DrawerScrollBody className={cn(routingLineDetailLoading && "pointer-events-none opacity-50")}>
         <section className="space-y-4">
           <RingBudgetSummary physicalRings={physicalRings} draftSeconds={draftSeconds} />
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
             {RING_PRESETS.map((preset) => {
               const active = nearestPreset(draftSeconds) === snapDashboardRingTimeoutSec(preset.seconds)
               return (

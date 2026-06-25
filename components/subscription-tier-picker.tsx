@@ -15,7 +15,7 @@ type SubscriptionTierPickerProps = {
 /** Starter / Professional / Business plan cards for checkout. */
 export function SubscriptionTierPicker({ value, onChange, disabled }: SubscriptionTierPickerProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {CHECKOUT_TIER_OPTIONS.map((plan) => {
         const selected = value === plan.tier
         return (

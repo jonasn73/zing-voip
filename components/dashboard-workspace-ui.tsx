@@ -4,8 +4,16 @@ import { type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 export { WORKSPACE_SHEET_CLASS } from "@/lib/workspace-sheet-classes"
 
+/** Break horizontal scroll strips out of DashboardPageView horizontal padding on phones. */
+export const WORKSPACE_MOBILE_BLEED =
+  "-mx-4 w-[calc(100%+2rem)] sm:-mx-8 sm:w-[calc(100%+4rem)] md:mx-0 md:w-full"
+
+/** Min height for full-bleed panels below the sticky header + mobile bottom command dock. */
+export const MOBILE_PANEL_VIEWPORT_MIN_H =
+  "min-h-[calc(100dvh-15rem-env(safe-area-inset-bottom,0px)-4.25rem)] md:min-h-[calc(100dvh-15rem)]"
+
 export function WorkspacePage({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("mx-auto flex w-full max-w-7xl flex-col gap-8", className)}>{children}</div>
+  return <div className={cn("mx-auto flex w-full max-w-7xl flex-col gap-6 sm:gap-8", className)}>{children}</div>
 }
 
 export function WorkspacePageHeader({
@@ -18,8 +26,8 @@ export function WorkspacePageHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div>
+    <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+      <div className="min-w-0">
         {eyebrow ? (
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">{eyebrow}</p>
         ) : null}
@@ -27,7 +35,7 @@ export function WorkspacePageHeader({
           {title}
         </h1>
       </div>
-      {action}
+      {action ? <div className="w-full min-w-0 sm:w-auto sm:shrink-0">{action}</div> : null}
     </div>
   )
 }
@@ -270,12 +278,15 @@ export const workspaceFieldClass =
 export function WorkspaceTableWrap({
   children,
   className,
+  bleed = false,
 }: {
   children: ReactNode
   className?: string
+  /** Extend scroll area to screen edges on mobile (inside DashboardPageView padding). */
+  bleed?: boolean
 }) {
-  return (
-    <div className="overflow-x-auto">
+  const inner = (
+    <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <table
         className={cn(
           "w-full min-w-[640px] table-fixed border-collapse text-left text-sm",
@@ -286,6 +297,10 @@ export function WorkspaceTableWrap({
       </table>
     </div>
   )
+  if (bleed) {
+    return <div className={WORKSPACE_MOBILE_BLEED}>{inner}</div>
+  }
+  return inner
 }
 
 export function WorkspaceTh({ children }: { children: ReactNode }) {

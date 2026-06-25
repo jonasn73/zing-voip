@@ -291,13 +291,70 @@ type ActivityTableProps = {
   lineLabelMap: Map<string, string>
 }
 
+const ActivityCallsMobileList = memo(function ActivityCallsMobileList({
+  rows,
+  lineLabelMap,
+}: ActivityTableProps) {
+  const openLog = useWorkspaceRightSheet<UiCallRecord>()
+  const { setSelectedActivityLog } = useDashboardWorkspace()
+
+  if (rows.length === 0) {
+    return (
+      <p className="px-4 py-12 text-center text-sm text-zinc-600">No calls yet</p>
+    )
+  }
+
+  return (
+    <ul className="divide-y divide-zinc-800/80">
+      {rows.map((call) => {
+        const st = classifyCall(call)
+        const targetLabel = resolveBusinessLineLabel(call.targetLineE164, lineLabelMap)
+        return (
+          <li key={call.id}>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedActivityLog(call)
+                openLog(call)
+              }}
+              className="flex w-full flex-col gap-2 px-4 py-3.5 text-left transition-colors hover:bg-zinc-900/50 active:bg-zinc-900/70"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <ActivityStatusPill status={st} />
+                <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                  {formatDuration(call.durationSeconds)}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-medium text-foreground">{call.callerName}</p>
+                <p className="truncate text-xs text-zinc-500">{call.callerNumber}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                <AgentBadge agent={resolveCallAgent(call)} />
+                <span className="truncate" title={targetLabel}>
+                  {targetLabel}
+                </span>
+              </div>
+              <p className="text-[11px] tabular-nums text-zinc-600">{formatCallTimestamp(call)}</p>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+})
+
 const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap }: ActivityTableProps) {
   const openLog = useWorkspaceRightSheet<UiCallRecord>()
   const { setSelectedActivityLog } = useDashboardWorkspace()
 
   return (
     <WorkspacePanel className="min-h-[380px]">
-      <WorkspaceTableWrap className="min-h-[340px]">
+      <div className="md:hidden">
+        <ActivityCallsMobileList rows={rows} lineLabelMap={lineLabelMap} />
+      </div>
+      <div className="hidden md:block">
+      <WorkspaceTableWrap className="min-h-[340px]" bleed>
         <colgroup>
           <col className="w-[14%]" />
           <col className="w-[24%]" />
@@ -371,6 +428,7 @@ const ActivityCallsTable = memo(function ActivityCallsTable({ rows, lineLabelMap
           )}
         </tbody>
       </WorkspaceTableWrap>
+      </div>
     </WorkspacePanel>
   )
 })

@@ -155,7 +155,7 @@ export function FieldTechniciansPanel() {
 
   return (
     <WorkspacePanel className="p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
             <HardHat className="h-5 w-5" />
@@ -214,7 +214,7 @@ export function FieldTechniciansPanel() {
           {techs.map((tech) => (
             <div
               key={tech.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
+              className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -254,7 +254,7 @@ export function FieldTechniciansPanel() {
                   </label>
                 ) : null}
               </div>
-              <div className="flex shrink-0 items-center gap-3">
+              <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
                 {tech.invite_pending && (
                   <button
                     type="button"

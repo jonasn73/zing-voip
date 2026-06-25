@@ -81,7 +81,7 @@ function FlowStepCard({
       onClick={onOpen}
       disabled={loading}
       className={cn(
-        "group relative flex min-h-[12.5rem] min-w-0 flex-1 flex-col rounded-2xl border p-5 text-left shadow-sm",
+        "group relative flex min-h-[10rem] min-w-0 flex-1 flex-col rounded-2xl border p-4 text-left shadow-sm sm:min-h-[12.5rem] sm:p-5",
         "transform-gpu will-change-[opacity,transform] backface-hidden transition-[border-color,box-shadow,opacity] duration-200",
         "focus-visible:outline-none focus-visible:ring-2",
         isNetwork
@@ -311,7 +311,7 @@ export const DashboardCallFlow = memo(function DashboardCallFlow({
   return (
     <section
       id="dash-call-flow"
-      className="scroll-mt-24 min-h-[22rem] overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-lg ring-1 ring-border/40"
+      className="scroll-mt-24 min-h-[22rem] overflow-x-clip rounded-3xl border border-border/60 bg-card/90 shadow-lg ring-1 ring-border/40"
     >
       <header className="border-b border-border/50 bg-gradient-to-b from-muted/20 to-transparent px-5 py-5 sm:px-8 sm:py-6">
         <div className="flex flex-col items-center gap-4">

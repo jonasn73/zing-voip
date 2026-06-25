@@ -318,7 +318,7 @@ function LeadSalvageSection({ leads }: { leads: SalvageLead[] }) {
   if (leads.length === 0) return null
   return (
     <section className="mb-7">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10">
           <LifeBuoy className="h-4 w-4 text-amber-300" aria-hidden />
         </span>

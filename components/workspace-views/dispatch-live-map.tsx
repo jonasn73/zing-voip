@@ -267,7 +267,7 @@ export function DispatchLiveMap() {
 
   return (
     <WorkspacePanel className="mb-4 p-5">
-      <div className="mb-3 flex items-center gap-2.5">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2.5">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400">
           <MapPinned className="h-4.5 w-4.5" />
         </span>
@@ -275,7 +275,7 @@ export function DispatchLiveMap() {
           <h2 className="text-sm font-semibold text-foreground">Live dispatch map</h2>
           <p className="text-xs text-zinc-500">Booked jobs and your techs' real-time positions.</p>
         </div>
-        <div className="ml-auto flex items-center gap-3 text-[11px] text-zinc-400">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-400 sm:ml-auto">
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Job
           </span>
@@ -294,7 +294,7 @@ export function DispatchLiveMap() {
         />
 
         {selectedJob && (
-          <div className="absolute right-3 top-3 z-[1200] w-64 rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 shadow-xl backdrop-blur">
+          <div className="absolute right-3 top-3 z-[1200] w-[min(16rem,calc(100%-1.5rem))] rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 shadow-xl backdrop-blur">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">

@@ -27,6 +27,8 @@ import {
   WorkspacePage,
   WorkspacePageHeader,
   WorkspacePanel,
+  MOBILE_PANEL_VIEWPORT_MIN_H,
+  WORKSPACE_MOBILE_BLEED,
 } from "@/components/dashboard-workspace-ui"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { cn } from "@/lib/utils"
@@ -763,7 +765,7 @@ export function SchedulerWorkspaceView() {
       ) : null}
 
       {viewMode === "map" && isMobile ? (
-        <div className="sticky top-0 z-30 -mx-5 border-b border-border/60 bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-8">
+        <div className={cn("sticky top-0 z-30 border-b border-border/60 bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80", WORKSPACE_MOBILE_BLEED)}>
           <div className="flex rounded-lg border border-border/70 bg-card/40 p-0.5 shadow-sm">
             <Button
               type="button"
@@ -960,7 +962,7 @@ export function SchedulerWorkspaceView() {
           {isMobile ? (
             <div className="flex flex-col">
             {mobileView === "list" ? (
-              <WorkspacePanel className="flex min-h-[calc(100dvh-15rem)] flex-col overflow-hidden">
+              <WorkspacePanel className={cn("flex flex-col overflow-hidden", MOBILE_PANEL_VIEWPORT_MIN_H)}>
                 <div className="border-b border-border/60 px-4 py-3">
                   <h2 className="text-sm font-semibold text-foreground">
                     {selectedDay.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
@@ -980,7 +982,7 @@ export function SchedulerWorkspaceView() {
                 </div>
               </WorkspacePanel>
             ) : (
-              <div className="min-h-[calc(100dvh-15rem)] w-full">
+              <div className={cn("w-full", MOBILE_PANEL_VIEWPORT_MIN_H)}>
                 <SchedulerRouteMap
                   key="mobile-dispatch-map"
                   ref={mapRef}

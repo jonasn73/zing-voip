@@ -80,9 +80,9 @@ export function ActivePipelinePanel({ jobs, loading, highlightId, onFocusJob }: 
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex min-h-0 flex-col gap-4 p-4">
       {grouped.map((group) => (
-        <section key={group.phase} aria-label={group.title}>
+        <section key={group.phase} aria-label={group.title} className="min-h-0 shrink-0">
           <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
             {group.title}
             <span className="ml-2 font-normal text-zinc-600">({group.jobs.length})</span>

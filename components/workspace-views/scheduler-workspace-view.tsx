@@ -4,7 +4,7 @@
 
 import dynamic from "next/dynamic"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ChevronDown, LayoutGrid, List, Loader2, Map as MapIcon, Plus } from "lucide-react"
+import { ChevronDown, LayoutGrid, Loader2, Map as MapIcon, Plus } from "lucide-react"
 import { getPusherClient } from "@/lib/realtime/pusher-client"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
@@ -27,8 +27,6 @@ import {
   WorkspacePage,
   WorkspacePageHeader,
   WorkspacePanel,
-  MOBILE_PANEL_VIEWPORT_MIN_H,
-  WORKSPACE_MOBILE_BLEED,
 } from "@/components/dashboard-workspace-ui"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { cn } from "@/lib/utils"
@@ -94,7 +92,6 @@ const JobDetailDrawer = dynamic(
 )
 
 type SchedulerViewMode = "grid" | "map"
-type MobileDispatchView = "list" | "map"
 
 function toMapJobSource(job: ActivePipelineJob | SchedulerEvent): JobMapPopupSource {
   return {
@@ -137,7 +134,6 @@ export function SchedulerWorkspaceView() {
   const [bookingOpen, setBookingOpen] = useState(false)
   const [bookingStart, setBookingStart] = useState(() => toDatetimeLocalValue(new Date()))
   const [viewMode, setViewMode] = useState<SchedulerViewMode>("map")
-  const [mobileView, setMobileView] = useState<MobileDispatchView>("list")
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [mobileSheetJob, setMobileSheetJob] = useState<JobMapPopupSource | null>(null)
   const isMobile = useIsMobile()
@@ -268,9 +264,7 @@ export function SchedulerWorkspaceView() {
 
     if (isMobile && viewMode === "map") {
       openMobileJobSheet(job)
-      if (mobileView === "map") {
-        mapRef.current?.focusJob(job.id, validLat, validLng)
-      }
+      mapRef.current?.focusJob(job.id, validLat, validLng)
       return
     }
 
@@ -684,6 +678,16 @@ export function SchedulerWorkspaceView() {
     }
   }
 
+  useEffect(() => {
+    if (!isMobile || viewMode !== "map") return
+    const main = document.querySelector<HTMLElement>("main")
+    const previousOverflow = main?.style.overflow
+    if (main) main.style.overflow = "hidden"
+    return () => {
+      if (main) main.style.overflow = previousOverflow ?? ""
+    }
+  }, [isMobile, viewMode])
+
   const headerAction = (
     <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
       <PhoneLookupBar organizationId={orgId} onResults={handlePhoneLookupResults} className="order-first w-full sm:order-none sm:mr-1" />
@@ -717,7 +721,11 @@ export function SchedulerWorkspaceView() {
   )
 
   return (
-    <WorkspacePage>
+    <WorkspacePage
+      className={cn(
+        isMobile && viewMode === "map" && "max-h-[calc(100dvh-4rem-env(safe-area-inset-bottom,0px))] overflow-hidden"
+      )}
+    >
       <WorkspacePageHeader eyebrow="Dispatch" title="Scheduler" action={headerAction} />
       <p className="-mt-4 text-sm text-zinc-500">
         {intakeProfile === "locksmith"
@@ -762,33 +770,6 @@ export function SchedulerWorkspaceView() {
           activePipelineJobs={activePipelineJobs}
           dayEvents={dayEvents}
         />
-      ) : null}
-
-      {viewMode === "map" && isMobile ? (
-        <div className={cn("sticky top-0 z-30 border-b border-border/60 bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80", WORKSPACE_MOBILE_BLEED)}>
-          <div className="flex rounded-lg border border-border/70 bg-card/40 p-0.5 shadow-sm">
-            <Button
-              type="button"
-              size="sm"
-              variant={mobileView === "list" ? "default" : "ghost"}
-              className="flex-1 gap-1.5 text-xs"
-              onClick={() => setMobileView("list")}
-            >
-              <List className="h-3.5 w-3.5" aria-hidden />
-              Job list
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={mobileView === "map" ? "default" : "ghost"}
-              className="flex-1 gap-1.5 text-xs"
-              onClick={() => setMobileView("map")}
-            >
-              <MapIcon className="h-3.5 w-3.5" aria-hidden />
-              Map
-            </Button>
-          </div>
-        </div>
       ) : null}
 
       {viewMode === "grid" ? (
@@ -960,10 +941,28 @@ export function SchedulerWorkspaceView() {
           </div>
 
           {isMobile ? (
-            <div className="flex flex-col">
-            {mobileView === "list" ? (
-              <WorkspacePanel className={cn("flex flex-col overflow-hidden", MOBILE_PANEL_VIEWPORT_MIN_H)}>
-                <div className="border-b border-border/60 px-4 py-3">
+            <div className="flex h-screen max-h-screen w-full flex-col overflow-hidden md:hidden">
+              <div className="h-[40vh] w-full shrink-0 overflow-hidden">
+                <div className="h-full w-full [&>div]:!min-h-0 [&>div]:h-full">
+                  <SchedulerRouteMap
+                    key="mobile-dispatch-map"
+                    ref={mapRef}
+                    events={dayEvents}
+                    pipelineJobs={activePipelineJobs}
+                    poolJobs={poolJobs}
+                    techLocations={techLocations}
+                    selectedDayLabel={selectedDayLabel}
+                    highlightId={highlightId}
+                    routeFocus={null}
+                    embedded
+                    disableHoverTooltips
+                    onSelectEvent={focusScheduledMapJob}
+                    onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
+                  />
+                </div>
+              </div>
+              <section className="h-[60vh] w-full overflow-y-auto pb-6">
+                <div className="shrink-0 border-b border-border/60 bg-card/95 px-4 py-3">
                   <h2 className="text-sm font-semibold text-foreground">
                     {selectedDay.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
                   </h2>
@@ -972,34 +971,13 @@ export function SchedulerWorkspaceView() {
                     {activePipelineJobs.length === 1 ? "" : "s"} in the pool
                   </p>
                 </div>
-                <div className="flex-1 overflow-y-auto">
-                  <ActivePipelinePanelStream
-                    dayKey={pipelineDayKey}
-                    useStreamedInitialDay={useStreamedPipeline}
-                    highlightId={highlightId}
-                    onFocusJob={focusPipelineJob}
-                  />
-                </div>
-              </WorkspacePanel>
-            ) : (
-              <div className={cn("w-full", MOBILE_PANEL_VIEWPORT_MIN_H)}>
-                <SchedulerRouteMap
-                  key="mobile-dispatch-map"
-                  ref={mapRef}
-                  events={dayEvents}
-                  pipelineJobs={activePipelineJobs}
-                  poolJobs={poolJobs}
-                  techLocations={techLocations}
-                  selectedDayLabel={selectedDayLabel}
+                <ActivePipelinePanelStream
+                  dayKey={pipelineDayKey}
+                  useStreamedInitialDay={useStreamedPipeline}
                   highlightId={highlightId}
-                  routeFocus={null}
-                  embedded
-                  disableHoverTooltips
-                  onSelectEvent={focusScheduledMapJob}
-                  onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
+                  onFocusJob={focusPipelineJob}
                 />
-              </div>
-            )}
+              </section>
             </div>
           ) : null}
         </>

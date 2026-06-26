@@ -3213,7 +3213,12 @@ export async function updateCallLog(
     await sql`UPDATE call_logs SET status = ${updates.status} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
   }
   if (updates.duration_seconds !== undefined) {
-    await sql`UPDATE call_logs SET duration_seconds = ${updates.duration_seconds} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
+    // Keep the longest known talk time — status webhooks often arrive with 0 after dial callbacks already logged seconds.
+    await sql`
+      UPDATE call_logs
+      SET duration_seconds = GREATEST(COALESCE(duration_seconds, 0), ${updates.duration_seconds})
+      WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}
+    `
   }
   if (updates.call_type !== undefined) {
     await sql`UPDATE call_logs SET call_type = ${updates.call_type} WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}`
@@ -3318,36 +3323,37 @@ export async function recordCallStatusEvent(
   occurredAtIso?: string
 ): Promise<void> {
   const sql = getSql()
+  const normalizedStatus = callStatus.trim().toLowerCase().replace(/_/g, "-")
   const occurredAt = occurredAtIso ? new Date(occurredAtIso) : new Date()
   try {
     await sql`
       UPDATE call_logs
       SET
-        status = ${callStatus},
+        status = ${normalizedStatus},
         duration_seconds = CASE
-          WHEN ${callStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled')
+          WHEN ${normalizedStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled')
             AND answered_at IS NOT NULL THEN
             GREATEST(
               ${durationSeconds},
               EXTRACT(EPOCH FROM (${occurredAt} - answered_at))::int
             )
-          ELSE ${durationSeconds}
+          ELSE GREATEST(COALESCE(duration_seconds, 0), ${durationSeconds})
         END,
         answered_at = CASE
-          WHEN ${callStatus} IN ('answered', 'in-progress', 'completed') AND answered_at IS NULL THEN ${occurredAt}
+          WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND answered_at IS NULL THEN ${occurredAt}
           ELSE answered_at
         END,
         ended_at = CASE
-          WHEN ${callStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled') THEN ${occurredAt}
+          WHEN ${normalizedStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled') THEN ${occurredAt}
           ELSE ended_at
         END,
         setup_duration_ms = CASE
-          WHEN ${callStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
+          WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
             EXTRACT(EPOCH FROM (${occurredAt} - first_ring_at))::int * 1000
           ELSE setup_duration_ms
         END,
         post_dial_delay_ms = CASE
-          WHEN ${callStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
+          WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
             EXTRACT(EPOCH FROM (${occurredAt} - first_ring_at))::int * 1000
           ELSE post_dial_delay_ms
         END
@@ -3358,7 +3364,9 @@ export async function recordCallStatusEvent(
     if (!isMissing007TimingColumnError(e)) throw e
     await sql`
       UPDATE call_logs
-      SET status = ${callStatus}, duration_seconds = ${durationSeconds}
+      SET
+        status = ${normalizedStatus},
+        duration_seconds = GREATEST(COALESCE(duration_seconds, 0), ${durationSeconds})
       WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}
     `
   }
@@ -3516,71 +3524,109 @@ export async function getDailyCallTelemetryForOwner(
     }
   }
 
-  const answeredFilter = sql`duration_seconds > 0 AND status IN ('completed', 'answered', 'in-progress')`
+  const talkableFilter = sql`
+    talk_seconds > 0
+    AND call_type IS DISTINCT FROM 'missed'
+    AND lower(COALESCE(status, '')) NOT IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled', 'failed')
+  `
 
   const rows = lineNumbers
     ? await sql`
+        WITH scoped AS (
+          SELECT
+            created_at,
+            call_type,
+            status,
+            GREATEST(
+              0,
+              COALESCE(duration_seconds, 0),
+              COALESCE(recording_duration_seconds, 0),
+              CASE
+                WHEN answered_at IS NOT NULL AND ended_at IS NOT NULL
+                  THEN EXTRACT(EPOCH FROM (ended_at - answered_at))::int
+                ELSE 0
+              END
+            ) AS talk_seconds
+          FROM call_logs
+          WHERE user_id = ${ownerUserId}
+            AND to_number = ANY(${lineNumbers}::text[])
+        )
         SELECT
           COUNT(*) FILTER (WHERE created_at >= date_trunc('day', now()))::int AS daily_calls,
           COUNT(*) FILTER (
             WHERE created_at >= date_trunc('day', now())
               AND (
                 call_type = 'missed'
-                OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+                OR lower(COALESCE(status, '')) IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
               )
           )::int AS missed_calls,
           COALESCE(
-            AVG(duration_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
+            AVG(talk_seconds) FILTER (
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
             ),
             0
           )::float8 AS avg_talk_seconds,
           COALESCE(
-            SUM(duration_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
+            SUM(talk_seconds) FILTER (
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
             ),
             0
           )::int AS daily_talk_seconds,
           COALESCE(
-            SUM(duration_seconds) FILTER (
-              WHERE created_at >= date_trunc('week', now()) AND ${answeredFilter}
+            SUM(talk_seconds) FILTER (
+              WHERE created_at >= date_trunc('week', now()) AND ${talkableFilter}
             ),
             0
           )::int AS weekly_talk_seconds
-        FROM call_logs
-        WHERE user_id = ${ownerUserId}
-          AND to_number = ANY(${lineNumbers}::text[])
+        FROM scoped
       `
     : await sql`
+        WITH scoped AS (
+          SELECT
+            created_at,
+            call_type,
+            status,
+            GREATEST(
+              0,
+              COALESCE(duration_seconds, 0),
+              COALESCE(recording_duration_seconds, 0),
+              CASE
+                WHEN answered_at IS NOT NULL AND ended_at IS NOT NULL
+                  THEN EXTRACT(EPOCH FROM (ended_at - answered_at))::int
+                ELSE 0
+              END
+            ) AS talk_seconds
+          FROM call_logs
+          WHERE user_id = ${ownerUserId}
+        )
         SELECT
           COUNT(*) FILTER (WHERE created_at >= date_trunc('day', now()))::int AS daily_calls,
           COUNT(*) FILTER (
             WHERE created_at >= date_trunc('day', now())
               AND (
                 call_type = 'missed'
-                OR status IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
+                OR lower(COALESCE(status, '')) IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled')
               )
           )::int AS missed_calls,
           COALESCE(
-            AVG(duration_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
+            AVG(talk_seconds) FILTER (
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
             ),
             0
           )::float8 AS avg_talk_seconds,
           COALESCE(
-            SUM(duration_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${answeredFilter}
+            SUM(talk_seconds) FILTER (
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
             ),
             0
           )::int AS daily_talk_seconds,
           COALESCE(
-            SUM(duration_seconds) FILTER (
-              WHERE created_at >= date_trunc('week', now()) AND ${answeredFilter}
+            SUM(talk_seconds) FILTER (
+              WHERE created_at >= date_trunc('week', now()) AND ${talkableFilter}
             ),
             0
           )::int AS weekly_talk_seconds
-        FROM call_logs
-        WHERE user_id = ${ownerUserId}
+        FROM scoped
       `
 
   const row = rows[0] as Record<string, unknown> | undefined

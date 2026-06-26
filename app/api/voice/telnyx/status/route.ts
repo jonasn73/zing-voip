@@ -11,6 +11,7 @@ import { evaluateLowCarrierCreditFromCallUsage } from "@/lib/carrier-credit-aler
 import { broadcastCallCompletedBySid } from "@/lib/call-telemetry-realtime"
 import { maybeSendPostCallDispositionSms } from "@/lib/post-call-disposition-sms"
 import { maybeSendAdminOverrideDispatchSms } from "@/lib/admin-override-dispatch-sms"
+import { parseTelnyxTalkSecondsFromForm } from "@/lib/telnyx-call-duration"
 import type { CallType } from "@/lib/types"
 
 export const runtime = "nodejs"
@@ -23,8 +24,11 @@ export async function POST(req: NextRequest) {
     (formData.get("CallControlId") as string) ||
     (formData.get("call_control_id") as string) ||
     ""
-  const callStatus = (formData.get("CallStatus") as string) || ""
-  const duration = parseInt((formData.get("CallDuration") as string) || "0", 10)
+  const callStatus = String(formData.get("CallStatus") || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-")
+  const duration = parseTelnyxTalkSecondsFromForm(formData)
   const direction = (formData.get("Direction") as string) || ""
   const eventTimestamp =
     (formData.get("Timestamp") as string) ||
@@ -46,7 +50,11 @@ export async function POST(req: NextRequest) {
       console.error("[Telnyx] Metrics update failed in status callback:", metricsError)
     }
 
-    await updateCallLog(callSid, { call_type: callType, status: callStatus, duration_seconds: duration })
+    await updateCallLog(callSid, {
+      call_type: callType,
+      status: callStatus,
+      ...(duration > 0 ? { duration_seconds: duration } : {}),
+    })
 
     const terminal = ["completed", "busy", "failed", "no-answer", "canceled"].includes(
       callStatus.trim().toLowerCase()

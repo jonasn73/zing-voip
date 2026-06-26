@@ -191,8 +191,19 @@ export async function getOrCreateTexmlApp(): Promise<string> {
   return String(appId)
 }
 
-// Assign a phone number to our TeXML application so incoming calls route to our webhook
+// Assign a phone number to our voice connection (TeXML or Call Control when enabled).
 export async function configureNumberVoice(phoneNumber: string, texmlAppId: string): Promise<void> {
+  let connectionId = texmlAppId
+  try {
+    const { readInboundCallControlEnabled } = await import("@/lib/telnyx-call-control-inbound")
+    const { getOrCreateCallControlApp } = await import("@/lib/telnyx-call-control-config")
+    if (readInboundCallControlEnabled()) {
+      connectionId = await getOrCreateCallControlApp()
+    }
+  } catch (e) {
+    console.warn("[Sigo] Call Control app resolution failed; using TeXML app:", e)
+  }
+
   const searchRes = await fetch(
     `${TELNYX_BASE}/phone_numbers?filter[phone_number]=${encodeURIComponent(phoneNumber)}&page[size]=1`,
     { headers: telnyxHeaders() }
@@ -207,13 +218,13 @@ export async function configureNumberVoice(phoneNumber: string, texmlAppId: stri
   const patchRes = await fetch(`${TELNYX_BASE}/phone_numbers/${numberRecord.id}/voice`, {
     method: "PATCH",
     headers: telnyxHeaders(),
-    body: JSON.stringify({ connection_id: texmlAppId, tech_prefix_enabled: false }),
+    body: JSON.stringify({ connection_id: connectionId, tech_prefix_enabled: false }),
   })
   if (!patchRes.ok) {
     const patchBody = await patchRes.json().catch(() => ({}))
     console.error(`[Sigo] Failed to configure voice for ${phoneNumber}:`, patchBody)
   } else {
-    console.log(`[Sigo] Voice configured for ${phoneNumber} → TeXML app ${texmlAppId}`)
+    console.log(`[Sigo] Voice configured for ${phoneNumber} → connection ${connectionId}`)
   }
 }
 

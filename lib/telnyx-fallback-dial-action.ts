@@ -8,7 +8,8 @@ import { after } from "next/server"
 import { NextRequest, NextResponse } from "next/server"
 import { VoiceResponse, getAppUrl } from "@/lib/telnyx"
 import { maybePlaceMobileWrapupCallback } from "@/lib/mobile-wrapup-callback"
-import type { FallbackType, RoutingConfig, User } from "@/lib/types"
+import { parseTelnyxTalkSecondsFromForm } from "@/lib/telnyx-call-duration"
+import type { FallbackType, RoutingConfig, User, CallType } from "@/lib/types"
 import {
   getRoutingConfig,
   getRoutingConfigForNumber,
@@ -220,20 +221,6 @@ function resolveInboundVoicemailGreeting(
   })
 }
 
-function parseDialDurationSeconds(formData: FormData): number {
-  const raw =
-    (formData.get("DialCallDuration") as string) ||
-    (formData.get("DialCallDurationSeconds") as string) ||
-    (formData.get("DialBridgedDuration") as string) ||
-    (formData.get("CallDuration") as string) ||
-    ""
-  let n = parseInt(String(raw).trim(), 10)
-  if (!Number.isFinite(n) || n < 0) return 0
-  if (n > 600) n = Math.round(n / 1000)
-  return n
-}
-
-/** Telnyx sometimes omits `DialBridgedTo` but still sends bridged time once the B-leg was connected. */
 function dialBridgedSecondsHint(formData: FormData): number {
   const raw =
     (formData.get("DialBridgedDuration") as string) ||
@@ -244,6 +231,22 @@ function dialBridgedSecondsHint(formData: FormData): number {
   if (!Number.isFinite(n) || n < 0) return 0
   if (n > 600) n = Math.round(n / 1000)
   return n
+}
+
+/** Write talk seconds from a Dial `action` callback (Telnyx sends duration on this webhook, not always on status). */
+function persistInboundDialTalkTime(
+  callSid: string,
+  talkSeconds: number,
+  patch: { status: string; call_type?: CallType }
+) {
+  if (!callSid.trim()) return
+  void updateCallLog(callSid, {
+    status: patch.status,
+    call_type: patch.call_type ?? "incoming",
+    ...(talkSeconds > 0 ? { duration_seconds: talkSeconds } : {}),
+  }).catch((logErr) => {
+    console.error("[Sigo] Call log talk-time update failed:", logErr)
+  })
 }
 
 /** Longest digit run across Telnyx/TwiML Dial callback fields that may carry the bridged PSTN party (names vary by release). */
@@ -290,9 +293,10 @@ async function tryBuildAiAssistantResponse(args: {
   callSid: string
   dialStatus: string
   rawStatus: string
+  dialTalkSeconds: number
   answeredAndHadConversation: boolean
 }): Promise<NextResponse | "missing-assistant" | null> {
-  const { userId, user, callSid, dialStatus, rawStatus, answeredAndHadConversation } = args
+  const { userId, user, callSid, dialStatus, rawStatus, dialTalkSeconds, answeredAndHadConversation } = args
   let assistantId =
     user?.telnyx_ai_assistant_id?.trim() || process.env.TELNYX_AI_ASSISTANT_ID?.trim() || ""
   if (!assistantId && userId) {
@@ -319,11 +323,11 @@ async function tryBuildAiAssistantResponse(args: {
         })
       )
     }
-    if (callSid && !answeredAndHadConversation) {
-      void updateCallLog(callSid, {
+    if (callSid) {
+      persistInboundDialTalkTime(callSid, dialTalkSeconds, {
         call_type: "incoming",
         status: dialStatus || rawStatus || "ai-handoff",
-      }).catch((e) => console.error("[Sigo] Call log update (AI handoff):", e))
+      })
     }
     const spokenDialFallbackHandoff =
       process.env.ZING_AI_FALLBACK_SPOKEN_HANDOFF === "1" ||
@@ -439,7 +443,7 @@ export async function handleTelnyxFallbackDialEnded(
     (formData.get("CallStatus") as string) ||
     ""
   const dialStatus = rawStatus.trim().toLowerCase().replace(/_/g, "-")
-  const dialDurationSec = parseDialDurationSeconds(formData)
+  const dialDurationSec = parseTelnyxTalkSecondsFromForm(formData)
 
   const callSid =
     (url.searchParams.get("callSid") || String(formData.get("CallSid") || formData.get("callSid") || "")).trim() ||
@@ -643,6 +647,10 @@ export async function handleTelnyxFallbackDialEnded(
         })
       }
       if (callSid.trim()) void markTelnyxInboundDialCallerLegDone(callSid)
+      persistInboundDialTalkTime(callSid, dialDurationSec, {
+        call_type: "incoming",
+        status: dialStatus || "completed",
+      })
       texml.hangup()
       return new NextResponse(texml.toString(), {
         headers: { "Content-Type": "text/xml" },
@@ -664,6 +672,10 @@ export async function handleTelnyxFallbackDialEnded(
         pathFallbackMode: pathFallbackMode ?? null,
       })
       if (callSid.trim()) void markTelnyxInboundDialCallerLegDone(callSid)
+      persistInboundDialTalkTime(callSid, dialDurationSec, {
+        call_type: "incoming",
+        status: dialStatus || "completed",
+      })
       texml.hangup()
       return new NextResponse(texml.toString(), {
         headers: { "Content-Type": "text/xml" },
@@ -876,6 +888,7 @@ export async function handleTelnyxFallbackDialEnded(
         callSid,
         dialStatus,
         rawStatus,
+        dialTalkSeconds: dialDurationSec,
         answeredAndHadConversation,
       })
       if (aiRes && aiRes !== "missing-assistant") return aiRes
@@ -1078,6 +1091,7 @@ export async function handleTelnyxFallbackDialEnded(
               callSid,
               dialStatus,
               rawStatus,
+              dialTalkSeconds: dialDurationSec,
               answeredAndHadConversation,
             })
             if (aiRes && aiRes !== "missing-assistant") return aiRes
@@ -1154,6 +1168,7 @@ export async function handleTelnyxFallbackDialEnded(
           callSid,
           dialStatus,
           rawStatus,
+          dialTalkSeconds: dialDurationSec,
           answeredAndHadConversation,
         })
         if (aiRes && aiRes !== "missing-assistant") return aiRes
@@ -1184,12 +1199,10 @@ export async function handleTelnyxFallbackDialEnded(
       }
     }
 
-    if (callSid && !answeredAndHadConversation) {
-      void updateCallLog(callSid, {
+    if (callSid) {
+      persistInboundDialTalkTime(callSid, dialDurationSec, {
         call_type: fallbackType === "voicemail" ? "voicemail" : "incoming",
         status: dialStatus || rawStatus || "unknown",
-      }).catch((logErr) => {
-        console.error("[Sigo] Call log update failed (continuing):", logErr)
       })
     }
   } catch (error) {

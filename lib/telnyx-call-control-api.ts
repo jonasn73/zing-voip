@@ -1,0 +1,91 @@
+// Telnyx Call Control REST actions (answer → speak → dial → record).
+
+import { getTexmlSayVoiceAttributes } from "@/lib/texml-say-voice"
+import { telnyxHeaders } from "@/lib/telnyx-config"
+
+const TELNYX_CALLS_BASE = "https://api.telnyx.com/v2/calls"
+
+export type TelnyxCallControlActionResult =
+  | { ok: true }
+  | { ok: false; status: number; error: string }
+
+async function postCallAction(
+  callControlId: string,
+  action: string,
+  body: Record<string, unknown>
+): Promise<TelnyxCallControlActionResult> {
+  const id = callControlId.trim()
+  if (!id) return { ok: false, status: 400, error: "missing call_control_id" }
+  const res = await fetch(`${TELNYX_CALLS_BASE}/${encodeURIComponent(id)}/actions/${action}`, {
+    method: "POST",
+    headers: telnyxHeaders(),
+    body: JSON.stringify(body),
+  })
+  if (res.ok) return { ok: true }
+  const errBody = await res.json().catch(() => ({}))
+  const detail =
+    (errBody as { errors?: { detail?: string }[] })?.errors?.[0]?.detail ||
+    JSON.stringify(errBody).slice(0, 240)
+  return { ok: false, status: res.status, error: detail || res.statusText }
+}
+
+/** Answer inbound leg immediately — no nested speak/play in this request. */
+export async function telnyxCallControlAnswer(
+  callControlId: string,
+  clientState: string
+): Promise<TelnyxCallControlActionResult> {
+  return postCallAction(callControlId, "answer", { client_state: clientState })
+}
+
+/** Speak TTS greeting on an active call leg. */
+export async function telnyxCallControlSpeak(
+  callControlId: string,
+  text: string,
+  clientState: string
+): Promise<TelnyxCallControlActionResult> {
+  const attrs = getTexmlSayVoiceAttributes()
+  return postCallAction(callControlId, "speak", {
+    payload: text,
+    payload_type: "text",
+    voice: attrs.voice,
+    language: attrs.language,
+    client_state: clientState,
+  })
+}
+
+/** Dial PSTN target and bridge to the active inbound caller. */
+export async function telnyxCallControlDial(
+  callControlId: string,
+  params: {
+    toE164: string
+    fromE164: string
+    timeoutSecs: number
+    clientState: string
+  }
+): Promise<TelnyxCallControlActionResult> {
+  return postCallAction(callControlId, "dial", {
+    to: params.toE164,
+    from: params.fromE164,
+    timeout_secs: Math.min(Math.max(params.timeoutSecs, 8), 120),
+    client_state: params.clientState,
+  })
+}
+
+/** Start voicemail recording after the spoken prompt. */
+export async function telnyxCallControlRecordStart(
+  callControlId: string,
+  clientState: string,
+  webhookUrl: string
+): Promise<TelnyxCallControlActionResult> {
+  return postCallAction(callControlId, "record_start", {
+    format: "mp3",
+    channels: "single",
+    client_state: clientState,
+    recording_track: "both",
+    recording_webhook_url: webhookUrl,
+  })
+}
+
+export async function telnyxCallControlHangup(callControlId: string): Promise<TelnyxCallControlActionResult> {
+  return postCallAction(callControlId, "hangup", {})
+}

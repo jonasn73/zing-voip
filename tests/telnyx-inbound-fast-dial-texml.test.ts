@@ -95,17 +95,19 @@ describe("buildFastReceptionistDialTexml", () => {
     expect(xml).toContain("+15022802716")
   })
 
-  it("prepends branded caller greeting when callerGreeting is set", () => {
+  it("prepends branded caller greeting on pass 2 after edge redirect", () => {
     const xml = buildFastReceptionistDialTexml({
-      answerOnBridge: true,
+      answerOnBridge: resolveInboundPstnForwardAnswerOnBridge(true),
       timeout: 20,
       action: "https://lyncr.app/api/voice/telnyx/fallback/u/u1",
       receptionistE164: "+15022802716",
       callerGreeting: "Thank you for calling Key Squad 502. Please wait while we connect your call to a team member.",
+      includeRingback: false,
     })
     expect(xml).toContain("<Say ")
     expect(xml).toContain("Key Squad 502")
     expect(xml.indexOf("<Say")).toBeLessThan(xml.indexOf("<Dial"))
+    expect(xml).not.toContain("ringTone")
   })
 })
 

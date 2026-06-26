@@ -1,4 +1,4 @@
-// Pass-1 inbound greeting — Edge-only (no Node cold start; Telnyx voice_url can point here).
+// Pass-1 inbound — Edge-only instant `<Redirect>` (answers call before Node cold start).
 import { NextRequest, NextResponse } from "next/server"
 import {
   buildEdgeInboundGreetingContinueUrl,

@@ -85,14 +85,14 @@ async function getOrCreateOutboundVoiceProfile(): Promise<string> {
   return String(profileId)
 }
 
-/** Telnyx voice webhook — per-line greeting vs straight ring is decided from routing cache. */
+/** Telnyx pass-2 routing webhook (`lyncrGreet=1` after instant edge greet). */
 export function getInboundTexmlVoiceUrl(appUrl: string): string {
   return `${appUrl.replace(/\/$/, "")}/api/voice/telnyx/incoming`
 }
 
-/** @deprecated Use getInboundTexmlVoiceUrl — kept for admin sync response. */
+/** Pass 1 — Edge `/greet` answers instantly (no Node cold-start ringback). */
 export function getInboundTexmlGreetVoiceUrl(appUrl: string): string {
-  return getInboundTexmlVoiceUrl(appUrl)
+  return `${appUrl.replace(/\/$/, "")}/api/voice/telnyx/greet`
 }
 
 /** Pass-2 routing after greeting (`lyncrGreet=1`). */
@@ -101,20 +101,21 @@ export function getInboundTexmlRoutingVoiceUrl(appUrl: string): string {
 }
 
 async function ensureTexmlAppVoiceUrls(appId: string, appUrl: string): Promise<void> {
-  const voiceUrl = getInboundTexmlVoiceUrl(appUrl)
+  const greetUrl = getInboundTexmlGreetVoiceUrl(appUrl)
+  const routingUrl = getInboundTexmlVoiceUrl(appUrl)
   try {
     const patchRes = await fetch(`${TELNYX_BASE}/texml_applications/${appId}`, {
       method: "PATCH",
       headers: telnyxHeaders(),
       body: JSON.stringify({
-        voice_url: voiceUrl,
-        voice_method: "POST",
-        voice_fallback_url: voiceUrl,
+        voice_url: greetUrl,
+        voice_method: "GET",
+        voice_fallback_url: routingUrl,
       }),
     })
     const patchBody = await patchRes.json().catch(() => ({}))
     if (patchRes.ok) {
-      console.log(`[Sigo] TeXML app ${appId} voice_url → ${voiceUrl}`)
+      console.log(`[Sigo] TeXML app ${appId} voice_url → ${greetUrl} (fallback → ${routingUrl})`)
     } else {
       console.error(`[Sigo] Failed to PATCH TeXML voice_url:`, patchBody)
     }
@@ -126,7 +127,8 @@ async function ensureTexmlAppVoiceUrls(appId: string, appUrl: string): Promise<v
 // Find or create the lyncr Call Router TeXML application with outbound calling enabled
 export async function getOrCreateTexmlApp(): Promise<string> {
   const appUrl = getAppUrl()
-  const voiceUrl = getInboundTexmlVoiceUrl(appUrl)
+  const greetUrl = getInboundTexmlGreetVoiceUrl(appUrl)
+  const routingUrl = getInboundTexmlVoiceUrl(appUrl)
 
   const listRes = await fetch(`${TELNYX_BASE}/texml_applications?page[size]=50`, {
     headers: telnyxHeaders(),
@@ -170,9 +172,9 @@ export async function getOrCreateTexmlApp(): Promise<string> {
     headers: telnyxHeaders(),
     body: JSON.stringify({
       friendly_name: TEXML_ROUTER_FRIENDLY_NAME,
-      voice_url: voiceUrl,
-      voice_method: "POST",
-      voice_fallback_url: voiceUrl,
+      voice_url: greetUrl,
+      voice_method: "GET",
+      voice_fallback_url: routingUrl,
       status_callback_url: `${appUrl}/api/voice/telnyx/status`,
       status_callback_method: "POST",
       outbound: { outbound_voice_profile_id: profileId },

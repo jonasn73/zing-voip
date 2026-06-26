@@ -11,13 +11,13 @@ describe("shouldEdgeInstantGreetingIntercept", () => {
     vi.unstubAllEnvs()
   })
 
-  it("is disabled so per-line greeting is decided in /incoming", () => {
+  it("intercepts pass-1 /incoming before Node cold start", () => {
     vi.stubEnv("ZING_INBOUND_GREETING_FIRST", "1")
     const url = new URL("https://lyncr.app/api/voice/telnyx/incoming")
-    expect(shouldEdgeInstantGreetingIntercept(url.pathname, url, "POST")).toBe(false)
+    expect(shouldEdgeInstantGreetingIntercept(url.pathname, url, "POST")).toBe(true)
   })
 
-  it("passes through when lyncrGreet=1", () => {
+  it("passes through when lyncrGreet=1 (pass 2 routing)", () => {
     vi.stubEnv("ZING_INBOUND_GREETING_FIRST", "1")
     const url = new URL("https://lyncr.app/api/voice/telnyx/incoming?lyncrGreet=1")
     expect(shouldEdgeInstantGreetingIntercept(url.pathname, url, "POST")).toBe(false)
@@ -29,26 +29,15 @@ describe("buildEdgeInstantGreetingTexml", () => {
     vi.unstubAllEnvs()
   })
 
-  it("returns Say then Redirect without Dial (Telnyx answers locally — no Play fetch delay)", () => {
+  it("returns instant Redirect only (no Say — branded greeting plays on pass 2)", () => {
     const continueUrl = buildEdgeInboundGreetingContinueUrl("https://lyncr.app/api/voice/telnyx/greet")
     const xml = buildEdgeInstantGreetingTexml(continueUrl)
-    expect(xml).toContain("<Say ")
-    expect(xml).toContain("Polly.Joanna")
-    expect(xml).toContain("Thank you for calling.")
     expect(xml).toContain("<Redirect")
     expect(continueUrl).toContain("/api/voice/telnyx/incoming")
     expect(continueUrl).toContain("lyncrGreet=1")
     expect(edgeInboundGreetingPassDone(new URL(continueUrl))).toBe(true)
     expect(xml).not.toContain("<Dial")
-    expect(xml).not.toContain("<Play")
-  })
-
-  it("uses Play only when ZING_INBOUND_INSTANT_GREETING_AUDIO_URL is set", () => {
-    vi.stubEnv("ZING_INBOUND_INSTANT_GREETING_AUDIO_URL", "https://cdn.example.com/greet.mp3")
-    const continueUrl = buildEdgeInboundGreetingContinueUrl("https://lyncr.app/api/voice/telnyx/greet")
-    const xml = buildEdgeInstantGreetingTexml(continueUrl)
-    expect(xml).toContain("<Play>")
-    expect(xml).toContain("https://cdn.example.com/greet.mp3")
     expect(xml).not.toContain("<Say")
+    expect(xml).not.toContain("<Play")
   })
 })

@@ -90,7 +90,12 @@ describe("resolveCallerGreetingForDialPass", () => {
     vi.unstubAllEnvs()
   })
 
-  it("omits dial greeting when two-pass mode is enabled", () => {
+  it("plays branded greeting on pass 2 after instant edge redirect", () => {
+    vi.stubEnv("ZING_INBOUND_GREETING_FIRST", "1")
+    expect(resolveCallerGreetingForDialPass("Key Squad 502", true)).toContain("Key Squad 502")
+  })
+
+  it("omits dial greeting on pass 1 (edge redirect only)", () => {
     vi.stubEnv("ZING_INBOUND_GREETING_FIRST", "1")
     expect(resolveCallerGreetingForDialPass("Key Squad 502", false)).toBeUndefined()
   })

@@ -134,16 +134,19 @@ export function buildInstantGenericGreetingFirstPassResult(incomingUrl: string):
   }
 }
 
-/** Branded `<Say>` on the same response as `<Dial>` — only when two-pass greeting is disabled. */
+/** Branded `<Say>` on the same response as `<Dial>` — pass 2 after instant edge redirect, or single-pass when two-pass is off. */
 export function resolveCallerGreetingForDialPass(
   workspaceName: string,
   greetingPassDone: boolean,
   greetingEnabled = true
 ): string | undefined {
-  if (greetingPassDone) return undefined
-  if (readInboundGreetingFirstPassEnabled() && greetingEnabled) return undefined
   if (!greetingEnabled) return undefined
-  if (!readInboundGreetingFirstPassEnabled()) return buildInboundCallerGreetingText(workspaceName)
+  if (!readInboundGreetingFirstPassEnabled()) {
+    if (!greetingPassDone) return buildInboundCallerGreetingText(workspaceName)
+    return undefined
+  }
+  // Two-pass: edge pass 1 is redirect-only; play branded greeting on pass 2 before `<Dial>`.
+  if (greetingPassDone) return buildInboundCallerGreetingText(workspaceName)
   return undefined
 }
 

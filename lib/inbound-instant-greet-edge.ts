@@ -51,29 +51,20 @@ export function buildEdgeInboundGreetingContinueUrl(requestUrl: string): string 
   return url.toString()
 }
 
+/** Pass 1 TeXML — instant `<Redirect>` only (answers the call with no ringback while Node boots pass 2). */
 export function buildEdgeInstantGreetingTexml(continueUrl: string): string {
   const safeContinue = escapeXmlAttr(continueUrl)
-  const audioUrl = edgeInboundInstantGreetingAudioUrl()
-  if (audioUrl) {
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Play>${escapeXmlAttr(audioUrl)}</Play>
-  <Redirect method="POST">${safeContinue}</Redirect>
-</Response>`
-  }
-  const language = (process.env.ZING_TEXML_SAY_LANGUAGE || DEFAULT_SAY_LANGUAGE).trim() || DEFAULT_SAY_LANGUAGE
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="${escapeXmlAttr(EDGE_PASS1_SAY_VOICE)}" language="${escapeXmlAttr(language)}">${escapeXmlText(EDGE_GENERIC_GREETING_TEXT)}</Say>
   <Redirect method="POST">${safeContinue}</Redirect>
 </Response>`
 }
 
-/** Legacy global intercept — per-line greeting is decided in /incoming using routing cache. */
+/** Legacy global intercept — instant redirect on pass 1 when Telnyx still POSTs to /incoming. */
 export function shouldEdgeInstantGreetingIntercept(pathname: string, url: URL, method: string): boolean {
   if (!edgeInboundGreetingFirstEnabled()) return false
   if (!isVoiceIncomingWebhookPath(pathname)) return false
   if (method !== "POST" && method !== "GET") return false
   if (edgeInboundGreetingPassDone(url)) return false
-  return false
+  return true
 }

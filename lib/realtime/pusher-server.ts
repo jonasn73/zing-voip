@@ -78,6 +78,7 @@ export type OwnerChannelEvent =
   | "job-status-updated"
   | "tech-location-updated"
   | "call-initiated"
+  | "call-answered"
   | "call-completed"
   | "porting-update"
 

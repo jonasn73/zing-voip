@@ -1,7 +1,11 @@
 // Realtime owner-channel events that keep the routing HUD call metrics fresh.
 
 import { getCallLogSnapshotForTelemetry, getCallLogUserIdByProviderSid } from "@/lib/db"
-import type { OwnerCallCompletedPayload, OwnerCallInitiatedPayload } from "@/lib/realtime/owner-call-event-types"
+import type {
+  OwnerCallAnsweredPayload,
+  OwnerCallCompletedPayload,
+  OwnerCallInitiatedPayload,
+} from "@/lib/realtime/owner-call-event-types"
 import { publishOwnerEvent } from "@/lib/realtime/pusher-server"
 
 /** Fired when an inbound call row is created (Telnyx call.initiated / first ring). */
@@ -19,6 +23,27 @@ export async function broadcastCallInitiated(params: {
     organization_id: params.organizationId ?? null,
   }
   await publishOwnerEvent(params.ownerUserId, "call-initiated", payload)
+}
+
+/** Fired when an inbound call is answered / bridged — opens the intake sheet while the caller is still on the line. */
+export async function broadcastCallAnswered(params: {
+  ownerUserId: string
+  callSid: string
+  callLogId: string
+  fromNumber: string
+  toNumber?: string | null
+  organizationId?: string | null
+  answeredAt?: string | null
+}): Promise<void> {
+  const payload: OwnerCallAnsweredPayload = {
+    call_sid: params.callSid,
+    call_log_id: params.callLogId,
+    from_number: params.fromNumber,
+    to_number: params.toNumber ?? null,
+    organization_id: params.organizationId ?? null,
+    answered_at: params.answeredAt ?? null,
+  }
+  await publishOwnerEvent(params.ownerUserId, "call-answered", payload)
 }
 
 /** Fired when a call reaches a terminal status (updates missed + talk time). */

@@ -2,7 +2,7 @@
 
 // Answered-call intake sheet — vehicle cascade, CRM autosave, unassigned job pool on dismiss.
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react"
 import Link from "next/link"
 import { ChevronDown, Loader2, Phone } from "lucide-react"
 import { VehiclePickerCascade } from "@/components/vehicle-picker-cascade"
@@ -18,7 +18,7 @@ import {
   type ActiveCallRow,
 } from "@/lib/hooks/use-active-call-form"
 import { getPusherClient, isRealtimeClientConfigured } from "@/lib/realtime/pusher-client"
-import type { OwnerCallCompletedPayload } from "@/lib/realtime/owner-call-event-types"
+import type { OwnerCallAnsweredPayload, OwnerCallCompletedPayload } from "@/lib/realtime/owner-call-event-types"
 import { isMissedCallTelemetry, talkSecondsFromCompletedPayload } from "@/lib/realtime/owner-call-event-types"
 import { cn } from "@/lib/utils"
 
@@ -42,6 +42,40 @@ function persistSeen(s: Set<string>) {
   }
 }
 
+function rowFromAnsweredPayload(payload: OwnerCallAnsweredPayload): ActiveCallRow | null {
+  const callLogId = String(payload.call_log_id ?? "").trim()
+  const fromNumber = String(payload.from_number ?? "").trim()
+  if (!callLogId || !fromNumber) return null
+  return {
+    id: callLogId,
+    from_number: fromNumber,
+    to_number: payload.to_number ?? "",
+    caller_name: null,
+    answered_at: payload.answered_at ?? new Date().toISOString(),
+  }
+}
+
+function fetchFirstUnseenAnsweredCall(seen: Set<string>): Promise<ActiveCallRow | null> {
+  return fetch("/api/calls/answered-recent", { credentials: "include" })
+    .then((r) => (r.ok ? r.json() : { calls: [] }))
+    .then((data: { calls?: ActiveCallRow[] }) => {
+      const calls = Array.isArray(data.calls) ? data.calls : []
+      for (const row of calls) {
+        if (!seen.has(row.id)) {
+          return {
+            id: row.id,
+            from_number: row.from_number,
+            to_number: row.to_number ?? "",
+            caller_name: row.caller_name ?? null,
+            answered_at: row.answered_at ?? null,
+          }
+        }
+      }
+      return null
+    })
+    .catch(() => null)
+}
+
 function rowFromCompletedPayload(payload: OwnerCallCompletedPayload): ActiveCallRow | null {
   if (!payload.call_log_id || !payload.from_number) return null
   if (isMissedCallTelemetry(payload)) return null
@@ -53,6 +87,15 @@ function rowFromCompletedPayload(payload: OwnerCallCompletedPayload): ActiveCall
     caller_name: null,
     answered_at: new Date().toISOString(),
   }
+}
+
+function showCallRow(
+  setCurrent: Dispatch<SetStateAction<ActiveCallRow | null>>,
+  row: ActiveCallRow,
+  seen: Set<string>
+) {
+  if (seen.has(row.id)) return
+  setCurrent((prev) => prev ?? row)
 }
 
 export type CallAnsweredModalProps = {
@@ -79,40 +122,47 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
   useEffect(() => {
     if (!enabled || !ownerUserId) return
 
-    if (isRealtimeClientConfigured()) {
-      const pusher = getPusherClient()
-      if (!pusher) return
-      const channel = pusher.subscribe(`owner-${ownerUserId}`)
+    let cancelled = false
+    void fetchFirstUnseenAnsweredCall(seenRef.current).then((row) => {
+      if (cancelled || !row) return
+      showCallRow(setCurrent, row, seenRef.current)
+    })
 
-      const onCompleted = (payload: OwnerCallCompletedPayload) => {
-        const row = rowFromCompletedPayload(payload)
-        if (!row || seenRef.current.has(row.id)) return
-        setCurrent((prev) => prev ?? row)
-      }
-
-      channel.bind("call-completed", onCompleted)
+    if (!isRealtimeClientConfigured()) {
       return () => {
-        channel.unbind("call-completed", onCompleted)
-        pusher.unsubscribe(`owner-${ownerUserId}`)
+        cancelled = true
       }
     }
 
-    let cancelled = false
-    fetch("/api/calls/answered-recent", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : { calls: [] }))
-      .then((data: { calls?: ActiveCallRow[] }) => {
-        if (cancelled) return
-        const calls = Array.isArray(data.calls) ? data.calls : []
-        for (const row of calls) {
-          if (!seenRef.current.has(row.id)) {
-            setCurrent((prev) => prev ?? row)
-            break
-          }
-        }
-      })
-      .catch(() => {})
+    const pusher = getPusherClient()
+    if (!pusher) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const channelName = `owner-${ownerUserId}`
+    const channel = pusher.subscribe(channelName)
+
+    const onAnswered = (payload: OwnerCallAnsweredPayload) => {
+      const row = rowFromAnsweredPayload(payload)
+      if (!row) return
+      showCallRow(setCurrent, row, seenRef.current)
+    }
+
+    const onCompleted = (payload: OwnerCallCompletedPayload) => {
+      const row = rowFromCompletedPayload(payload)
+      if (!row) return
+      showCallRow(setCurrent, row, seenRef.current)
+    }
+
+    channel.bind("call-answered", onAnswered)
+    channel.bind("call-completed", onCompleted)
     return () => {
       cancelled = true
+      channel.unbind("call-answered", onAnswered)
+      channel.unbind("call-completed", onCompleted)
+      pusher.unsubscribe(channelName)
     }
   }, [enabled, ownerUserId])
 
@@ -129,19 +179,10 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
     persistSeen(seenRef.current)
     const closedId = current.id
     setCurrent(null)
-    if (!isRealtimeClientConfigured()) return
-    void fetch("/api/calls/answered-recent", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : { calls: [] }))
-      .then((data: { calls?: ActiveCallRow[] }) => {
-        const calls = Array.isArray(data.calls) ? data.calls : []
-        for (const row of calls) {
-          if (row.id === closedId) continue
-          if (!seenRef.current.has(row.id)) {
-            setCurrent(row)
-            return
-          }
-        }
-      })
+    void fetchFirstUnseenAnsweredCall(seenRef.current).then((row) => {
+      if (!row || row.id === closedId) return
+      showCallRow(setCurrent, row, seenRef.current)
+    })
   }, [activeOrganizationId, createJob, current, form.displayName])
 
   if (!enabled) return null

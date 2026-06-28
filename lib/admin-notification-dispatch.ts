@@ -15,7 +15,7 @@ export type PreparedOwnerEvent =
   | { publish: false }
 
 function ownerEventKind(event: OwnerChannelEvent): "inbound" | "disposition" | "system" | "other" {
-  if (event === "call-initiated" || event === "call-completed") return "inbound"
+  if (event === "call-initiated" || event === "call-answered" || event === "call-completed") return "inbound"
   if (
     event === "job-booked" ||
     event === "disposition-updated" ||

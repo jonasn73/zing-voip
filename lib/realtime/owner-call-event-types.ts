@@ -8,6 +8,16 @@ export type OwnerCallInitiatedPayload = {
   organization_id?: string | null
 }
 
+/** Fired when an inbound call is bridged / picked up — drives the intake sheet immediately. */
+export type OwnerCallAnsweredPayload = {
+  call_sid: string
+  call_log_id: string
+  from_number: string
+  to_number?: string | null
+  organization_id?: string | null
+  answered_at?: string | null
+}
+
 /** Fired when a call reaches a terminal status (hangup / no-answer / etc.). */
 export type OwnerCallCompletedPayload = {
   call_sid: string
@@ -22,7 +32,7 @@ export type OwnerCallCompletedPayload = {
   status?: string | null
 }
 
-export type OwnerCallChannelEvent = "call-initiated" | "call-completed"
+export type OwnerCallChannelEvent = "call-initiated" | "call-answered" | "call-completed"
 
 /** Normalize E.164 / display numbers to digits-only for workspace line matching. */
 export function normalizeCallEventPhoneDigits(raw: string | null | undefined): string {

@@ -3150,6 +3150,32 @@ async function notifyInboundCallInitiatedTelemetry(
   }
 }
 
+/** Push call-answered so the intake sheet opens as soon as the caller is bridged. */
+async function notifyInboundCallAnsweredTelemetry(params: {
+  ownerUserId: string
+  callSid: string
+  callLogId: string
+  fromNumber: string
+  toNumber: string
+  answeredAt: string | null
+}): Promise<void> {
+  try {
+    const { broadcastCallAnswered } = await import("@/lib/call-telemetry-realtime")
+    const line = await getActivePhoneNumberByE164(params.toNumber).catch(() => null)
+    await broadcastCallAnswered({
+      ownerUserId: params.ownerUserId,
+      callSid: params.callSid,
+      callLogId: params.callLogId,
+      fromNumber: params.fromNumber,
+      toNumber: params.toNumber,
+      organizationId: line?.organization_id ?? null,
+      answeredAt: params.answeredAt,
+    })
+  } catch (e) {
+    console.warn("[db] call-answered telemetry publish failed:", e)
+  }
+}
+
 /**
  * If the inbound TeXML handler never wrote a row (DB error, etc.), create one when the Dial action hits fallback.
  * Avoids empty dashboard when the call still reached voicemail / AI.
@@ -3384,40 +3410,82 @@ export async function recordCallStatusEvent(
   const sql = getSql()
   const normalizedStatus = callStatus.trim().toLowerCase().replace(/_/g, "-")
   const occurredAt = occurredAtIso ? new Date(occurredAtIso) : new Date()
+  const providerSid = providerCallSid.trim()
   try {
-    await sql`
-      UPDATE call_logs
-      SET
-        status = ${normalizedStatus},
-        duration_seconds = CASE
-          WHEN ${normalizedStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled')
-            AND answered_at IS NOT NULL THEN
-            GREATEST(
-              ${durationSeconds},
-              EXTRACT(EPOCH FROM (${occurredAt} - answered_at))::int
-            )
-          ELSE GREATEST(COALESCE(duration_seconds, 0), ${durationSeconds})
-        END,
-        answered_at = CASE
-          WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND answered_at IS NULL THEN ${occurredAt}
-          ELSE answered_at
-        END,
-        ended_at = CASE
-          WHEN ${normalizedStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled') THEN ${occurredAt}
-          ELSE ended_at
-        END,
-        setup_duration_ms = CASE
-          WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
-            EXTRACT(EPOCH FROM (${occurredAt} - first_ring_at))::int * 1000
-          ELSE setup_duration_ms
-        END,
-        post_dial_delay_ms = CASE
-          WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND first_ring_at IS NOT NULL THEN
-            EXTRACT(EPOCH FROM (${occurredAt} - first_ring_at))::int * 1000
-          ELSE post_dial_delay_ms
-        END
-      WHERE provider_call_sid = ${providerCallSid} OR twilio_call_sid = ${providerCallSid}
+    const rows = await sql`
+      WITH target AS (
+        SELECT id, user_id, from_number, to_number, call_type, answered_at
+        FROM call_logs
+        WHERE provider_call_sid = ${providerSid} OR twilio_call_sid = ${providerSid}
+        LIMIT 1
+      ),
+      updated AS (
+        UPDATE call_logs cl
+        SET
+          status = ${normalizedStatus},
+          duration_seconds = CASE
+            WHEN ${normalizedStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled')
+              AND cl.answered_at IS NOT NULL THEN
+              GREATEST(
+                ${durationSeconds},
+                EXTRACT(EPOCH FROM (${occurredAt} - cl.answered_at))::int
+              )
+            ELSE GREATEST(COALESCE(cl.duration_seconds, 0), ${durationSeconds})
+          END,
+          answered_at = CASE
+            WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND cl.answered_at IS NULL THEN ${occurredAt}
+            ELSE cl.answered_at
+          END,
+          ended_at = CASE
+            WHEN ${normalizedStatus} IN ('completed', 'busy', 'failed', 'no-answer', 'canceled') THEN ${occurredAt}
+            ELSE cl.ended_at
+          END,
+          setup_duration_ms = CASE
+            WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND cl.first_ring_at IS NOT NULL THEN
+              EXTRACT(EPOCH FROM (${occurredAt} - cl.first_ring_at))::int * 1000
+            ELSE cl.setup_duration_ms
+          END,
+          post_dial_delay_ms = CASE
+            WHEN ${normalizedStatus} IN ('answered', 'in-progress', 'completed') AND cl.first_ring_at IS NOT NULL THEN
+              EXTRACT(EPOCH FROM (${occurredAt} - cl.first_ring_at))::int * 1000
+            ELSE cl.post_dial_delay_ms
+          END
+        FROM target t
+        WHERE cl.id = t.id
+        RETURNING cl.id, cl.user_id, cl.from_number, cl.to_number, cl.call_type, cl.answered_at
+      )
+      SELECT
+        u.id,
+        u.user_id,
+        u.from_number,
+        u.to_number,
+        u.call_type,
+        u.answered_at,
+        (t.answered_at IS NULL AND u.answered_at IS NOT NULL) AS newly_answered
+      FROM updated u
+      JOIN target t ON t.id = u.id
     `
+    const row = rows[0] as
+      | {
+          id: string
+          user_id: string
+          from_number: string
+          to_number: string
+          call_type: string
+          answered_at: Date | string | null
+          newly_answered: boolean
+        }
+      | undefined
+    if (row?.newly_answered && row.call_type === "incoming") {
+      void notifyInboundCallAnsweredTelemetry({
+        ownerUserId: String(row.user_id),
+        callSid: providerSid,
+        callLogId: String(row.id),
+        fromNumber: String(row.from_number ?? ""),
+        toNumber: String(row.to_number ?? ""),
+        answeredAt: row.answered_at ? String(row.answered_at) : null,
+      })
+    }
   } catch (e) {
     // scripts/007 timing columns not migrated yet — fall back to status + duration only.
     if (!isMissing007TimingColumnError(e)) throw e

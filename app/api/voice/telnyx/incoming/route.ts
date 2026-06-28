@@ -407,7 +407,7 @@ function resolveInboundOutboundCallerId(
  * Hot path: return `<Dial>` immediately when routing row already has a PSTN target (receptionist or owner).
  * Ringback during setup: Telnyx `ringTone="us"` (or `audioUrl` via ZING_INBOUND_DIAL_RINGBACK_AUDIO_URL) + answerOnBridge.
  */
-function tryFastInboundPstnDial(params: {
+async function tryFastInboundPstnDial(params: {
   routing: IncomingRoutingRowNonNull
   businessLineE164: string
   calledNumber: string
@@ -417,7 +417,7 @@ function tryFastInboundPstnDial(params: {
   appUrl: string
   perfStartMs?: number
   greetingPassDone?: boolean
-}): IncomingCallResult | null {
+}): Promise<IncomingCallResult | null> {
   const { routing, businessLineE164, calledNumber, callerNumber, callSid, callerName, appUrl, perfStartMs, greetingPassDone } =
     params
   const greetingEnabled = isInboundCallerGreetingEnabled(routing)
@@ -465,6 +465,8 @@ function tryFastInboundPstnDial(params: {
   // Drives owner dashboard `call-answered` via /api/voice/telnyx/receptionist-answer.
   const answerUrl = buildReceptionistAnswerUrl({
     appUrl,
+    ownerUserId: routing.user_id,
+    toNumber: businessLineE164 || normalizePhoneNumberE164(calledNumber),
     ...(routing.selected_receptionist_id ? { receptionistId: routing.selected_receptionist_id } : {}),
     callSid,
     businessType: "generic",
@@ -506,24 +508,22 @@ function tryFastInboundPstnDial(params: {
         includeRingback,
       })
 
-  after(() => {
-    void insertCallLog({
-      user_id: routing.user_id,
-      provider_call_sid: callSid,
-      from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
-      to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
-      caller_name: callerName,
-      call_type: "incoming",
-      status: "ringing",
-      duration_seconds: 0,
-      routed_to_receptionist_id: hasReceptionist ? routing.selected_receptionist_id : null,
-      routed_to_name: hasReceptionist ? routing.receptionist_name : null,
-      has_recording: false,
-      recording_url: null,
-      recording_duration_seconds: null,
-    }).catch((logErr) => {
-      console.error("[Sigo] Call log insert failed (fast path):", logErr)
-    })
+  await insertCallLog({
+    user_id: routing.user_id,
+    provider_call_sid: callSid,
+    from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
+    to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
+    caller_name: callerName,
+    call_type: "incoming",
+    status: "ringing",
+    duration_seconds: 0,
+    routed_to_receptionist_id: hasReceptionist ? routing.selected_receptionist_id : null,
+    routed_to_name: hasReceptionist ? routing.receptionist_name : null,
+    has_recording: false,
+    recording_url: null,
+    recording_duration_seconds: null,
+  }).catch((logErr) => {
+    console.error("[Sigo] Call log insert failed (fast path):", logErr)
   })
 
   console.log(
@@ -613,24 +613,22 @@ async function tryRoutingPoolInboundDial(params: {
   })
 
   const firstRecv = match.receptionists[0]
-  after(() => {
-    void insertCallLog({
-      user_id: routing.user_id,
-      provider_call_sid: callSid,
-      from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
-      to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
-      caller_name: callerName,
-      call_type: "incoming",
-      status: "ringing",
-      duration_seconds: 0,
-      routed_to_receptionist_id: firstRecv?.id ?? null,
-      routed_to_name: firstRecv?.name ?? `Pool (${match.industry_tag})`,
-      has_recording: false,
-      recording_url: null,
-      recording_duration_seconds: null,
-    }).catch((logErr) => {
-      console.error("[Sigo] Call log insert failed (routing pool path):", logErr)
-    })
+  await insertCallLog({
+    user_id: routing.user_id,
+    provider_call_sid: callSid,
+    from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
+    to_number: businessLineE164 || normalizePhoneNumberE164(calledNumber),
+    caller_name: callerName,
+    call_type: "incoming",
+    status: "ringing",
+    duration_seconds: 0,
+    routed_to_receptionist_id: firstRecv?.id ?? null,
+    routed_to_name: firstRecv?.name ?? `Pool (${match.industry_tag})`,
+    has_recording: false,
+    recording_url: null,
+    recording_duration_seconds: null,
+  }).catch((logErr) => {
+    console.error("[Sigo] Call log insert failed (routing pool path):", logErr)
   })
 
   console.log(
@@ -823,7 +821,7 @@ async function handleIncomingCall(
       }
 
       if (routing.receptionist_phone?.trim() || routing.owner_phone?.trim()) {
-        const fast = tryFastInboundPstnDial({
+        const fast = await tryFastInboundPstnDial({
           routing,
           businessLineE164,
           calledNumber,
@@ -1007,11 +1005,9 @@ async function handleIncomingCall(
     }
     const hasReceptionist = Boolean(selectedReceptionistId && receptionistDialE164)
 
-    // 4. Log the incoming call (don't let logging failures break call routing)
+    // 4. Log the incoming call before `<Dial>` so answer webhooks can broadcast immediately.
     try {
-      // Fire-and-forget so Telnyx doesn't wait for database writes.
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      void insertCallLog({
+      await insertCallLog({
         user_id: routing.user_id,
         provider_call_sid: callSid,
         from_number: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : "Unknown",
@@ -1025,8 +1021,6 @@ async function handleIncomingCall(
         has_recording: false,
         recording_url: null,
         recording_duration_seconds: null,
-      }).catch((logErr) => {
-        console.error("[Sigo] Call log insert failed (continuing with routing):", logErr)
       })
     } catch (logErr) {
       console.error("[Sigo] Call log insert failed (continuing with routing):", logErr)
@@ -1307,6 +1301,8 @@ async function handleIncomingCall(
       const recvAnswerUrl = selectedReceptionistId
         ? buildReceptionistAnswerUrl({
             appUrl,
+            ownerUserId: routing.user_id,
+            toNumber: businessLineE164 || normalizePhoneNumberE164(calledNumber),
             receptionistId: selectedReceptionistId,
             callSid,
             businessType: "generic",
@@ -1316,6 +1312,8 @@ async function handleIncomingCall(
           })
         : buildReceptionistAnswerUrl({
             appUrl,
+            ownerUserId: routing.user_id,
+            toNumber: businessLineE164 || normalizePhoneNumberE164(calledNumber),
             callSid,
             businessType: "generic",
             callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
@@ -1328,6 +1326,8 @@ async function handleIncomingCall(
       if (debug) console.log(`[Sigo] No receptionist assigned, routing to owner: ${ownerPhone}`)
       const ownerAnswerUrl = buildReceptionistAnswerUrl({
         appUrl,
+        ownerUserId: routing.user_id,
+        toNumber: businessLineE164 || normalizePhoneNumberE164(calledNumber),
         callSid,
         businessType: "generic",
         callerNumber: callerNumber.trim() ? normalizePhoneNumberE164(callerNumber) : null,
@@ -1475,7 +1475,7 @@ async function tryFastInboundReceptionistResponse(
       directPstnLogNumber(fields, calledNumberRaw)
   )
 
-  const fast = tryFastInboundPstnDial({
+  const fast = await tryFastInboundPstnDial({
     routing,
     businessLineE164,
     calledNumber: calledNumberRaw,

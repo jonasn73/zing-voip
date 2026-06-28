@@ -150,6 +150,8 @@ export function buildRoutingPoolDialResponse(params: {
       if (!isReasonablePstnDialString(e164)) continue
       answerUrlByE164[e164] = buildReceptionistAnswerUrl({
         appUrl: params.answer.appUrl,
+        ownerUserId: params.match.line.user_id,
+        toNumber: params.match.line.number,
         receptionistId: r.id,
         callSid: params.answer.callSid,
         businessType,

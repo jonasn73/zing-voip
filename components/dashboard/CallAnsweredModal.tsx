@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils"
 const SEEN_KEY = "zing_answered_customer_popup_seen_v1"
 /** After ring, check answered-recent at these offsets (ms) — triggered by call-initiated, not a global poll. */
 const ANSWERED_LOOKUP_DELAYS_MS = [800, 2000, 4000, 8000, 15000, 30000]
+/** Safety net when Pusher or the answer webhook race — only while the dashboard tab is visible. */
+const ANSWERED_VISIBILITY_POLL_MS = 5000
 
 function loadSeen(): Set<string> {
   try {
@@ -154,9 +156,15 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
 
     tryShowAnsweredCall()
 
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return
+      tryShowAnsweredCall()
+    }, ANSWERED_VISIBILITY_POLL_MS)
+
     if (!isRealtimeClientConfigured()) {
       return () => {
         cancelled = true
+        window.clearInterval(pollId)
         for (const timer of lookupTimers) window.clearTimeout(timer)
       }
     }
@@ -165,6 +173,7 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
     if (!pusher) {
       return () => {
         cancelled = true
+        window.clearInterval(pollId)
         for (const timer of lookupTimers) window.clearTimeout(timer)
       }
     }
@@ -193,6 +202,7 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
     channel.bind("call-completed", onCompleted)
     return () => {
       cancelled = true
+      window.clearInterval(pollId)
       for (const timer of lookupTimers) window.clearTimeout(timer)
       channel.unbind("call-initiated", onInitiated)
       channel.unbind("call-answered", onAnswered)

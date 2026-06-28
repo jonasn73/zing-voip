@@ -6,6 +6,10 @@ import type { ReceptionistBusinessType } from "@/lib/business-type"
 
 export function buildReceptionistAnswerUrl(params: {
   appUrl: string
+  /** Business owner user id — used if the call log row is not written yet. */
+  ownerUserId: string
+  /** Business DID (E.164) — stored on the call log when backfilling. */
+  toNumber?: string | null
   /** Optional — omit for owner-only legs (owner CRM still gets the Pusher event). */
   receptionistId?: string | null
   callSid: string
@@ -18,6 +22,8 @@ export function buildReceptionistAnswerUrl(params: {
 }): string {
   const base = params.appUrl.replace(/\/+$/, "")
   const qs = new URLSearchParams()
+  qs.set("u", params.ownerUserId.trim())
+  if (params.toNumber?.trim()) qs.set("to", params.toNumber.trim())
   if (params.receptionistId?.trim()) qs.set("r", params.receptionistId.trim())
   if (params.callSid) qs.set("cl", params.callSid)
   qs.set("bt", params.businessType)

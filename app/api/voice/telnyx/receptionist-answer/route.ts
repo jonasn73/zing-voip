@@ -89,7 +89,13 @@ function scheduleAnsweredSideEffects(req: NextRequest, receptionistId?: string |
   if (!callSid) return
   after(async () => {
     try {
-      await notifyOwnerInboundCallAnswered({ providerCallSid: callSid })
+      await notifyOwnerInboundCallAnswered({
+        providerCallSid: callSid,
+        ownerUserId: param(req, "u", "ownerUserId"),
+        fromNumber: param(req, "from", "caller"),
+        toNumber: param(req, "to"),
+        callerName: param(req, "cn", "callerName"),
+      })
     } catch (e) {
       console.error("[receptionist-answer] owner call-answered broadcast failed:", e)
     }

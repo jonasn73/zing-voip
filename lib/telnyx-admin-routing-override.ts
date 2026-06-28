@@ -86,6 +86,8 @@ export function buildAdminRoutingOverrideDial(params: {
 
   const answerUrl = buildReceptionistAnswerUrl({
     appUrl: params.appUrl,
+    ownerUserId: params.routing.user_id,
+    toNumber: params.businessLineE164,
     callSid: params.callSid,
     businessType: "generic",
     callerNumber: params.callerNumber.trim() || null,

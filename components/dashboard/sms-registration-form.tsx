@@ -149,13 +149,27 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-      const json = await res.json().catch(() => ({}))
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        data?: {
+          registration?: SmsRegistration
+          submission_summary?: SmsRegistrationSubmissionSummary | null
+          telnyx_brand_id?: string | null
+          telnyx_campaign_id?: string | null
+        }
+      }
       if (!res.ok) throw new Error(json.error || "Could not submit registration")
       setPending(true)
-      if (json.data?.registration) setExisting(json.data.registration as SmsRegistration)
+      if (json.data?.registration) setExisting(json.data.registration)
+      if (json.data?.submission_summary) setSubmissionSummary(json.data.submission_summary)
+      const brandId = json.data?.telnyx_brand_id?.trim()
+      const campaignId = json.data?.telnyx_campaign_id?.trim()
+      const carrierRef = campaignId ? `Campaign ${campaignId}` : brandId ? `Brand ${brandId}` : null
       toast({
         title: "Registration submitted",
-        description: "Carriers are reviewing your business profile. SMS alerts unlock after approval.",
+        description: carrierRef
+          ? `Sent to Telnyx (${carrierRef}). Carriers usually review in 1–3 business days.`
+          : "Carriers are reviewing your business profile. SMS alerts unlock after approval.",
       })
       notifyCarrierRegistrationUpdated()
       await load()
@@ -415,7 +429,7 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
           </button>
         ) : null}
       </div>
-      {existing ? (
+      {existing && !pending ? (
         <p className="text-[11px] text-zinc-500">Last saved draft loaded — submit to send for carrier review.</p>
       ) : null}
     </form>

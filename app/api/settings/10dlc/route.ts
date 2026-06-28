@@ -96,6 +96,9 @@ export async function POST(req: NextRequest) {
       ? await getMessaging10DlcRegistration(userId, organizationId)
       : await getMessaging10DlcRegistration(userId)
 
+    const compliance = await getWorkspace10DlcCompliance(userId, organizationId)
+    const submission_summary = await buildSmsRegistrationSubmissionSummary(userId, compliance)
+
     return NextResponse.json({
       success: true,
       message: "Your SMS business registration was submitted for carrier review.",
@@ -103,6 +106,11 @@ export async function POST(req: NextRequest) {
         registration: result.registration,
         organization_status: result.org_status,
         legacy_registration: legacy,
+        submission_summary,
+        telnyx_brand_id: legacy?.brand_id ?? null,
+        telnyx_campaign_id: legacy?.campaign_id ?? null,
+        telnyx_status: legacy?.status ?? null,
+        telnyx_status_detail: legacy?.status_detail ?? null,
       },
     })
   } catch (e) {

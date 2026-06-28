@@ -5213,6 +5213,22 @@ export async function deleteOrganizationForOwner(
   return { deleted_id: organizationId, fallback_organization_id: fallback.id }
 }
 
+/** Active Telnyx-linked lines ordered oldest-first — for picking a valid platform SMS sender. */
+export async function listProviderLinkedActiveNumbers(limit = 25): Promise<string[]> {
+  const sql = getSql()
+  const rows = (await sql`
+    SELECT number
+    FROM phone_numbers
+    WHERE status = 'active'
+      AND nullif(trim(coalesce(provider_number_sid, twilio_sid, '')), '') IS NOT NULL
+    ORDER BY created_at ASC
+    LIMIT ${limit}
+  `) as Record<string, unknown>[]
+  return rows
+    .map((row) => String(row.number ?? "").trim())
+    .filter(Boolean)
+}
+
 /** First active line linked to Telnyx (has provider SID) — usable as outbound SMS "from". */
 export async function getProviderLinkedActiveNumber(userId?: string): Promise<string | null> {
   const sql = getSql()

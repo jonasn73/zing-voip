@@ -267,10 +267,13 @@ export async function sendOperatorOnboardingOtp(params: {
 
   try {
     const { sendTelnyxSms } = await import("@/lib/telnyx-sms")
+    const { resolvePlatformSmsFromE164 } = await import("@/lib/platform-sms-sender")
+    const sender = await resolvePlatformSmsFromE164()
+    if (!sender.ok) throw new Error(sender.message)
     const result = await sendTelnyxSms({
       toE164: phone,
       text: `Your Lyncr operator verification code is ${code}. It expires in 10 minutes.`,
-      userId,
+      fromE164: sender.from_e164,
     })
     if (!result.ok) throw new Error(result.error || "SMS delivery failed")
     return { sent: true, normalizedPhone: phone }

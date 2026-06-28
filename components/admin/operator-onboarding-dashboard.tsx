@@ -44,6 +44,7 @@ export function OperatorOnboardingDashboard() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSentTo, setLastSentTo] = useState<string | null>(null)
+  const [manualLink, setManualLink] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -103,6 +104,7 @@ export function OperatorOnboardingDashboard() {
     e.preventDefault()
     setError(null)
     setLastSentTo(null)
+    setManualLink(null)
     setBusy(true)
     try {
       const assigned_workspaces = selectedWorkspaces
@@ -114,13 +116,24 @@ export function OperatorOnboardingDashboard() {
         body: JSON.stringify({ name, phone, assigned_workspaces }),
       })
       const json = (await res.json()) as {
-        data?: { phone_display?: string; sms_sent?: boolean; sms_error?: string }
+        data?: {
+          phone_display?: string
+          onboard_url?: string
+          sms_sent?: boolean
+          sms_error?: string
+        }
         error?: string
       }
       if (!res.ok) throw new Error(json.error ?? "Invite failed")
 
-      if (json.data?.sms_sent === false && json.data?.sms_error) {
-        throw new Error(json.data.sms_error)
+      if (json.data?.sms_sent === false) {
+        setManualLink(json.data?.onboard_url ?? null)
+        setError(
+          json.data?.sms_error ??
+            "Text could not be sent. Copy the setup link below and send it manually."
+        )
+        await load()
+        return
       }
 
       setLastSentTo(json.data?.phone_display ?? phone)
@@ -238,6 +251,11 @@ export function OperatorOnboardingDashboard() {
                 ) : null}
               </div>
               {error ? <p className="text-sm text-red-300">{error}</p> : null}
+              {manualLink ? (
+                <p className="break-all rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+                  Setup link (text manually): {manualLink}
+                </p>
+              ) : null}
               {lastSentTo ? (
                 <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
                   Text sent to {lastSentTo}. They can tap the link to finish setup.

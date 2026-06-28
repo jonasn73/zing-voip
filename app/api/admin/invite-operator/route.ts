@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireLyncrAdmin } from "@/lib/admin-api-guard"
 import { isReasonablePstnDialString, normalizePhoneNumberE164 } from "@/lib/db"
 import { inviteOperatorStub } from "@/lib/operator-onboarding"
+import { resolvePlatformSmsFromE164 } from "@/lib/platform-sms-sender"
 import { getAppUrl } from "@/lib/telnyx"
 import { sendTelnyxSms } from "@/lib/telnyx-sms"
 import type { OperatorAssignedWorkspace } from "@/lib/types"
@@ -45,10 +46,28 @@ export async function POST(req: NextRequest) {
     const onboardUrl = `${appUrl}/auth/onboard?token=${encodeURIComponent(token)}`
     const firstName = name.split(/\s+/)[0] || "there"
 
+    const sender = await resolvePlatformSmsFromE164()
+    if (!sender.ok) {
+      return NextResponse.json({
+        data: {
+          user_id: userId,
+          phone: normalizedPhone,
+          phone_display: formatPhoneDisplay(normalizedPhone),
+          name,
+          status: "PENDING_INVITE",
+          onboard_url: onboardUrl,
+          expires_at: expiresAt,
+          created,
+          sms_sent: false,
+          sms_error: sender.message,
+        },
+      })
+    }
+
     const smsResult = await sendTelnyxSms({
       toE164: normalizedPhone,
       text: `Hi ${firstName}! Lyncr invited you as a live operator. Tap to set up (expires in 48h): ${onboardUrl}`,
-      userId: ctx.userId,
+      fromE164: sender.from_e164,
     })
 
     return NextResponse.json({

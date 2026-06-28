@@ -14,6 +14,7 @@ import { RECEPTIONIST_INVITE_TTL_MS, upsertReceptionistInviteStub } from "@/lib/
 import { isReasonablePstnDialString, normalizePhoneNumberE164 } from "@/lib/db"
 import { getAppUrl } from "@/lib/telnyx"
 import { buildReceptionistInviteEmailPayload, sendReceptionistInviteEmail } from "@/lib/invite-email"
+import { resolvePlatformSmsFromE164 } from "@/lib/platform-sms-sender"
 import { sendTelnyxSms } from "@/lib/telnyx-sms"
 
 export async function POST(req: NextRequest) {
@@ -87,11 +88,19 @@ export async function POST(req: NextRequest) {
       const invitation = await createInvitation({ target, type, token, expiresAt })
       const register_url = `${appUrl}/register?token=${encodeURIComponent(token)}`
 
-      const smsResult = await sendTelnyxSms({
-        toE164: target,
-        text: `You're invited to join the Lyncr Operator Network. Activate your account (link expires in 48h): ${register_url}`,
-        userId: ctx.userId,
-      })
+      const sender = await resolvePlatformSmsFromE164()
+      const smsResult = sender.ok
+        ? await sendTelnyxSms({
+            toE164: target,
+            text: `You're invited to join the Lyncr Operator Network. Activate your account (link expires in 48h): ${register_url}`,
+            fromE164: sender.from_e164,
+          })
+        : { ok: false as const, error: sender.message }
+
+      const smsError =
+        smsResult.ok === false
+          ? smsResult.error
+          : smsResult.delivery_warning ?? undefined
 
       return NextResponse.json({
         data: {
@@ -100,7 +109,7 @@ export async function POST(req: NextRequest) {
           target,
           register_url,
           sent: smsResult.ok,
-          send_error: smsResult.ok ? smsResult.delivery_warning ?? undefined : smsResult.error,
+          send_error: smsError,
         },
       })
     }

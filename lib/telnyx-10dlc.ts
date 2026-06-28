@@ -135,10 +135,26 @@ export type CreateCampaignInput = {
   sample1: string
   sample2?: string | null
   messageFlow: string
+  /** Shown in opt-out auto-replies (required when subscriberOptout is true). */
+  businessName?: string | null
   helpMessage?: string
   optinKeywords?: string
+  optinMessage?: string
   optoutKeywords?: string
+  optoutMessage?: string
   helpKeywords?: string
+}
+
+/** TCR-required auto-reply when a subscriber texts STOP. */
+export function buildTenDlcOptoutMessage(businessName: string): string {
+  const biz = businessName.trim() || "this business"
+  return `You have been unsubscribed from ${biz} messages. No more messages will be sent. Reply START to resubscribe.`
+}
+
+/** TCR-required auto-reply when a subscriber texts START/YES. */
+export function buildTenDlcOptinMessage(businessName: string): string {
+  const biz = businessName.trim() || "this business"
+  return `You are subscribed to ${biz} service notifications. Reply STOP to opt out, HELP for help. Msg&data rates may apply.`
 }
 
 /** POST /10dlc/campaignBuilder — submit the campaign to TCR. Returns campaignId. */
@@ -151,19 +167,30 @@ export async function createTelnyx10DlcCampaign(
     return { ok: false, error: "TELNYX_API_KEY is not configured on the server." }
   }
 
+  const biz = input.businessName?.trim() || "this business"
+  const helpMessage =
+    input.helpMessage ||
+    `${biz} support: Reply HELP for help or STOP to unsubscribe. Msg&data rates may apply.`
+  const optinMessage = input.optinMessage || buildTenDlcOptinMessage(biz)
+  const optoutMessage = input.optoutMessage || buildTenDlcOptoutMessage(biz)
+
   const body: Record<string, unknown> = {
     brandId: input.brandId,
     usecase: input.useCase,
     description: input.description,
     sample1: input.sample1,
     messageFlow: input.messageFlow,
-    helpMessage: input.helpMessage || "Reply HELP for help or STOP to unsubscribe. Msg&data rates may apply.",
-    optinKeywords: input.optinKeywords || "START",
-    optoutKeywords: input.optoutKeywords || "STOP",
+    helpMessage,
+    optinKeywords: input.optinKeywords || "START, YES",
+    optinMessage,
+    optoutKeywords: input.optoutKeywords || "STOP, UNSUBSCRIBE, CANCEL",
+    optoutMessage,
     helpKeywords: input.helpKeywords || "HELP",
     subscriberOptin: true,
     subscriberOptout: true,
     subscriberHelp: true,
+    embeddedLink: true,
+    embeddedPhone: true,
   }
   if (input.sample2) body.sample2 = input.sample2
 
@@ -210,6 +237,16 @@ export function isTelnyxBrandNotReadyForCampaignError(message: string): boolean 
     blob.includes("brand is not verified") ||
     blob.includes("brand not verified")
   )
+}
+
+/** Failed campaign submit with an existing brand — safe to retry campaign without new brand. */
+export function isTelnyxCampaignOnlyFailure(detail: string | null | undefined): boolean {
+  const text = String(detail ?? "").trim()
+  if (!text) return false
+  const blob = text.toLowerCase()
+  if (!blob.includes("campaign registration failed")) return false
+  if (blob.includes("brand registration failed") || blob.includes("brand verification failed")) return false
+  return !isTelnyxBrandNotReadyForCampaignError(text)
 }
 
 /** GET /10dlc/brand/{id} — current TCR identity verification status. */

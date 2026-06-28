@@ -173,6 +173,19 @@ export function SmsRegistrationForm({ onSubmitted, variant = "page" }: Props) {
       })
       notifyCarrierRegistrationUpdated()
       await load()
+      if (variant === "modal") {
+        try {
+          await fetch("/api/messaging/10dlc/refresh", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ organization_id: resolveOrganizationId() ?? undefined }),
+          })
+          await load()
+        } catch {
+          /* load() already ran */
+        }
+      }
       onSubmitted?.()
     } catch (err) {
       const message = err instanceof Error ? err.message : "Try again"

@@ -19,6 +19,7 @@ import {
   assignNumberToTelnyx10DlcCampaign,
   getTelnyx10DlcRegistrationFeeCents,
   isTelnyxBrandNotReadyForCampaignError,
+  isTelnyxCampaignOnlyFailure,
   type TenDlcUseCaseKey,
 } from "@/lib/telnyx-10dlc"
 import { getStripeClient } from "@/lib/stripe-config"
@@ -148,6 +149,9 @@ export async function ensureMessaging10DlcSubmittedToCarrier(
   reg = await repairMisclassified10DlcFailure(userId, reg)
   const orgId = organizationId ?? reg.organization_id ?? null
   if (reg.campaign_id?.trim()) return { ok: true, registration: reg }
+  if (isTelnyxCampaignOnlyFailure(reg.status_detail)) {
+    return submitMessaging10DlcToTelnyx(userId, orgId)
+  }
   if (!SUBMITTED_TO_CARRIER_STATUSES.has(reg.status ?? "")) return { ok: true, registration: reg }
   return submitMessaging10DlcToTelnyx(userId, orgId)
 }
@@ -277,9 +281,11 @@ export async function submitMessaging10DlcToTelnyx(
   const sample2 = reg.sample_message_2?.trim() || copy.sample2
   const messageFlow = reg.message_flow?.trim() || copy.messageFlow
   const resolvedOrgId = orgId ?? reg.organization_id ?? null
-  const reuseBlocked = reg.status === "failed" || reg.status === "rejected"
+  const campaignOnlyFailure = isTelnyxCampaignOnlyFailure(reg.status_detail)
+  const staleBrand =
+    (reg.status === "failed" || reg.status === "rejected") && !campaignOnlyFailure
 
-  let brandId = reuseBlocked ? null : reg.brand_id
+  let brandId = staleBrand ? null : reg.brand_id
   if (!brandId) {
     const brand = await createTelnyx10DlcBrand({
       entityType: meta.entityType,
@@ -323,7 +329,8 @@ export async function submitMessaging10DlcToTelnyx(
     return { ok: true, registration: waiting }
   }
 
-  let campaignId = reuseBlocked ? null : reg.campaign_id
+  let campaignId =
+    reg.status === "failed" || reg.status === "rejected" ? null : reg.campaign_id
   if (!campaignId) {
     const campaign = await createTelnyx10DlcCampaign({
       brandId,
@@ -332,6 +339,7 @@ export async function submitMessaging10DlcToTelnyx(
       sample1,
       sample2,
       messageFlow,
+      businessName: displayName,
     })
     if (!campaign.ok) {
       if (isTelnyxBrandNotReadyForCampaignError(campaign.error)) {

@@ -140,7 +140,7 @@ export function CarrierRegistrationModal({ open, onOpenChange, initialEdit = fal
               variant="modal"
               onSubmitted={() => {
                 setForceForm(false)
-                void load()
+                void refreshFromCarrier()
               }}
             />
           )}

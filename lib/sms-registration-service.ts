@@ -16,7 +16,7 @@ import {
   type SmsRegistrationFormInput,
 } from "@/lib/sms-registration-constants"
 import { defaultCampaignCopy, submitMessaging10DlcToTelnyx } from "@/lib/messaging-10dlc"
-import { isTelnyxBrandNotReadyForCampaignError } from "@/lib/telnyx-10dlc"
+import { isTelnyxBrandNotReadyForCampaignError, isTelnyxCampaignOnlyFailure } from "@/lib/telnyx-10dlc"
 import type { SmsRegistration, SmsRegistrationOrgStatus } from "@/lib/types"
 
 export type { SmsRegistrationFormInput } from "@/lib/sms-registration-constants"
@@ -46,6 +46,20 @@ async function prepare10DlcResubmit(ownerUserId: string, orgUuid: string): Promi
 
   const stale = telnyx.status === "failed" || telnyx.status === "rejected"
   if (!stale) return
+
+  if (telnyx.brand_id && isTelnyxCampaignOnlyFailure(telnyx.status_detail)) {
+    await upsertMessaging10DlcRegistration(
+      ownerUserId,
+      {
+        campaign_id: null,
+        status: "paid",
+        status_detail: "Retrying campaign registration with corrected carrier fields…",
+      },
+      orgUuid
+    )
+    return
+  }
+
   await upsertMessaging10DlcRegistration(
     ownerUserId,
     {

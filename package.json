@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "audit:vehicle-keys": "npx tsx scripts/audit-vehicle-key-coverage.ts",
     "deploy:vercel": "npx vercel@latest deploy --prod --yes"
   },
   "dependencies": {

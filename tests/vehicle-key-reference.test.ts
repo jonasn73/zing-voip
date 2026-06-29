@@ -23,4 +23,10 @@ describe("lookupVehicleKeyProfiles", () => {
     expect(r?.profiles.some((p) => p.fcc_id === "GQ4-53T")).toBe(true)
     expect(r?.matched_model).toMatch(/Ram/i)
   })
+
+  it("maps Toyota Scion tC to Scion make in reference DB", () => {
+    const r = lookupVehicleKeyProfiles("2014", "TOYOTA", "Scion tC")
+    expect(r).not.toBeNull()
+    expect(r?.matched_model).toBe("tC")
+  })
 })

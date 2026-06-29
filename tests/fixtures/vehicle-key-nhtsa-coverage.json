@@ -1,0 +1,3223 @@
+{
+  "generated_at": "2026-06-29T19:54:08.747Z",
+  "description": "Filtered NHTSA YMM samples for locksmith FCC lookup coverage. Refresh: npm run audit:vehicle-keys",
+  "minimum_hit_rate": 0.53,
+  "must_resolve": [
+    {
+      "year": 2017,
+      "make": "Toyota",
+      "model": "RAV4"
+    },
+    {
+      "year": 2017,
+      "make": "CHEVROLET",
+      "model": "5500HD"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "1500"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-150"
+    },
+    {
+      "year": 2019,
+      "make": "JEEP",
+      "model": "Wrangler"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Civic"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Altima"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Silverado"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Sierra"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "2500"
+    }
+  ],
+  "miss_ok": [
+    {
+      "year": 2020,
+      "make": "TESLA",
+      "model": "Model 3"
+    },
+    {
+      "year": 2016,
+      "make": "BMW",
+      "model": "3 Series"
+    }
+  ],
+  "samples": [
+    {
+      "year": 2017,
+      "make": "Toyota",
+      "model": "RAV4",
+      "expect": "resolve"
+    },
+    {
+      "year": 2017,
+      "make": "CHEVROLET",
+      "model": "5500HD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "1500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-150",
+      "expect": "resolve"
+    },
+    {
+      "year": 2019,
+      "make": "JEEP",
+      "model": "Wrangler",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Civic",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Altima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Silverado",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Sierra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "2500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2020,
+      "make": "TESLA",
+      "model": "Model 3",
+      "expect": "miss_ok"
+    },
+    {
+      "year": 2016,
+      "make": "BMW",
+      "model": "3 Series",
+      "expect": "miss_ok"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "C-Max",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "E-150",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "E-250",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "E-350",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "E-450",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Edge",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Escape",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Expedition",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Explorer",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "F-150",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "F-250",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "F-350",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "F-450",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "F-550",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "F-650",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "F-750",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Fiesta",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Flex",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Focus",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "FORD",
+      "model": "Fusion",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Aveo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Camaro",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Captiva Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Corvette",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Cruze",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Equinox",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Express",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Impala",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Impala Limited",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Malibu",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Orlando",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Silverado",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Sonic",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Spark",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "SS",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Suburban",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Tahoe",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Traverse",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Trax",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "CHEVROLET",
+      "model": "Volt",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "4Runner",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Avalon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Camry",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Celica",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Corolla",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "FJ Cruiser",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Highlander",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Land Cruiser",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Paseo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Prius",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Prius C",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Prius V",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "RAV4",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Scion FR-S",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Scion iQ",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Scion tC",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Scion xB",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Scion xD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Sequoia",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "TOYOTA",
+      "model": "Sienna",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Accord",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Civic",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "CR-V",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "CR-Z",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "CR80R",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Crosstour",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "FCX Clarity",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Fireblade",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Fit",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Foreman",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "FourTrax Foreman",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "FourTrax Foreman Rubicon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "FourTrax Rancher",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "FourTrax Recon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "FourTrax Rincon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Fury",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Giorno",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Gold Wing",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Grom",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HONDA",
+      "model": "Hawk GT",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Altima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Armada",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Cube",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Frontier",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "GT-R",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Juke",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Leaf",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Maxima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Murano",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "NV",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Pathfinder",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Quest",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Rogue",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Rogue Select",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Sentra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Titan",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Versa",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Versa Note",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "NISSAN",
+      "model": "Xterra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "JEEP",
+      "model": "Cherokee",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "JEEP",
+      "model": "Compass",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "JEEP",
+      "model": "Grand Cherokee",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "JEEP",
+      "model": "Patriot",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "JEEP",
+      "model": "Wrangler",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Best Lane Enterprises dba Ramp Free",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Brammo Street Bikes",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Burkett's Autorama",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Cargo Van",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Chopper",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "CP80B",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "CP90B",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Cruiser",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Easton Custom L.L.C",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "EnduraMax",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Faith",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "FATT HOGG FRAMES",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Holiday Rambler",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "LXR",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Paramount Custom Cycles",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "PortAFrame",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "ProMaster 1500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "ProMaster 2500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "ProMaster 3500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "RAM",
+      "model": "Protorype",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "GMC",
+      "model": "Acadia",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "GMC",
+      "model": "Canyon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "GMC",
+      "model": "Savana",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "GMC",
+      "model": "Sierra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "GMC",
+      "model": "Terrain",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "GMC",
+      "model": "Yukon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Avenger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Challenger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Charger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Dart",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Durango",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Grand Caravan",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Journey",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Sprinter",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "DODGE",
+      "model": "Viper",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Accent",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Azera",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Elantra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Entourage",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Equus",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Genesis",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Genesis Coupe",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Santa Fe",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Santa Fe Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Sonata",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Tucson",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "HYUNDAI",
+      "model": "Veloster",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Cadenza",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Forte",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Miami",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Optima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Rio",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Rondo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Sedona",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Sorento",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Soul",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "KIA",
+      "model": "Sportage",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "SUBARU",
+      "model": "B9 Tribeca",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "SUBARU",
+      "model": "BRZ",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "SUBARU",
+      "model": "Forester",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "SUBARU",
+      "model": "Impreza",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "SUBARU",
+      "model": "Legacy",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "SUBARU",
+      "model": "Outback",
+      "expect": "resolve"
+    },
+    {
+      "year": 2014,
+      "make": "SUBARU",
+      "model": "XV CrossTrek",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "C-Max",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "E-350",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "E-450",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Ecosport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Edge",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Escape",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Expedition",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Expedition MAX",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Explorer",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-250",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-350",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-450",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-550",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-650",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "F-750",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Fiesta",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Flex",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Focus",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "FORD",
+      "model": "Fusion",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "3500/4500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "3500HD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "4500HD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "4500XD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "5500HD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "5500XD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "6500XD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Aveo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Bolt EV",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Bolt Incomplete",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Camaro",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Captiva Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "City Express",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Colorado",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Corvette",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Cruze",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Equinox",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Express",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Impala",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "CHEVROLET",
+      "model": "Malibu",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "4Runner",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Avalon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "C-HR",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Camry",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Celica",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Corolla",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "COROLLA iM",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Highlander",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Land Cruiser",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Mirai",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Paseo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Prius",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Prius C",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Prius Prime (PHEV)",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "RAV4",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Sequoia",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Sienna",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Tacoma",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Tundra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "TOYOTA",
+      "model": "Venza",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Accord",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Africa Twin",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Africa Twin Adventure Sports",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Civic Type R",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Clarity",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "CR-V",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "CR80R",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Fit",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Foreman",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "FourTrax Foreman",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "FourTrax Foreman Rubicon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "FourTrax Rancher",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "FourTrax Recon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "FourTrax Rincon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Fury",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Giorno",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Gold Wing",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Gold Wing Tour",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HONDA",
+      "model": "Grom",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Armada",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Frontier",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "GT-R",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Juke",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Kicks",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Leaf",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Maxima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Murano",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "NV",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Pathfinder",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Rogue",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Rogue Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Sentra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Titan",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Versa",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "NISSAN",
+      "model": "Versa Note",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "JEEP",
+      "model": "Cherokee",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "JEEP",
+      "model": "Compass",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "JEEP",
+      "model": "Grand Cherokee",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "JEEP",
+      "model": "Patriot",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "JEEP",
+      "model": "Renegade",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "JEEP",
+      "model": "Wrangler",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "JEEP",
+      "model": "Wrangler JK",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Brammo Street Bikes",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Burkett's Autorama",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Chopper",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "CP80B",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "CP90B",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Cruiser",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Easton Custom L.L.C",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "EnduraMax",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Faith",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "FATT HOGG FRAMES",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Holiday Rambler",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "HX-1000",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "HX-2000",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "HX-3000",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "JR RAMIRO",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "LXR",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "Paramount Custom Cycles",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "PortAFrame",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "ProMaster 1500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "RAM",
+      "model": "ProMaster 2500",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Acadia",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Canyon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Savana",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Terrain",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Yukon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "GMC",
+      "model": "Yukon XL",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "DODGE",
+      "model": "Challenger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "DODGE",
+      "model": "Charger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "DODGE",
+      "model": "Durango",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "DODGE",
+      "model": "Grand Caravan",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "DODGE",
+      "model": "Journey",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "DODGE",
+      "model": "Sprinter",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Accent",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Azera",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Elantra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Elantra GT",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Ioniq",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Kona",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Santa Fe",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Santa Fe Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Sonata",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Tucson",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "HYUNDAI",
+      "model": "Veloster",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Cadenza",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Forte",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Miami",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Niro",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Optima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Rio",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Sedona",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Sorento",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Soul",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Sportage",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "KIA",
+      "model": "Stinger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "SUBARU",
+      "model": "BRZ",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "SUBARU",
+      "model": "Crosstrek",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "SUBARU",
+      "model": "Forester",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "SUBARU",
+      "model": "Impreza",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "SUBARU",
+      "model": "Legacy",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "SUBARU",
+      "model": "Outback",
+      "expect": "resolve"
+    },
+    {
+      "year": 2018,
+      "make": "SUBARU",
+      "model": "WRX",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Bronco",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Bronco Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "E-350",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "E-450",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Ecosport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Edge",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Escape",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Expedition",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Expedition MAX",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Explorer",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-150",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-250",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-350",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-450",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-550",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-600",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-650",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "F-750",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Fiesta",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "FORD",
+      "model": "Flex",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "4500HD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "4500XD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "5500HD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "5500XD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "6500XD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "7500XD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Aveo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Blazer",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Bolt EUV",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Bolt EV",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Bolt Incomplete",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Camaro",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Captiva Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Colorado",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Corvette",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Cruze",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Equinox",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Express",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Impala",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "CHEVROLET",
+      "model": "Malibu",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "4Runner",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Avalon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "C-HR",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Camry",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Celica",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Corolla",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Corolla Cross",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "GR86",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Highlander",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Land Cruiser",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Mirai",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Paseo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Prius",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Prius Prime (PHEV)",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "RAV4",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "RAV4 Prime (PHEV)",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Sequoia",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Sienna",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Supra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "TOYOTA",
+      "model": "Tacoma",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Accord",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Africa Twin",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Africa Twin Adventure Sports",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Civic",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Civic Si",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "CR-V",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "CR80R",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Fireblade",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Foreman",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Foreman Rubicon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "FourTrax",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "FourTrax Foreman",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "FourTrax Foreman Rubicon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "FourTrax Recon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Fury",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Giorno",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Gold Wing",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Gold Wing Tour",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Grom",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HONDA",
+      "model": "Hawk GT",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Altima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Armada",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Frontier",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "GT-R",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Kicks",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Leaf",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Maxima",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Murano",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "NV",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Pathfinder",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Rogue",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Rogue Sport",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Sentra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Titan",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "NISSAN",
+      "model": "Versa",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Cherokee",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Compass",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Gladiator",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Grand Cherokee",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Grand Cherokee L",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Grand Wagoneer",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Renegade",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Wagoneer",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "JEEP",
+      "model": "Wrangler",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "B17 Bomber",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "B29 Super Fortress",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Burkett's Autorama",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Chopper",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "CP80B",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "CP90B",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Cruiser",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Easton Custom L.L.C",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "EnduraMax",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Faith",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "FATT HOGG FRAMES",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Framar",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Holiday Rambler",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "HX-1000",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "HX-2000",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "HX-3000",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "JR RAMIRO",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "LXR",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "Metro Tram",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "RAM",
+      "model": "P38 Lightning",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Acadia",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Canyon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Hummer EV Pickup",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Savana",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Sierra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Sierra HD",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Sierra Limited",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Terrain",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Yukon",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "GMC",
+      "model": "Yukon XL",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "DODGE",
+      "model": "Challenger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "DODGE",
+      "model": "Charger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "DODGE",
+      "model": "Durango",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "DODGE",
+      "model": "Grand Caravan",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "DODGE",
+      "model": "Journey",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "DODGE",
+      "model": "Sprinter",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Accent",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Elantra",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Elantra N",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Ioniq",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Ioniq 5",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Kona",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Kona N",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Nexo",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Palisade",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Santa Cruz",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Santa Fe",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Santa Fe XL",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Sonata",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Tucson",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Veloster N",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "HYUNDAI",
+      "model": "Venue",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Carnival",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "EV6",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Forte",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "K5",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Miami",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Niro",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Rio",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Seltos",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Sorento",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Soul",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Sportage",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Stinger",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "KIA",
+      "model": "Telluride",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "Ascent",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "BRZ",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "Crosstrek",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "Forester",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "Impreza",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "Legacy",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "Outback",
+      "expect": "resolve"
+    },
+    {
+      "year": 2022,
+      "make": "SUBARU",
+      "model": "WRX",
+      "expect": "resolve"
+    }
+  ],
+  "stats_at_generation": {
+    "total_resolve_expected": 517,
+    "hits": 301,
+    "misses": 216,
+    "hit_rate": 0.582,
+    "sample_misses": [
+      "2014 CHEVROLET Aveo",
+      "2014 CHEVROLET Orlando",
+      "2014 CHEVROLET Trax",
+      "2014 TOYOTA Celica",
+      "2014 TOYOTA FJ Cruiser",
+      "2014 TOYOTA Land Cruiser",
+      "2014 TOYOTA Paseo",
+      "2014 TOYOTA Scion FR-S",
+      "2014 TOYOTA Scion xD",
+      "2014 HONDA CR80R",
+      "2014 HONDA FCX Clarity",
+      "2014 HONDA Fireblade",
+      "2014 HONDA Fit",
+      "2014 HONDA Foreman",
+      "2014 HONDA FourTrax Foreman",
+      "2014 HONDA FourTrax Foreman Rubicon",
+      "2014 HONDA FourTrax Rancher",
+      "2014 HONDA FourTrax Recon",
+      "2014 HONDA FourTrax Rincon",
+      "2014 HONDA Fury",
+      "2014 HONDA Giorno",
+      "2014 HONDA Gold Wing",
+      "2014 HONDA Grom",
+      "2014 HONDA Hawk GT",
+      "2014 NISSAN GT-R",
+      "2014 NISSAN Xterra",
+      "2014 RAM Cargo Van",
+      "2014 RAM Chopper",
+      "2014 RAM CP80B",
+      "2014 RAM CP90B"
+    ]
+  }
+}

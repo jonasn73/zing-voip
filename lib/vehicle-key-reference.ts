@@ -141,6 +141,11 @@ function familyFallbackModels(makeRaw: string, modelRaw: string): string[] {
   if (make === "nissan" && /titan|frontier|nv/.test(model)) out.push("Titan", "Frontier", "NV")
   if (make === "honda" && /ridgeline|pilot/.test(model)) out.push("Ridgeline", "Pilot", "CR-V")
 
+  // Ford E-series vans → Econoline in locksmith references
+  if (make === "ford" && /^e\d{3}$/i.test(modelRaw.trim().replace(/-/g, ""))) {
+    out.push("Econoline")
+  }
+
   // Strip cab/bed suffixes: "Silverado 1500 Crew Cab" → try token contains "silverado"
   const stripped = modelRaw
     .replace(/\b(crew|regular|double|extended)\s*cab\b/gi, "")
@@ -151,6 +156,20 @@ function familyFallbackModels(makeRaw: string, modelRaw: string): string[] {
   }
 
   return [...new Set(out.map((m) => m.trim()).filter(Boolean))]
+}
+
+/** NHTSA sometimes lists Scion under Toyota make — reference DB uses Scion make. */
+function alternativeMakeModelPairs(
+  makeRaw: string,
+  modelRaw: string
+): Array<{ make: string; model: string }> {
+  const out: Array<{ make: string; model: string }> = []
+  const scionModel = modelRaw.match(/^scion\s+(.+)$/i)?.[1]?.trim()
+  if (scionModel) out.push({ make: "Scion", model: scionModel })
+  if (/^e-\d{3}$/i.test(modelRaw.trim()) && normalizeToken(makeRaw) === "ford") {
+    out.push({ make: "Ford", model: "Econoline" })
+  }
+  return out
 }
 
 function profilesForYearMakeModel(year: number, makeRaw: string, modelName: string): VehicleKeyProfile[] {
@@ -219,6 +238,17 @@ export function lookupVehicleKeyProfiles(
   let profiles = profilesForYearMakeModel(year, make, model)
   let matchedModel = model
   let matchType: "exact" | "family" = "exact"
+
+  if (profiles.length === 0) {
+    for (const alt of alternativeMakeModelPairs(make, model)) {
+      profiles = profilesForYearMakeModel(year, alt.make, alt.model)
+      if (profiles.length > 0) {
+        matchedModel = alt.model
+        matchType = "family"
+        break
+      }
+    }
+  }
 
   if (profiles.length === 0) {
     for (const candidate of familyFallbackModels(make, model)) {

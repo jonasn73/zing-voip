@@ -38,6 +38,18 @@ function normalizeToken(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "")
 }
 
+/** Locksmith DB often lists Ram trucks under Dodge (pre/post RAM brand split). */
+function equivalentMakeTokens(makeRaw: string): string[] {
+  const key = normalizeToken(makeRaw)
+  if (key === "ram" || key === "dodge") return ["ram", "dodge"]
+  return [key]
+}
+
+function makesMatch(rowMake: string, queryMake: string): boolean {
+  const rowKeys = new Set(equivalentMakeTokens(rowMake))
+  return equivalentMakeTokens(queryMake).some((k) => rowKeys.has(k))
+}
+
 function csvSplitLine(line: string): string[] {
   const out: string[] = []
   let cur = ""
@@ -115,6 +127,9 @@ function familyFallbackModels(makeRaw: string, modelRaw: string): string[] {
   if (make === "chevrolet" && isHdTruck) out.push("Silverado", "Express", "Suburban", "Tahoe")
   if (make === "gmc" && isHdTruck) out.push("Sierra", "Savana", "Yukon")
   if ((make === "ram" || make === "dodge") && isHdTruck) {
+    if (/^(1500|2500|3500|4500|5500)$/.test(model)) {
+      out.push(`Ram ${modelRaw.trim()}`)
+    }
     out.push("Ram 1500", "Ram 2500", "Ram 3500", "Ram 4500", "Ram 5500", "Ram")
   }
   if (make === "ford" && isHdTruck) {
@@ -139,18 +154,16 @@ function familyFallbackModels(makeRaw: string, modelRaw: string): string[] {
 }
 
 function profilesForYearMakeModel(year: number, makeRaw: string, modelName: string): VehicleKeyProfile[] {
-  const makeKey = normalizeToken(makeRaw)
   const modelKey = normalizeToken(modelName)
   return loadProfiles().filter(
-    (r) => r.year === year && normalizeToken(r.make) === makeKey && normalizeToken(r.model) === modelKey
+    (r) => r.year === year && makesMatch(r.make, makeRaw) && normalizeToken(r.model) === modelKey
   )
 }
 
 function profilesWithFuzzyModel(year: number, makeRaw: string, modelRaw: string): VehicleKeyProfile[] {
-  const makeKey = normalizeToken(makeRaw)
   const modelKey = normalizeToken(modelRaw)
   return loadProfiles().filter((r) => {
-    if (r.year !== year || normalizeToken(r.make) !== makeKey) return false
+    if (r.year !== year || !makesMatch(r.make, makeRaw)) return false
     const rowKey = normalizeToken(r.model)
     return rowKey.includes(modelKey) || modelKey.includes(rowKey)
   })

@@ -16,4 +16,11 @@ describe("lookupVehicleKeyProfiles", () => {
     expect(r?.matched_model).toBe("Silverado")
     expect(r?.profiles.some((p) => p.fcc_id.includes("M3N"))).toBe(true)
   })
+
+  it("matches 2014 RAM 1500 via Dodge Ram 1500 reference", () => {
+    const r = lookupVehicleKeyProfiles("2014", "RAM", "1500")
+    expect(r).not.toBeNull()
+    expect(r?.profiles.some((p) => p.fcc_id === "GQ4-53T")).toBe(true)
+    expect(r?.matched_model).toMatch(/Ram/i)
+  })
 })

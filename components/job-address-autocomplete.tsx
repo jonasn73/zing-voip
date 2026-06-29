@@ -107,7 +107,7 @@ export function JobAddressAutocomplete({
         ) : null}
       </div>
       {open && !validated && suggestions.length > 0 ? (
-        <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-border/70 bg-card py-1 shadow-lg top-full">
+        <ul className="absolute z-[130] mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-border/70 bg-card py-1 shadow-lg top-full">
           {suggestions.map((s) => (
             <li key={`${s.formatted}-${s.postal_code}`}>
               <button

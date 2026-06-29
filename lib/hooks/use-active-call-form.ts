@@ -4,6 +4,10 @@
 
 import { useCallback, useEffect, useState } from "react"
 import type { Customer } from "@/lib/types"
+import {
+  isCompleteStructuredAddress,
+  type StructuredAddress,
+} from "@/lib/structured-address"
 
 export type ActiveCallRow = {
   id: string
@@ -14,10 +18,10 @@ export type ActiveCallRow = {
 }
 
 export type ActiveCallFormState = {
-  /** Editable caller phone — used for CRM save + repeat-caller lookup. */
   phoneNumber: string
   displayName: string
-  companyName: string
+  /** Map-ready address from autocomplete (geocoded when picked). */
+  serviceAddress: StructuredAddress | null
   addressLine1: string
   addressLine2: string
   city: string
@@ -33,7 +37,7 @@ export type ActiveCallFormState = {
 const EMPTY_FORM: ActiveCallFormState = {
   phoneNumber: "",
   displayName: "",
-  companyName: "",
+  serviceAddress: null,
   addressLine1: "",
   addressLine2: "",
   city: "",
@@ -46,12 +50,24 @@ const EMPTY_FORM: ActiveCallFormState = {
   vehicleModel: "",
 }
 
-/** Copy saved customer fields into the intake form. */
+function flatAddressFromStructured(addr: StructuredAddress): Pick<
+  ActiveCallFormState,
+  "addressLine1" | "addressLine2" | "city" | "region" | "postalCode" | "country"
+> {
+  return {
+    addressLine1: [addr.street_number, addr.route].filter(Boolean).join(" ").trim(),
+    addressLine2: "",
+    city: addr.locality,
+    region: addr.admin_area,
+    postalCode: addr.postal_code,
+    country: "US",
+  }
+}
+
 function formFromCustomer(c: Customer, prev: ActiveCallFormState): ActiveCallFormState {
   return {
     ...prev,
     displayName: c.display_name || prev.displayName,
-    companyName: c.company_name || "",
     addressLine1: c.address_line1 || "",
     addressLine2: c.address_line2 || "",
     city: c.city || "",
@@ -59,11 +75,11 @@ function formFromCustomer(c: Customer, prev: ActiveCallFormState): ActiveCallFor
     postalCode: c.postal_code || "",
     country: c.country || "US",
     notes: c.notes || "",
+    serviceAddress: null,
   }
 }
 
 export function useActiveCallForm(current: ActiveCallRow | null) {
-  const [moreOpen, setMoreOpen] = useState(false)
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [jobState, setJobState] = useState<"idle" | "creating" | "created" | "error">("idle")
   const [jobError, setJobError] = useState<string | null>(null)
@@ -83,18 +99,23 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     }))
   }, [])
 
-  // Reset only when a *different* call opens — not on every poll refresh.
+  const setServiceAddress = useCallback((addr: StructuredAddress | null) => {
+    setForm((prev) => ({
+      ...prev,
+      serviceAddress: addr,
+      ...(addr ? flatAddressFromStructured(addr) : {}),
+    }))
+  }, [])
+
   useEffect(() => {
     if (!callLogId || !current) {
       setForm(EMPTY_FORM)
-      setMoreOpen(false)
       setSaveState("idle")
       setJobState("idle")
       setJobError(null)
       return
     }
 
-    setMoreOpen(false)
     setSaveState("idle")
     setJobState("idle")
     setJobError(null)
@@ -105,7 +126,6 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     })
   }, [callLogId, current?.from_number, current?.caller_name])
 
-  // Look up an existing customer whenever the phone field changes.
   useEffect(() => {
     if (!callLogId) return
     const phone = form.phoneNumber.trim()
@@ -131,7 +151,6 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     }
   }, [callLogId, form.phoneNumber])
 
-  // Debounced autosave to Customers.
   useEffect(() => {
     if (!callLogId || !current) return
     const phone = form.phoneNumber.trim()
@@ -147,7 +166,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
         body: JSON.stringify({
           phone_e164: phone,
           display_name: form.displayName,
-          company_name: form.companyName,
+          company_name: "",
           address_line1: form.addressLine1,
           address_line2: form.addressLine2,
           city: form.city,
@@ -171,6 +190,18 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     async (organizationId?: string | null): Promise<boolean> => {
       if (!current) return false
       const phone = form.phoneNumber.trim() || current.from_number
+      const name = form.displayName.trim()
+      if (!name) {
+        setJobState("error")
+        setJobError("Enter the caller name before sending to dispatch.")
+        return false
+      }
+      if (!form.serviceAddress || !isCompleteStructuredAddress(form.serviceAddress)) {
+        setJobState("error")
+        setJobError("Pick a complete service address from the suggestions so we can place a map pin.")
+        return false
+      }
+
       setJobState("creating")
       setJobError(null)
       try {
@@ -181,8 +212,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
           body: JSON.stringify({
             call_log_id: current.id,
             caller_e164: phone,
-            customer_name: form.displayName,
-            company_name: form.companyName,
+            customer_name: name,
             address_line1: form.addressLine1,
             address_line2: form.addressLine2,
             city: form.city,
@@ -193,6 +223,8 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
             vehicle_year: form.vehicleYear,
             vehicle_make: form.vehicleMake,
             vehicle_model: form.vehicleModel,
+            customer_lat: form.serviceAddress.lat,
+            customer_lng: form.serviceAddress.lng,
             organization_id: organizationId ?? null,
           }),
         })
@@ -209,15 +241,19 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     [current, form]
   )
 
+  const addressReady = Boolean(form.serviceAddress && isCompleteStructuredAddress(form.serviceAddress))
+  const canDispatch = Boolean(form.displayName.trim() && addressReady)
+
   return {
     form,
     patchForm,
     setVehicle,
-    moreOpen,
-    setMoreOpen,
+    setServiceAddress,
     saveState,
     jobState,
     jobError,
     createJob,
+    canDispatch,
+    addressReady,
   }
 }

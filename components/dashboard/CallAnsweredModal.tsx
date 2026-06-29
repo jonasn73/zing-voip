@@ -5,15 +5,14 @@
 
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react"
 import Link from "next/link"
-import { ChevronDown, Loader2, Phone } from "lucide-react"
+import { Loader2, MapPin, Phone } from "lucide-react"
 import { VehiclePickerCascade } from "@/components/vehicle-picker-cascade"
+import { JobAddressAutocomplete } from "@/components/job-address-autocomplete"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 import {
   useActiveCallForm,
   type ActiveCallRow,
@@ -25,7 +24,7 @@ import type {
   OwnerCallInitiatedPayload,
 } from "@/lib/realtime/owner-call-event-types"
 import { isMissedCallTelemetry, talkSecondsFromCompletedPayload } from "@/lib/realtime/owner-call-event-types"
-import { cn } from "@/lib/utils"
+import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
 
 const SEEN_KEY = "zing_answered_customer_popup_seen_v1"
 /** After ring, check answered-recent — triggered by call-initiated (backup to Pusher). */
@@ -127,12 +126,13 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
     form,
     patchForm,
     setVehicle,
-    moreOpen,
-    setMoreOpen,
+    setServiceAddress,
     saveState,
     jobState,
     jobError,
     createJob,
+    canDispatch,
+    addressReady,
   } = useActiveCallForm(current)
 
   useEffect(() => {
@@ -252,11 +252,8 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
     if (!enabled) setCurrent(null)
   }, [enabled])
 
-  const closeAndAdvance = useCallback(async () => {
+  const dismissOnly = useCallback(() => {
     if (!current) return
-    if (form.displayName.trim()) {
-      await createJob(activeOrganizationId)
-    }
     seenRef.current.add(current.id)
     persistSeen(seenRef.current)
     const closedId = current.id
@@ -265,7 +262,14 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
       if (!row || row.id === closedId) return
       showCallRow(setCurrent, row, seenRef.current)
     })
-  }, [activeOrganizationId, createJob, current, form.displayName])
+  }, [current])
+
+  const sendToDispatch = useCallback(async () => {
+    if (!current) return
+    const ok = await createJob(activeOrganizationId)
+    if (!ok) return
+    dismissOnly()
+  }, [activeOrganizationId, createJob, current, dismissOnly])
 
   if (!enabled) return null
 
@@ -273,7 +277,7 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
     <Sheet
       open={current != null}
       onOpenChange={(o) => {
-        if (!o) void closeAndAdvance()
+        if (!o) dismissOnly()
       }}
     >
       <SheetContent side="bottom" className="gap-0 p-0 sm:mx-auto sm:max-w-lg [&>button]:top-3">
@@ -286,24 +290,11 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                 {formatPhoneDisplay(current.from_number)}
               </SheetTitle>
               <p className="text-left text-xs text-muted-foreground">
-                Line {formatPhoneDisplay(current.to_number)} · details save automatically to your customer list.
+                Line {formatPhoneDisplay(current.to_number)} · customer details save automatically.
               </p>
             </SheetHeader>
 
-            <div className="max-h-[min(70vh,560px)] space-y-3 overflow-y-auto px-4 py-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="ac-company" className="text-xs">
-                  Company
-                </Label>
-                <Input
-                  id="ac-company"
-                  value={form.companyName}
-                  onChange={(e) => patchForm({ companyName: e.target.value })}
-                  placeholder="Optional"
-                  className="h-10"
-                />
-              </div>
-
+            <div className="max-h-[min(70vh,560px)] space-y-3 overflow-y-auto overflow-x-hidden px-4 py-3">
               <fieldset className="grid gap-3 rounded-xl border border-border/70 bg-muted/10 p-3">
                 <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-primary/90">
                   Vehicle details
@@ -318,68 +309,32 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                 />
               </fieldset>
 
-              <Collapsible open={moreOpen} onOpenChange={setMoreOpen}>
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-left text-xs font-semibold text-foreground"
-                  >
-                    Address &amp; more
-                    <ChevronDown className={cn("h-4 w-4 transition-transform", moreOpen && "rotate-180")} />
-                  </button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-3 pt-3 data-[state=closed]:animate-none">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Street</Label>
-                    <Input
-                      value={form.addressLine1}
-                      onChange={(e) => patchForm({ addressLine1: e.target.value })}
-                      className="h-10"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Apt / suite</Label>
-                    <Input
-                      value={form.addressLine2}
-                      onChange={(e) => patchForm({ addressLine2: e.target.value })}
-                      className="h-10"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">City</Label>
-                      <Input value={form.city} onChange={(e) => patchForm({ city: e.target.value })} className="h-10" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">State / region</Label>
-                      <Input value={form.region} onChange={(e) => patchForm({ region: e.target.value })} className="h-10" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Postal code</Label>
-                      <Input
-                        value={form.postalCode}
-                        onChange={(e) => patchForm({ postalCode: e.target.value })}
-                        className="h-10"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Country</Label>
-                      <Input value={form.country} onChange={(e) => patchForm({ country: e.target.value })} className="h-10" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Notes</Label>
-                    <Input
-                      value={form.notes}
-                      onChange={(e) => patchForm({ notes: e.target.value })}
-                      placeholder="Tags, follow-up…"
-                      className="h-10"
-                    />
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
+              <div className="space-y-1.5 overflow-visible">
+                <Label className="text-xs">Service address</Label>
+                <JobAddressAutocomplete
+                  value={form.serviceAddress}
+                  onChange={setServiceAddress}
+                  placeholder="Start typing street address…"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  {addressReady
+                    ? "Address verified — ready for dispatch map pin."
+                    : "Pick a suggested address (street, city, ZIP) to place the job on your map."}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ac-notes" className="text-xs">
+                  Job notes
+                </Label>
+                <Input
+                  id="ac-notes"
+                  value={form.notes}
+                  onChange={(e) => patchForm({ notes: e.target.value })}
+                  placeholder="Lockout, spare key, gate code…"
+                  className="h-10"
+                />
+              </div>
 
               <fieldset className="grid gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
                 <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-primary">
@@ -400,7 +355,7 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                     className="h-10 font-mono text-base"
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Change this to look up a repeat caller by number. Saves automatically.
+                    Change this to look up a repeat caller by number.
                   </p>
                 </div>
                 <div className="space-y-1.5">
@@ -425,26 +380,35 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
               {jobError ? <p className="text-xs text-red-300">{jobError}</p> : null}
             </div>
 
-            <SheetFooter className="flex flex-col gap-2 border-t border-border/70 bg-secondary/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[11px] text-muted-foreground">
-                {saveState === "saving" ? "Saving…" : null}
-                {saveState === "saved" ? "Saved to Customers." : null}
-                {saveState === "error" ? "Save failed — check migration 022." : null}
-                {saveState === "idle" ? "Edits save automatically." : null}{" "}
-                <Link href="/dashboard/customers" className="font-semibold text-primary underline-offset-2 hover:underline">
-                  Open customer list
-                </Link>
-              </p>
+            <SheetFooter className="flex flex-col gap-2 border-t border-border/70 bg-secondary/15 px-4 py-3">
               <Button
                 type="button"
-                variant="secondary"
-                size="sm"
-                disabled={jobState === "creating"}
-                onClick={() => void closeAndAdvance()}
+                size="lg"
+                className="w-full gap-2"
+                disabled={jobState === "creating" || !canDispatch}
+                onClick={() => void sendToDispatch()}
               >
-                {jobState === "creating" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                Dismiss
+                {jobState === "creating" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <MapPin className="h-4 w-4 shrink-0" aria-hidden />
+                )}
+                Send to dispatch map
               </Button>
+              <div className="flex w-full items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">
+                  {saveState === "saving" ? "Saving customer…" : null}
+                  {saveState === "saved" ? "Customer saved." : null}
+                  {saveState === "error" ? "Customer save failed." : null}
+                  {saveState === "idle" ? "Customer saves automatically." : null}{" "}
+                  <Link href="/dashboard/customers" className="font-semibold text-primary underline-offset-2 hover:underline">
+                    Customers
+                  </Link>
+                </p>
+                <Button type="button" variant="ghost" size="sm" disabled={jobState === "creating"} onClick={dismissOnly}>
+                  Dismiss
+                </Button>
+              </div>
             </SheetFooter>
           </>
         ) : null}

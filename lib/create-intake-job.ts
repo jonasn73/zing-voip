@@ -32,6 +32,8 @@ export type CreateIntakeJobInput = {
   vehicleYear?: string | null
   vehicleMake?: string | null
   vehicleModel?: string | null
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export type CreateIntakeJobResult = {
@@ -78,9 +80,9 @@ export async function createUnassignedJobFromIntake(input: CreateIntakeJobInput)
   const vehicleLabel = [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(" ")
   const summary = ["Locksmith dispatch", vehicleLabel || null, customerName].filter(Boolean).join(" — ")
 
-  let latitude: number | null = null
-  let longitude: number | null = null
-  if (jobAddress) {
+  let latitude: number | null = input.latitude ?? null
+  let longitude: number | null = input.longitude ?? null
+  if ((latitude == null || longitude == null) && jobAddress) {
     const coords = await geocodeAddress(jobAddress)
     if (coords) {
       latitude = coords.lat

@@ -8,6 +8,7 @@ import {
   isCompleteStructuredAddress,
   type StructuredAddress,
 } from "@/lib/structured-address"
+import { INTAKE_LOCKSMITH_JOB_TYPES, isIntakeLocksmithJobType } from "@/lib/intake-job-types"
 
 export type ActiveCallRow = {
   id: string
@@ -29,6 +30,7 @@ export type ActiveCallFormState = {
   postalCode: string
   country: string
   notes: string
+  jobType: string
   vehicleYear: string
   vehicleMake: string
   vehicleModel: string
@@ -45,6 +47,7 @@ const EMPTY_FORM: ActiveCallFormState = {
   postalCode: "",
   country: "US",
   notes: "",
+  jobType: "",
   vehicleYear: "",
   vehicleMake: "",
   vehicleModel: "",
@@ -201,6 +204,11 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
         setJobError("Pick a complete service address from the suggestions so we can place a map pin.")
         return false
       }
+      if (!isIntakeLocksmithJobType(form.jobType)) {
+        setJobState("error")
+        setJobError("Select what the customer needs (lockout, copy, ignition, etc.).")
+        return false
+      }
 
       setJobState("creating")
       setJobError(null)
@@ -223,6 +231,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
             vehicle_year: form.vehicleYear,
             vehicle_make: form.vehicleMake,
             vehicle_model: form.vehicleModel,
+            job_type: form.jobType,
             customer_lat: form.serviceAddress.lat,
             customer_lng: form.serviceAddress.lng,
             organization_id: organizationId ?? null,
@@ -242,7 +251,8 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
   )
 
   const addressReady = Boolean(form.serviceAddress && isCompleteStructuredAddress(form.serviceAddress))
-  const canDispatch = Boolean(form.displayName.trim() && addressReady)
+  const jobTypeReady = isIntakeLocksmithJobType(form.jobType)
+  const canDispatch = Boolean(form.displayName.trim() && addressReady && jobTypeReady)
 
   return {
     form,

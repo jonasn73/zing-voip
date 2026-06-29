@@ -32,6 +32,7 @@ export type CreateIntakeJobInput = {
   vehicleYear?: string | null
   vehicleMake?: string | null
   vehicleModel?: string | null
+  jobType?: string | null
   latitude?: number | null
   longitude?: number | null
 }
@@ -76,9 +77,10 @@ export async function createUnassignedJobFromIntake(input: CreateIntakeJobInput)
   const vehicleYear = input.vehicleYear?.trim() || null
   const vehicleMake = input.vehicleMake?.trim() || null
   const vehicleModel = input.vehicleModel?.trim() || null
+  const jobType = input.jobType?.trim() || "Lockout"
   const jobAddress = formatAddress(input)
   const vehicleLabel = [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(" ")
-  const summary = ["Locksmith dispatch", vehicleLabel || null, customerName].filter(Boolean).join(" — ")
+  const summary = [jobType, vehicleLabel || null, customerName].filter(Boolean).join(" — ")
 
   let latitude: number | null = input.latitude ?? null
   let longitude: number | null = input.longitude ?? null
@@ -93,7 +95,7 @@ export async function createUnassignedJobFromIntake(input: CreateIntakeJobInput)
   const collected: Record<string, unknown> = {
     customer_name: customerName,
     company_name: input.companyName?.trim() || null,
-    job_type: "Locksmith",
+    job_type: jobType,
     business_type: "locksmith",
     disposition: "BOOKED",
     dispatch_status: UNASSIGNED_POOL_STATUS,

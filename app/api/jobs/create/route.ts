@@ -21,6 +21,7 @@ type CreateJobBody = {
   vehicle_year?: string | null
   vehicle_make?: string | null
   vehicle_model?: string | null
+  job_type?: string | null
   organization_id?: string | null
   customer_lat?: number | null
   customer_lng?: number | null
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
       vehicleYear: body.vehicle_year?.trim() || null,
       vehicleMake: body.vehicle_make?.trim() || null,
       vehicleModel: body.vehicle_model?.trim() || null,
+      jobType: body.job_type?.trim() || null,
       latitude: body.customer_lat != null ? Number(body.customer_lat) : null,
       longitude: body.customer_lng != null ? Number(body.customer_lng) : null,
     })

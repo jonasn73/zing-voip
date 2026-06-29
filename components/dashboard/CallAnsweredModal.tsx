@@ -8,6 +8,8 @@ import Link from "next/link"
 import { Loader2, MapPin, Phone } from "lucide-react"
 import { VehiclePickerCascade } from "@/components/vehicle-picker-cascade"
 import { JobAddressAutocomplete } from "@/components/job-address-autocomplete"
+import { INTAKE_LOCKSMITH_JOB_TYPES } from "@/lib/intake-job-types"
+import { cn } from "@/lib/utils"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -307,7 +309,38 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                   }}
                   onChange={setVehicle}
                 />
+                <label className="grid gap-1.5 text-sm">
+                  <span className="text-xs font-medium text-foreground">What do they need?</span>
+                  <select
+                    className={cn(
+                      "h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground",
+                      "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    )}
+                    value={form.jobType}
+                    onChange={(e) => patchForm({ jobType: e.target.value })}
+                  >
+                    <option value="">Select service type…</option>
+                    {INTAKE_LOCKSMITH_JOB_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </fieldset>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ac-notes" className="text-xs">
+                  Job notes
+                </Label>
+                <Input
+                  id="ac-notes"
+                  value={form.notes}
+                  onChange={(e) => patchForm({ notes: e.target.value })}
+                  placeholder="Gate code, spare location, details…"
+                  className="h-10"
+                />
+              </div>
 
               <div className="space-y-1.5 overflow-visible">
                 <Label className="text-xs">Service address</Label>
@@ -321,19 +354,6 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                     ? "Address verified — ready for dispatch map pin."
                     : "Pick a suggested address (street, city, ZIP) to place the job on your map."}
                 </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="ac-notes" className="text-xs">
-                  Job notes
-                </Label>
-                <Input
-                  id="ac-notes"
-                  value={form.notes}
-                  onChange={(e) => patchForm({ notes: e.target.value })}
-                  placeholder="Lockout, spare key, gate code…"
-                  className="h-10"
-                />
               </div>
 
               <fieldset className="grid gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3">

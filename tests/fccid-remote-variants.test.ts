@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { parseFccidReplacementHtml } from "@/lib/fccid-remote-variants"
+import { parseFccidReplacementHtml, pickVariantsForVehicle } from "@/lib/fccid-remote-variants"
 
 describe("parseFccidReplacementHtml", () => {
   it("extracts Camry flip and remote head variants from HYQ12BDM page", () => {
@@ -21,5 +21,15 @@ describe("parseFccidReplacementHtml", () => {
 
     const withImg = variants.some((v) => Boolean(v.image_url))
     expect(withImg || flip).toBeTruthy()
+  })
+
+  it("includes Highlander photo variants from GQ4-52T listings", () => {
+    const cache = JSON.parse(
+      readFileSync(join(process.cwd(), "data", "fcc-remote-variants-cache.json"), "utf8")
+    ) as Record<string, ReturnType<typeof parseFccidReplacementHtml>>
+    const parsed = cache["GQ4-52T"] ?? []
+    expect(parsed.length).toBeGreaterThan(0)
+    const picked = pickVariantsForVehicle(parsed, { year: 2016, make: "TOYOTA", model: "Highlander" })
+    expect(picked.some((v) => Boolean(v.image_url))).toBe(true)
   })
 })

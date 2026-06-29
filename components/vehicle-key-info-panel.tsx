@@ -355,7 +355,7 @@ export function VehicleKeyInfoPanel({
           </div>
         ) : (
           <p className="text-[10px] text-muted-foreground">
-            No photos for this exact vehicle yet — use the key style dropdown and supplier links below.
+            Could not load key style photos — use the key style dropdown and supplier links below.
           </p>
         )}
       </div>

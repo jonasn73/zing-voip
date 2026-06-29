@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getUserIdFromRequest } from "@/lib/auth"
 import { lookupFccRemoteVariants } from "@/lib/fccid-remote-variants"
 
+export const maxDuration = 30
+
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

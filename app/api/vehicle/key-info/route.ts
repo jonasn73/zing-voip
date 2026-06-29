@@ -6,6 +6,8 @@ import { getUserIdFromRequest } from "@/lib/auth"
 import { lookupFccRemoteVariants } from "@/lib/fccid-remote-variants"
 import { lookupVehicleKeyProfiles } from "@/lib/vehicle-key-reference"
 
+export const maxDuration = 30
+
 export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req.headers.get("cookie"))
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

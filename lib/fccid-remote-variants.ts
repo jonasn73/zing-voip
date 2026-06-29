@@ -1,6 +1,9 @@
 // Fetch and parse replacement-key listings from fccid.io for a given FCC ID + vehicle.
 // Server-only — used by /api/vehicle/fcc-detail (not bundled to the client).
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 export type FccRemoteVariant = {
   /** Stable id for UI selection (hash of title + image). */
   id: string
@@ -19,6 +22,23 @@ export type FccRemoteVariant = {
 type CacheEntry = { expires: number; variants: FccRemoteVariant[] }
 const cache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 1000 * 60 * 60 * 12 // 12 hours — reference pages change slowly
+
+let staticParsedByFcc: Record<string, FccRemoteVariant[]> | null = null
+
+function loadStaticParsedByFcc(): Record<string, FccRemoteVariant[]> {
+  if (staticParsedByFcc) return staticParsedByFcc
+  try {
+    const filePath = join(process.cwd(), "data", "fcc-remote-variants-cache.json")
+    staticParsedByFcc = JSON.parse(readFileSync(filePath, "utf8")) as Record<string, FccRemoteVariant[]>
+  } catch {
+    staticParsedByFcc = {}
+  }
+  return staticParsedByFcc
+}
+
+function normalizeFccId(raw: string): string {
+  return raw.trim().replace(/\s+/g, "").toUpperCase()
+}
 
 function normalizeToken(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "")
@@ -148,7 +168,6 @@ export function pickVariantsForVehicle(
       )
     )
   )
-  if (exact.length >= 3) return dedupeVariants(exact).slice(0, limit)
 
   const modelOnly = sort(
     parsed.filter((v) =>
@@ -159,11 +178,13 @@ export function pickVariantsForVehicle(
       )
     )
   )
-  const merged = dedupeVariants([...exact, ...modelOnly])
-  if (merged.length >= 2) return merged.slice(0, limit)
+
+  // Photo rows often omit year/fits text — always surface them when make + model match.
+  const modelPhotos = modelOnly.filter((v) => Boolean(v.image_url))
 
   const broad = sort(parsed.filter((v) => !isJunkListing(v.title)))
-  return dedupeVariants([...merged, ...broad]).slice(0, limit)
+
+  return dedupeVariants([...modelPhotos, ...exact, ...modelOnly, ...broad]).slice(0, limit)
 }
 
 function scoreVariant(v: FccRemoteVariant, year: number): number {
@@ -244,7 +265,7 @@ export type FccRemoteLookupResult = {
   model: string
   variants: FccRemoteVariant[]
   fccid_page_url: string
-  source: "fccid.io"
+  source: "fccid.io" | "fccid.io-cache"
   disclaimer: string
 }
 
@@ -279,37 +300,26 @@ async function fetchFccidReplacementHtml(fccClean: string): Promise<string | nul
 export async function lookupFccRemoteVariants(
   input: FccRemoteLookupInput
 ): Promise<FccRemoteLookupResult> {
-  const fccClean = input.fcc_id.trim().replace(/\s+/g, "").toUpperCase()
+  const fccClean = normalizeFccId(input.fcc_id)
   const pageUrl = `https://fccid.io/${encodeURIComponent(fccClean)}/Remote-Keyfob-Replacement`
   const cacheKey = `${fccClean}|${input.year}|${normalizeToken(input.make)}|${normalizeToken(input.model)}`
   const hit = cache.get(cacheKey)
   if (hit && hit.expires > Date.now()) {
-    return {
-      fcc_id: fccClean,
-      year: input.year,
-      make: input.make,
-      model: input.model,
-      variants: hit.variants,
-      fccid_page_url: pageUrl,
-      source: "fccid.io",
-      disclaimer:
-        "Photos and titles come from public FCC ID replacement listings. Always confirm the physical key on the vehicle before ordering.",
+    return buildLookupResult(input, fccClean, pageUrl, hit.variants)
+  }
+
+  const staticParsed = loadStaticParsedByFcc()[fccClean]
+  if (staticParsed?.length) {
+    const filtered = pickVariantsForVehicle(staticParsed, input, 8)
+    if (filtered.length > 0) {
+      cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })
     }
+    return buildLookupResult(input, fccClean, pageUrl, filtered, "fccid.io-cache")
   }
 
   const html = await fetchFccidReplacementHtml(fccClean)
   if (!html) {
-    return {
-      fcc_id: fccClean,
-      year: input.year,
-      make: input.make,
-      model: input.model,
-      variants: [],
-      fccid_page_url: pageUrl,
-      source: "fccid.io",
-      disclaimer:
-        "Could not load key photos from FCC listings. Use the links below or check the key on the vehicle.",
-    }
+    return buildLookupResult(input, fccClean, pageUrl, [], "fccid.io")
   }
 
   const parsed = parseFccidReplacementHtml(html)
@@ -319,16 +329,26 @@ export async function lookupFccRemoteVariants(
     cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })
   }
 
+  return buildLookupResult(input, fccClean, pageUrl, filtered, "fccid.io")
+}
+
+function buildLookupResult(
+  input: FccRemoteLookupInput,
+  fccClean: string,
+  pageUrl: string,
+  variants: FccRemoteVariant[],
+  source: FccRemoteLookupResult["source"] = "fccid.io"
+): FccRemoteLookupResult {
   return {
     fcc_id: fccClean,
     year: input.year,
     make: input.make,
     model: input.model,
-    variants: filtered,
+    variants,
     fccid_page_url: pageUrl,
-    source: "fccid.io",
+    source,
     disclaimer:
-      filtered.length > 0
+      variants.length > 0
         ? "Photos and titles come from public FCC ID replacement listings. Always confirm the physical key on the vehicle before ordering."
         : "No matching photos for this vehicle on FCC listings. Use the key style dropdown and supplier links below.",
   }

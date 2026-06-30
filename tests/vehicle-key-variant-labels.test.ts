@@ -35,4 +35,10 @@ describe("vehicle-key-variant-labels", () => {
       )
     ).toBe("4-button + remote start")
   })
+
+  it("labels smart key with trunk when button count is omitted", () => {
+    expect(
+      variantButtonLabel("2020 Ford Explorer ST Smart Remote w/ Trunk", "Remote", null)
+    ).toBe("Smart key + trunk")
+  })
 })

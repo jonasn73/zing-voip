@@ -8,6 +8,25 @@ import { cn } from "@/lib/utils"
 import { KEY_STYLE_OPTIONS } from "@/lib/vehicle-key-styles"
 import { resolveVariantKeyStyle, variantButtonLabel, variantDisplayLabel } from "@/lib/vehicle-key-variant-labels"
 
+function relatedFccLabels(
+  fccId: string,
+  profiles: Array<{ fcc_id: string; frequency: string | null; modulation: string | null }>
+): string[] {
+  const self = profiles.find((p) => p.fcc_id === fccId)
+  if (!self) return []
+  const norm = (id: string) => id.trim().replace(/[\s-]+/g, "").toUpperCase()
+  const selfNorm = norm(fccId)
+  return profiles
+    .filter((other) => {
+      if (other.fcc_id === fccId) return false
+      if ((other.frequency ?? "") !== (self.frequency ?? "")) return false
+      if ((other.modulation ?? "") !== (self.modulation ?? "")) return false
+      const otherNorm = norm(other.fcc_id)
+      return otherNorm.startsWith(selfNorm) || selfNorm.startsWith(otherNorm)
+    })
+    .map((other) => other.fcc_id)
+}
+
 export type VehicleKeySelection = {
   profileId: string
   fccId: string
@@ -94,7 +113,12 @@ function VariantGrid({
       {variants.map((variant) => {
         const selected = selectedVariantId === variant.id
         const styleLabel = variantDisplayLabel(variant.title, variant.key_type)
-        const buttonLabel = variantButtonLabel(variant.title, variant.buttons, variant.fits_text)
+        const buttonLabel = variantButtonLabel(
+          variant.title,
+          variant.buttons,
+          variant.fits_text,
+          variant.key_type
+        )
         const cardLabel = buttonLabel ? `${buttonLabel} · ${styleLabel}` : styleLabel
         return (
           <button
@@ -317,6 +341,7 @@ export function VehicleKeyInfoPanel({
           const p = detail.profile
           const selected = value?.profileId === p.id || value?.fccId === p.fcc_id
           const summary = detail.compatible_summary
+          const relatedFcc = relatedFccLabels(p.fcc_id, info.profiles)
 
           return (
             <section
@@ -354,6 +379,13 @@ export function VehicleKeyInfoPanel({
                   <span className="text-[11px] text-muted-foreground">Chip: {p.chipset}</span>
                 ) : null}
               </button>
+
+              {relatedFcc.length > 0 ? (
+                <p className="text-[10px] text-amber-100/90">
+                  Related FCC sticker on the same key family:{" "}
+                  <span className="font-mono font-medium">{relatedFcc.join(", ")}</span>
+                </p>
+              ) : null}
 
               {summary.lines.length > 0 ? (
                 <div className="grid gap-1 rounded-md border border-border/50 bg-muted/15 px-2 py-1.5">

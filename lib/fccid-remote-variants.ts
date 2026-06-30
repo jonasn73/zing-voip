@@ -168,7 +168,7 @@ function dedupeByImage(list: FccRemoteVariant[]): FccRemoteVariant[] {
 }
 
 function buttonSignature(v: FccRemoteVariant): string {
-  return variantButtonSignature(v.title, v.buttons, v.fits_text)
+  return variantButtonSignature(v.title, v.buttons, v.fits_text, v.key_type)
 }
 
 function hasKnownButtonCount(signature: string): boolean {

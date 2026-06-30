@@ -345,6 +345,32 @@ function formatVehicleGroupLabel(group: CompatibleVehicleGroup, highlightYear?: 
   return `${group.make} ${group.model} (${group.minYear}–${group.maxYear})`
 }
 
+/** True when two FCC IDs are suffix variants (e.g. M3N-A2C931423 vs M3N-A2C93142300). */
+export function areRelatedFccIds(a: string, b: string): boolean {
+  const left = normalizeFccIdForMatch(a)
+  const right = normalizeFccIdForMatch(b)
+  if (left === right) return false
+  return left.startsWith(right) || right.startsWith(left)
+}
+
+/** Other FCC filings on this vehicle that share the same key family prefix. */
+export function relatedFccIdsForProfile(
+  fccId: string,
+  profiles: Array<{ fcc_id: string; frequency: string | null; modulation: string | null }>
+): string[] {
+  const self = profiles.find((p) => p.fcc_id === fccId)
+  if (!self) return []
+  return profiles
+    .filter(
+      (p) =>
+        p.fcc_id !== fccId &&
+        areRelatedFccIds(p.fcc_id, fccId) &&
+        (p.frequency ?? "") === (self.frequency ?? "") &&
+        (p.modulation ?? "") === (self.modulation ?? "")
+    )
+    .map((p) => p.fcc_id)
+}
+
 /** Human-readable compatible-vehicle lines for the intake sheet (current vehicle first). */
 export function formatCompatibleVehicleSummary(
   vehicles: CompatibleVehicle[],

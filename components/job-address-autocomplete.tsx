@@ -12,6 +12,7 @@ import {
   structuredAddressValidationError,
   type StructuredAddress,
 } from "@/lib/structured-address"
+import { resolveStructuredAddressFromQuery } from "@/lib/intake-address-helpers"
 
 type AddressSuggestion = StructuredAddress & { place_id?: string | null; label?: string }
 
@@ -20,6 +21,8 @@ type JobAddressAutocompleteProps = {
   onChange: (value: StructuredAddress | null) => void
   /** Pre-fill the input when CRM has a saved address (before structured verify). */
   seedQuery?: string
+  /** Fired on blur with whatever is in the box — parent can parse street + city for dispatch. */
+  onQueryCommit?: (query: string) => void
   placeholder?: string
   className?: string
   disabled?: boolean
@@ -33,6 +36,7 @@ export function JobAddressAutocomplete({
   value,
   onChange,
   seedQuery = "",
+  onQueryCommit,
   placeholder = "123 Main St, city, state ZIP",
   className,
   disabled,
@@ -181,6 +185,35 @@ export function JobAddressAutocomplete({
     }
   }
 
+  async function tryResolveOnBlur() {
+    if (validated || resolving || disabled) return
+    const trimmed = query.trim()
+    if (trimmed.length < minLen) return
+
+    if (suggestions.length > 0) {
+      await pickSuggestion(suggestions[0]!)
+      return
+    }
+
+    setResolving(true)
+    try {
+      const addr = await resolveStructuredAddressFromQuery(trimmed)
+      if (addr) {
+        setQuery(addr.formatted)
+        setValidated(true)
+        onChange(addr)
+        setOpen(false)
+        return
+      }
+    } catch {
+      /* fall through to loose commit */
+    } finally {
+      setResolving(false)
+    }
+
+    onQueryCommit?.(trimmed)
+  }
+
   const validationError = validated ? null : structuredAddressValidationError(value)
   const minLen = /^\d/.test(query.trim()) ? 2 : 3
 
@@ -240,6 +273,9 @@ export function JobAddressAutocomplete({
             resolvePortalTarget()
             syncMenuRect()
             if (!validated && query.trim().length >= minLen) setOpen(true)
+          }}
+          onBlur={() => {
+            window.setTimeout(() => void tryResolveOnBlur(), 180)
           }}
           autoComplete="off"
         />

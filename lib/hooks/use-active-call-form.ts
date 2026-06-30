@@ -14,7 +14,9 @@ import {
 } from "@/lib/intake-job-types"
 import {
   buildFlatAddressQuery,
+  isIntakeAddressReady,
   listIntakeDispatchBlockers,
+  parseLooseAddressQuery,
   resolveStructuredAddressFromQuery,
 } from "@/lib/intake-address-helpers"
 
@@ -165,6 +167,19 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     }))
   }, [])
 
+  const commitAddressQuery = useCallback((raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) return
+    const parsed = parseLooseAddressQuery(trimmed)
+    setForm((prev) => ({
+      ...prev,
+      addressLine1: parsed.addressLine1 || prev.addressLine1,
+      city: parsed.city || prev.city,
+      region: parsed.region || prev.region,
+      postalCode: parsed.postalCode || prev.postalCode,
+    }))
+  }, [])
+
   useEffect(() => {
     if (!callLogId || !current) {
       setForm(EMPTY_FORM)
@@ -297,9 +312,9 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
         setJobError("Enter the caller name before sending to dispatch.")
         return { ok: false }
       }
-      if (!form.serviceAddress || !isCompleteStructuredAddress(form.serviceAddress)) {
+      if (!isIntakeAddressReady(form)) {
         setJobState("error")
-        setJobError("Pick a complete service address from the suggestions so we can place a map pin.")
+        setJobError("Enter a service street address and city (pick a suggestion if you can).")
         return { ok: false }
       }
       if (!isIntakeJobTypeComplete(form.jobType, form.keyReplacementMode)) {
@@ -338,8 +353,8 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
             key_frequency: form.keyFrequency || null,
             key_chipset: form.keyChipset || null,
             key_style: form.keyStyle || null,
-            customer_lat: form.serviceAddress.lat,
-            customer_lng: form.serviceAddress.lng,
+            customer_lat: form.serviceAddress?.lat ?? null,
+            customer_lng: form.serviceAddress?.lng ?? null,
             organization_id: organizationId ?? null,
           }),
         })
@@ -361,7 +376,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     [current, form]
   )
 
-  const addressReady = Boolean(form.serviceAddress && isCompleteStructuredAddress(form.serviceAddress))
+  const addressReady = isIntakeAddressReady(form)
   const jobTypeReady = isIntakeJobTypeComplete(form.jobType, form.keyReplacementMode)
   const canDispatch = Boolean(form.displayName.trim() && addressReady && jobTypeReady)
   const dispatchBlockers = listIntakeDispatchBlockers(form)
@@ -380,6 +395,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
     setVehicle,
     setVehicleKeySelection,
     setServiceAddress,
+    commitAddressQuery,
     saveState,
     jobState,
     jobError,

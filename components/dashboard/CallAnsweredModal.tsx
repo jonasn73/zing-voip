@@ -134,6 +134,7 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
     setVehicle,
     setVehicleKeySelection,
     setServiceAddress,
+    commitAddressQuery,
     saveState,
     jobState,
     jobError,
@@ -312,6 +313,121 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
             </SheetHeader>
 
             <div className="max-h-[min(70vh,560px)] space-y-3 overflow-y-auto overflow-x-hidden px-4 py-3">
+              <fieldset className="grid gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                  Contact (saved to customer list)
+                </legend>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ac-display" className="text-xs">
+                    Caller name <span className="text-primary">*</span>
+                  </Label>
+                  <Input
+                    id="ac-display"
+                    value={form.displayName}
+                    onChange={(e) => patchForm({ displayName: e.target.value })}
+                    placeholder="Ask before they hang up"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ac-phone" className="text-xs">
+                    Phone number
+                  </Label>
+                  <Input
+                    id="ac-phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={form.phoneNumber}
+                    onChange={(e) => patchForm({ phoneNumber: e.target.value })}
+                    placeholder="(502) 555-1234"
+                    className="h-10 font-mono text-base"
+                  />
+                </div>
+              </fieldset>
+
+              <fieldset className="grid gap-3 rounded-xl border border-border/70 bg-muted/10 p-3">
+                <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-primary/90">
+                  Job details
+                </legend>
+                <label className="grid gap-1.5 text-sm">
+                  <span className="text-xs font-medium text-foreground">
+                    What do they need? <span className="text-primary">*</span>
+                  </span>
+                  <select
+                    className={cn(
+                      "h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground",
+                      "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    )}
+                    value={form.jobType}
+                    onChange={(e) =>
+                      patchForm({
+                        jobType: e.target.value,
+                        keyReplacementMode: e.target.value === "Key replacement" ? form.keyReplacementMode : "",
+                      })
+                    }
+                  >
+                    <option value="">Select service type…</option>
+                    {INTAKE_LOCKSMITH_JOB_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {form.jobType === "Key replacement" ? (
+                  <label className="grid gap-1.5 text-sm">
+                    <span className="text-xs font-medium text-foreground">
+                      Key replacement type <span className="text-primary">*</span>
+                    </span>
+                    <select
+                      className={cn(
+                        "h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground",
+                        "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      )}
+                      value={form.keyReplacementMode}
+                      onChange={(e) => patchForm({ keyReplacementMode: e.target.value })}
+                    >
+                      <option value="">Origination or duplication?</option>
+                      {KEY_REPLACEMENT_MODES.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {mode}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <div className="space-y-1.5 overflow-visible">
+                  <Label className="text-xs">
+                    Service address <span className="text-primary">*</span>
+                  </Label>
+                  <JobAddressAutocomplete
+                    value={form.serviceAddress}
+                    onChange={setServiceAddress}
+                    onQueryCommit={commitAddressQuery}
+                    seedQuery={addressSeedQuery}
+                    placeholder="Start typing street address…"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    {addressReady
+                      ? "Address ready — tap Send to dispatch map."
+                      : "Type street + city, tap a suggestion, or tap out of the field when done."}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ac-notes" className="text-xs">
+                    Job notes
+                  </Label>
+                  <Input
+                    id="ac-notes"
+                    value={form.notes}
+                    onChange={(e) => patchForm({ notes: e.target.value })}
+                    placeholder="Gate code, spare location, details…"
+                    className="h-10"
+                  />
+                </div>
+              </fieldset>
+
               <fieldset className="grid gap-3 rounded-xl border border-border/70 bg-muted/10 p-3">
                 <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-primary/90">
                   Vehicle details
@@ -342,116 +458,6 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                   }
                   onChange={(sel) => setVehicleKeySelection(sel)}
                 />
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-xs font-medium text-foreground">What do they need?</span>
-                  <select
-                    className={cn(
-                      "h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground",
-                      "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    )}
-                    value={form.jobType}
-                    onChange={(e) =>
-                      patchForm({
-                        jobType: e.target.value,
-                        keyReplacementMode: e.target.value === "Key replacement" ? form.keyReplacementMode : "",
-                      })
-                    }
-                  >
-                    <option value="">Select service type…</option>
-                    {INTAKE_LOCKSMITH_JOB_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {form.jobType === "Key replacement" ? (
-                  <label className="grid gap-1.5 text-sm">
-                    <span className="text-xs font-medium text-foreground">Key replacement type</span>
-                    <select
-                      className={cn(
-                        "h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground",
-                        "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                      )}
-                      value={form.keyReplacementMode}
-                      onChange={(e) => patchForm({ keyReplacementMode: e.target.value })}
-                    >
-                      <option value="">Origination or duplication?</option>
-                      {KEY_REPLACEMENT_MODES.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-muted-foreground">
-                      Origination = no working key to copy from. Duplication = copy from an existing key.
-                    </p>
-                  </label>
-                ) : null}
-              </fieldset>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="ac-notes" className="text-xs">
-                  Job notes
-                </Label>
-                <Input
-                  id="ac-notes"
-                  value={form.notes}
-                  onChange={(e) => patchForm({ notes: e.target.value })}
-                  placeholder="Gate code, spare location, details…"
-                  className="h-10"
-                />
-              </div>
-
-              <div className="space-y-1.5 overflow-visible">
-                <Label className="text-xs">Service address</Label>
-                <JobAddressAutocomplete
-                  value={form.serviceAddress}
-                  onChange={setServiceAddress}
-                  seedQuery={addressSeedQuery}
-                  placeholder="Start typing street address…"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  {addressReady
-                    ? "Address verified — ready for dispatch map pin."
-                    : "Pick a suggested address (street, city, ZIP) to place the job on your map."}
-                </p>
-              </div>
-
-              <fieldset className="grid gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-primary">
-                  Contact (saved to customer list)
-                </legend>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ac-phone" className="text-xs">
-                    Phone number
-                  </Label>
-                  <Input
-                    id="ac-phone"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={form.phoneNumber}
-                    onChange={(e) => patchForm({ phoneNumber: e.target.value })}
-                    placeholder="(502) 555-1234"
-                    className="h-10 font-mono text-base"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Change this to look up a repeat caller by number.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ac-display" className="text-xs">
-                    Caller name
-                  </Label>
-                  <Input
-                    id="ac-display"
-                    value={form.displayName}
-                    onChange={(e) => patchForm({ displayName: e.target.value })}
-                    placeholder="Ask before they hang up"
-                    className="h-10"
-                  />
-                </div>
               </fieldset>
 
               {jobState === "created" ? (

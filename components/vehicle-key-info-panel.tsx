@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 import { ExternalLink, KeyRound, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { KEY_STYLE_OPTIONS } from "@/lib/vehicle-key-styles"
+import { resolveVariantKeyStyle, variantDisplayLabel } from "@/lib/vehicle-key-variant-labels"
 
 export type VehicleKeySelection = {
   profileId: string
@@ -56,32 +57,6 @@ type VehicleKeyInfoPanelProps = {
   value: VehicleKeySelection | null
   onChange: (next: VehicleKeySelection | null) => void
   disabled?: boolean
-}
-
-/** Short label for a variant card (flip key, remote head, etc.). */
-function shortVariantLabel(title: string, keyType: string | null): string {
-  if (keyType) return keyType.replace(/Keys?$/i, "").trim()
-  if (/flip/i.test(title)) return "Flip key"
-  if (/remote head/i.test(title)) return "Remote head key"
-  if (/smart|push/i.test(title)) return "Smart key"
-  return "Remote key"
-}
-
-/** Guess key style from variant title when fccid.io omits a suggestion. */
-function resolveKeyStyle(variant: FccVariant, currentStyle: string): string {
-  if (
-    variant.suggested_key_style &&
-    (KEY_STYLE_OPTIONS as readonly string[]).includes(variant.suggested_key_style)
-  ) {
-    return variant.suggested_key_style
-  }
-  const blob = `${variant.key_type ?? ""} ${variant.title}`.toLowerCase()
-  if (/smart|proximity|push\s*start/.test(blob)) return "Push start (smart key)"
-  if (/flip/.test(blob)) return "Flip key"
-  if (/remote head|combo\s*key|transponder/.test(blob)) return "Remote head key"
-  if (/remote|fob|keyless/.test(blob)) return "Keyless remote only"
-  if (currentStyle && currentStyle !== KEY_STYLE_OPTIONS[5]) return currentStyle
-  return KEY_STYLE_OPTIONS[5]
 }
 
 export function VehicleKeyInfoPanel({
@@ -232,7 +207,13 @@ export function VehicleKeyInfoPanel({
       fccId: profile.fcc_id,
       frequency: profile.frequency,
       chipset: profile.chipset,
-      keyStyle: resolveKeyStyle(variant, value?.keyStyle || KEY_STYLE_OPTIONS[5]),
+      keyStyle: resolveVariantKeyStyle(
+        variant.title,
+        variant.key_type,
+        variant.suggested_key_style,
+        value?.keyStyle || KEY_STYLE_OPTIONS[5],
+        KEY_STYLE_OPTIONS
+      ),
       variantId: variant.id,
     })
   }
@@ -325,7 +306,7 @@ export function VehicleKeyInfoPanel({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {variants.map((v) => {
               const selected = value?.variantId === v.id
-              const label = shortVariantLabel(v.title, v.key_type)
+              const label = variantDisplayLabel(v.title, v.key_type)
               return (
                 <button
                   key={v.id}

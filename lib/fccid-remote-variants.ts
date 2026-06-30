@@ -3,6 +3,7 @@
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { classifyKeyStyleBucket, type KeyStyleBucket } from "@/lib/vehicle-key-variant-labels"
 
 export type FccRemoteVariant = {
   /** Stable id for UI selection (hash of title + image). */
@@ -69,10 +70,14 @@ function absoluteImageUrl(src: string): string {
 
 function suggestKeyStyle(keyType: string | null, title: string): string | null {
   const blob = `${keyType ?? ""} ${title}`.toLowerCase()
-  if (/push\s*start|smart\s*key|proximity|keyless\s*go/.test(blob)) return "Push start (smart key)"
+  if (/push\s*start|smart\s*key|proximity|keyless\s*go/.test(blob) && !/combo|remote head/.test(blob)) {
+    return "Push start (smart key)"
+  }
   if (/flip/.test(blob)) return "Flip key"
-  if (/remote\s*head|combo\s*key|transponder\s*key/.test(blob)) return "Remote head key"
-  if (/remote\s*only|keyless\s*entry\s*remote|fob\s*only/.test(blob)) return "Keyless remote only"
+  if (/remote\s*head|key combo|combo\s*key|transponder\s*key/.test(blob)) return "Remote head key"
+  if (/remote\s*only|keyless\s*entry\s*remote|fob\s*only/.test(blob) && !/combo|head/.test(blob)) {
+    return "Keyless remote only"
+  }
   if (/blade|turn\s*key|mechanical/.test(blob)) return "Turn key (blade)"
   return null
 }
@@ -89,6 +94,7 @@ function isJunkListing(title: string): boolean {
   if (/\b(bundle|pack of|x \d+|\d+ x )\b/.test(t)) return true
   if (/\bshell only\b|\bkey shell\b|\bshell \//.test(t)) return true
   if (/\bprogrammer\b|\btool\b|\bobd\b/.test(t)) return true
+  if (/\bdiy kit\b|\bvoice fob\b|\bvoice diy\b/.test(t)) return true
   return false
 }
 
@@ -149,11 +155,39 @@ function dedupeVariants(list: FccRemoteVariant[]): FccRemoteVariant[] {
   })
 }
 
-/** Rank and filter parsed listings for a vehicle, with broader fallbacks when exact matches are thin. */
+function dedupeByImage(list: FccRemoteVariant[]): FccRemoteVariant[] {
+  const seen = new Set<string>()
+  return list.filter((v) => {
+    if (!v.image_url) return true
+    if (seen.has(v.image_url)) return false
+    seen.add(v.image_url)
+    return true
+  })
+}
+
+const BUCKET_PICK_LIMIT: Partial<Record<KeyStyleBucket, number>> = {
+  smart: 2,
+  remote_head: 2,
+  flip: 1,
+  keyless_fob: 1,
+  turn_key: 1,
+  other: 1,
+}
+
+const BUCKET_PICK_ORDER: KeyStyleBucket[] = [
+  "smart",
+  "remote_head",
+  "flip",
+  "keyless_fob",
+  "turn_key",
+  "other",
+]
+
+/** Rank and filter parsed listings — one or two clear photos per key style. */
 export function pickVariantsForVehicle(
   parsed: FccRemoteVariant[],
   input: { year: number; make: string; model: string },
-  limit = 8
+  limit = 6
 ): FccRemoteVariant[] {
   const sort = (list: FccRemoteVariant[]) =>
     [...list].sort((a, b) => scoreVariant(b, input.year) - scoreVariant(a, input.year))
@@ -179,12 +213,46 @@ export function pickVariantsForVehicle(
     )
   )
 
-  // Photo rows often omit year/fits text — always surface them when make + model match.
   const modelPhotos = modelOnly.filter((v) => Boolean(v.image_url))
+  const candidates = dedupeByImage(
+    dedupeVariants(
+      sort(
+        [...modelPhotos, ...exact, ...modelOnly].filter(
+          (v) => !isJunkListing(v.title) && (v.image_url || classifyKeyStyleBucket(v.title, v.key_type) !== "other")
+        )
+      )
+    )
+  )
 
-  const broad = sort(parsed.filter((v) => !isJunkListing(v.title)))
+  const buckets: Record<KeyStyleBucket, FccRemoteVariant[]> = {
+    smart: [],
+    remote_head: [],
+    flip: [],
+    keyless_fob: [],
+    turn_key: [],
+    other: [],
+  }
 
-  return dedupeVariants([...modelPhotos, ...exact, ...modelOnly, ...broad]).slice(0, limit)
+  for (const v of candidates) {
+    buckets[classifyKeyStyleBucket(v.title, v.key_type)].push(v)
+  }
+
+  const picked: FccRemoteVariant[] = []
+  const seenPick = new Set<string>()
+  for (const bucket of BUCKET_PICK_ORDER) {
+    const cap = BUCKET_PICK_LIMIT[bucket] ?? 1
+    let taken = 0
+    for (const v of buckets[bucket]) {
+      if (taken >= cap || picked.length >= limit) break
+      const pickKey = `${bucket}|${v.image_url ?? v.title.slice(0, 48)}`
+      if (seenPick.has(pickKey)) continue
+      seenPick.add(pickKey)
+      picked.push(v)
+      taken++
+    }
+  }
+
+  return picked
 }
 
 function scoreVariant(v: FccRemoteVariant, year: number): number {
@@ -194,7 +262,9 @@ function scoreVariant(v: FccRemoteVariant, year: number): number {
   if (blob.includes(String(year))) score += 25
   if (v.key_type) score += 10
   if (v.buttons) score += 5
-  if (/aftermarket|oem|refurb/i.test(v.title)) score += 2
+  if (/\boem\b|new oem|factory oem/.test(blob)) score += 20
+  if (/aftermarket/.test(blob)) score += 4
+  if (/refurb|used|reconditioned/.test(blob)) score -= 12
   if (isJunkListing(v.title)) score -= 100
   return score
 }
@@ -310,7 +380,7 @@ export async function lookupFccRemoteVariants(
 
   const staticParsed = loadStaticParsedByFcc()[fccClean]
   if (staticParsed?.length) {
-    const filtered = pickVariantsForVehicle(staticParsed, input, 8)
+    const filtered = pickVariantsForVehicle(staticParsed, input, 6)
     if (filtered.length > 0) {
       cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })
     }
@@ -323,7 +393,7 @@ export async function lookupFccRemoteVariants(
   }
 
   const parsed = parseFccidReplacementHtml(html)
-  const filtered = pickVariantsForVehicle(parsed, input, 8)
+  const filtered = pickVariantsForVehicle(parsed, input, 6)
 
   if (filtered.length > 0) {
     cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })

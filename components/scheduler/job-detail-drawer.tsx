@@ -40,6 +40,8 @@ type JobDetailDrawerProps = {
   /** Intake dispatch flow — focus start time and auto-save when a time is picked. */
   scheduleIntent?: boolean
   onScheduleCommitted?: (event: SchedulerEvent) => void
+  /** embedded = slide over the map column; fixed = dock to viewport right (grid view). */
+  placement?: "embedded" | "fixed"
 }
 
 const STATUS_SEGMENTS: {
@@ -81,6 +83,7 @@ export function JobDetailDrawer({
   onDeleted,
   scheduleIntent = false,
   onScheduleCommitted,
+  placement = "fixed",
 }: JobDetailDrawerProps) {
   const source = scheduledEvent ?? poolJob
   const jobId = source?.id ?? ""
@@ -222,17 +225,7 @@ export function JobDetailDrawer({
     onScheduleCommitted,
   ])
 
-  // Lock page scroll while the editor is open (drawer is portaled to document.body).
-  useEffect(() => {
-    if (!open) return
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = prevOverflow
-    }
-  }, [open])
-
-  // Close on Escape.
+  // Close on Escape (no full-page overlay — the app stays usable behind the panel).
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -243,6 +236,11 @@ export function JobDetailDrawer({
   }, [open, onClose])
 
   if (!open || !source) return null
+
+  const panelPositionClass =
+    placement === "embedded"
+      ? "absolute inset-y-0 right-0 z-[1200]"
+      : "fixed inset-y-0 right-0 z-[9999]"
 
   const canSave = customerName.trim().length > 0 && customerPhone.trim().length > 0
 
@@ -340,20 +338,16 @@ export function JobDetailDrawer({
     }
   }
 
-  // Portal to body so Leaflet map stacking cannot hide the editor panel.
-  return createPortal(
+  const panel = (
     <>
-      <button
-        type="button"
-        aria-label="Close job editor"
-        className="scheduler-job-detail-overlay fixed inset-0 z-[1400] bg-zinc-950/70"
-        onClick={onClose}
-      />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Edit job"
-        className="scheduler-job-detail-panel fixed inset-y-0 right-0 z-[1410] flex w-full max-w-md flex-col border-l border-border/60 bg-background shadow-lg"
+        className={cn(
+          "scheduler-job-detail-panel flex w-full max-w-md flex-col border-l border-border/60 bg-background shadow-2xl",
+          panelPositionClass
+        )}
       >
         <header className="relative shrink-0 border-b border-border/60 px-5 py-4 pr-14">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Job details</p>
@@ -647,7 +641,10 @@ export function JobDetailDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>,
-    document.body
+    </>
   )
+
+  if (placement === "embedded") return panel
+
+  return createPortal(panel, document.body)
 }

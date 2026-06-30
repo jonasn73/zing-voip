@@ -273,8 +273,18 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
     openJobForEdit(ev)
   }
 
-  function focusPipelineJob(job: ActivePipelineJob) {
+  function highlightPipelineJob(job: ActivePipelineJob) {
+    setHighlightId(job.id)
+    if (viewMode === "map") panMapToJob(job)
+  }
+
+  function editPipelineJob(job: ActivePipelineJob | UnassignedPoolJob | SchedulerEvent) {
     openJobForEdit(job)
+    setHighlightId(job.id)
+  }
+
+  function focusPipelineJob(job: ActivePipelineJob) {
+    editPipelineJob(job)
     if (viewMode === "map") panMapToJob(job)
   }
 
@@ -479,6 +489,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
   }
 
   function closeJobDrawer() {
+    document.body.style.overflow = ""
     setDrawerPoolJob(null)
     setDrawerScheduledEvent(null)
     if (viewMode === "map") setHighlightId(null)
@@ -820,8 +831,8 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           onCreate={openBookingDefault}
-          onFocusJob={focusPipelineJob}
-          onEditJob={focusPipelineJob}
+          onFocusJob={highlightPipelineJob}
+          onEditJob={editPipelineJob}
           onSelectEvent={focusScheduledMapJob}
           onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
         />
@@ -1019,11 +1030,11 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
                     dayKey={pipelineDayKey}
                     useStreamedInitialDay={useStreamedPipeline}
                     highlightId={highlightId}
-                    onFocusJob={focusPipelineJob}
-                    onEditJob={focusPipelineJob}
+                    onFocusJob={highlightPipelineJob}
+                    onEditJob={editPipelineJob}
                   />
                 </div>
-                <div className="min-h-[320px] min-w-0 flex-1 lg:min-h-0">
+                <div className="relative min-h-[320px] min-w-0 flex-1 lg:min-h-0">
                   <SchedulerRouteMap
                     ref={mapRef}
                     events={dayEvents}
@@ -1037,6 +1048,22 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
                     disableHoverTooltips={false}
                     onSelectEvent={focusScheduledMapJob}
                     onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
+                  />
+                  <JobDetailDrawer
+                    key={drawerScheduledEvent?.id ?? drawerPoolJob?.id ?? "job-drawer-map"}
+                    open={drawerOpen}
+                    poolJob={drawerPoolJob}
+                    scheduledEvent={drawerScheduledEvent}
+                    technicians={technicians}
+                    onClose={closeJobDrawer}
+                    onSaved={applyJobEventUpdate}
+                    onStatusChanged={applyJobEventUpdate}
+                    onDeleted={handleJobDeleted}
+                    scheduleIntent={Boolean(
+                      scheduleIntentLeadId && drawerPoolJob?.id === scheduleIntentLeadId
+                    )}
+                    onScheduleCommitted={handleScheduleCommitted}
+                    placement="embedded"
                   />
                 </div>
               </div>
@@ -1153,19 +1180,22 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
         </Dialog>
       ) : null}
 
-      <JobDetailDrawer
-        key={drawerScheduledEvent?.id ?? drawerPoolJob?.id ?? "job-drawer-closed"}
-        open={drawerOpen}
-        poolJob={drawerPoolJob}
-        scheduledEvent={drawerScheduledEvent}
-        technicians={technicians}
-        onClose={closeJobDrawer}
-        onSaved={applyJobEventUpdate}
-        onStatusChanged={applyJobEventUpdate}
-        onDeleted={handleJobDeleted}
-        scheduleIntent={Boolean(scheduleIntentLeadId && drawerPoolJob?.id === scheduleIntentLeadId)}
-        onScheduleCommitted={handleScheduleCommitted}
-      />
+      {viewMode === "grid" || isMobileMap ? (
+        <JobDetailDrawer
+          key={drawerScheduledEvent?.id ?? drawerPoolJob?.id ?? "job-drawer-overlay"}
+          open={drawerOpen}
+          poolJob={drawerPoolJob}
+          scheduledEvent={drawerScheduledEvent}
+          technicians={technicians}
+          onClose={closeJobDrawer}
+          onSaved={applyJobEventUpdate}
+          onStatusChanged={applyJobEventUpdate}
+          onDeleted={handleJobDeleted}
+          scheduleIntent={Boolean(scheduleIntentLeadId && drawerPoolJob?.id === scheduleIntentLeadId)}
+          onScheduleCommitted={handleScheduleCommitted}
+          placement="fixed"
+        />
+      ) : null}
     </>
   )
 }

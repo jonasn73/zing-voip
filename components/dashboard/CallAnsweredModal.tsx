@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Loader2, MapPin, Phone } from "lucide-react"
 import { VehiclePickerCascade } from "@/components/vehicle-picker-cascade"
 import { JobAddressAutocomplete } from "@/components/job-address-autocomplete"
@@ -28,6 +29,7 @@ import type {
 } from "@/lib/realtime/owner-call-event-types"
 import { isMissedCallTelemetry, talkSecondsFromCompletedPayload } from "@/lib/realtime/owner-call-event-types"
 import { formatPhoneDisplay } from "@/lib/dashboard-routing-utils"
+import { buildSchedulerFocusUrl } from "@/lib/scheduler-focus-url"
 
 const SEEN_KEY = "zing_answered_customer_popup_seen_v1"
 /** After ring, check answered-recent — triggered by call-initiated (backup to Pusher). */
@@ -122,6 +124,7 @@ export type CallAnsweredModalProps = {
 }
 
 export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalProps) {
+  const router = useRouter()
   const seenRef = useRef(loadSeen())
   const [current, setCurrent] = useState<ActiveCallRow | null>(null)
   const { activeOrganizationId } = useDashboardWorkspace()
@@ -270,10 +273,11 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
 
   const sendToDispatch = useCallback(async () => {
     if (!current) return
-    const ok = await createJob(activeOrganizationId)
-    if (!ok) return
+    const result = await createJob(activeOrganizationId)
+    if (!result.ok) return
     dismissOnly()
-  }, [activeOrganizationId, createJob, current, dismissOnly])
+    router.push(buildSchedulerFocusUrl(result.leadId, { schedule: true }))
+  }, [activeOrganizationId, createJob, current, dismissOnly, router])
 
   if (!enabled) return null
 

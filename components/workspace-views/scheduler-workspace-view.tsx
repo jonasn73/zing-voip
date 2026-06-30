@@ -139,7 +139,14 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
   const [gridScheduleError, setGridScheduleError] = useState<string | null>(null)
   const [gridScheduleSaving, setGridScheduleSaving] = useState(false)
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null)
+  const [scheduleIntentLeadId, setScheduleIntentLeadId] = useState<string | null>(null)
+  const intakeFocusHandledRef = useRef<string | null>(null)
   const initialBootstrapDoneRef = useRef(false)
+
+  const { focusLeadId, scheduleFromIntake } = useMemo(
+    () => parseSchedulerFocusSearch(searchParams.toString()),
+    [searchParams]
+  )
 
   const monthKey = `${visibleMonth.getFullYear()}-${String(visibleMonth.getMonth() + 1).padStart(2, "0")}`
   const orgId =
@@ -471,6 +478,26 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
     if (viewMode === "map") setHighlightId(null)
   }
 
+  const completeScheduleIntent = useCallback(
+    (event?: SchedulerEvent) => {
+      setScheduleIntentLeadId(null)
+      intakeFocusHandledRef.current = null
+      router.replace("/dashboard/scheduler", { scroll: false })
+      setViewMode("map")
+      setDrawerPoolJob(null)
+      setDrawerScheduledEvent(null)
+      void mutatePool()
+      void mutateActivePipeline()
+      if (event) {
+        setHighlightId(event.id)
+        const lat = typeof event.latitude === "number" ? event.latitude : undefined
+        const lng = typeof event.longitude === "number" ? event.longitude : undefined
+        window.setTimeout(() => mapRef.current?.focusJob(event.id, lat, lng), 120)
+      }
+    },
+    [router, mutatePool, mutateActivePipeline]
+  )
+
   function handleJobDeleted(jobId: string) {
     closeJobDrawer()
     setEvents((prev) => prev.filter((ev) => ev.id !== jobId))
@@ -563,7 +590,17 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
         assigned_tech_name: techName ?? null,
       })
       void mutatePool()
-      if (viewMode === "map") void mutateActivePipeline()
+      if (scheduleIntentLeadId === jobId) {
+        completeScheduleIntent({
+          ...event,
+          dispatch_status: "DISPATCHED",
+          job_status: "assigned",
+          assigned_tech_id: techUserId,
+          assigned_tech_name: techName ?? null,
+        })
+      } else if (viewMode === "map") {
+        void mutateActivePipeline()
+      }
     } catch (e) {
       setGridScheduleError(e instanceof Error ? e.message : "Could not schedule job")
     } finally {
@@ -594,6 +631,14 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
       setVisibleMonth(d)
     }
   }
+
+  const handleScheduleCommitted = useCallback(
+    (event: SchedulerEvent) => {
+      handleAppointmentCreated(event)
+      completeScheduleIntent(event)
+    },
+    [completeScheduleIntent, selectedKey]
+  )
 
   function setIntakeField(
     name: string,
@@ -639,6 +684,72 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
       setBookingSaving(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive || !focusLeadId) return
+    if (scheduleFromIntake) {
+      setScheduleIntentLeadId(focusLeadId)
+      setViewMode("grid")
+      void mutatePool()
+    }
+  }, [isActive, focusLeadId, scheduleFromIntake, mutatePool])
+
+  useEffect(() => {
+    if (!isActive || !focusLeadId) return
+
+    const poolJob = poolJobs.find((j) => j.id === focusLeadId)
+    const scheduled = events.find((e) => e.id === focusLeadId)
+    const pipelineJob = activePipelineJobs.find((j) => j.id === focusLeadId)
+
+    if (scheduleFromIntake && scheduleIntentLeadId === focusLeadId) {
+      if (poolJob && intakeFocusHandledRef.current !== focusLeadId) {
+        intakeFocusHandledRef.current = focusLeadId
+        setHighlightId(focusLeadId)
+        setDrawerPoolJob(poolJob)
+        setDrawerScheduledEvent(null)
+        return
+      }
+      if (scheduled) {
+        completeScheduleIntent(scheduled)
+        return
+      }
+      if (pipelineJob && !poolJob) {
+        completeScheduleIntent()
+        focusJobOnMap(pipelineJob)
+      }
+      return
+    }
+
+    if (!scheduleFromIntake) {
+      setHighlightId(focusLeadId)
+      if (scheduled) {
+        const eventDay = dayKeyLocal(new Date(scheduled.scheduled_at))
+        if (eventDay !== dayKeyLocal(selectedDay)) {
+          const d = new Date(scheduled.scheduled_at)
+          setSelectedDay(d)
+          setVisibleMonth(d)
+        }
+        if (viewMode === "grid") openScheduledJobDrawer(scheduled)
+        else focusJobOnMap(scheduled)
+      } else if (poolJob) {
+        if (viewMode === "grid") openPoolJobDrawer(poolJob)
+        else focusJobOnMap(poolJob as ActivePipelineJob)
+      } else if (pipelineJob) {
+        focusJobOnMap(pipelineJob)
+      }
+    }
+  }, [
+    isActive,
+    focusLeadId,
+    scheduleFromIntake,
+    scheduleIntentLeadId,
+    poolJobs,
+    events,
+    activePipelineJobs,
+    selectedDay,
+    viewMode,
+    completeScheduleIntent,
+  ])
 
   useEffect(() => {
     const shouldLock = isActive && isMobile && viewMode === "map"
@@ -1043,6 +1154,8 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
           onSaved={applyJobEventUpdate}
           onStatusChanged={applyJobEventUpdate}
           onDeleted={handleJobDeleted}
+          scheduleIntent={Boolean(scheduleIntentLeadId && drawerPoolJob?.id === scheduleIntentLeadId)}
+          onScheduleCommitted={handleScheduleCommitted}
         />
       ) : null}
     </>

@@ -36,4 +36,18 @@ describe("lookupVehicleKeyProfiles", () => {
     expect(r).not.toBeNull()
     expect(r?.matched_model).toBe("tC")
   })
+
+  it("matches 2021 Toyota C-HR exactly", () => {
+    const r = lookupVehicleKeyProfiles("2021", "Toyota", "C-HR")
+    expect(r).not.toBeNull()
+    expect(r?.match_type).toBe("exact")
+    expect(r?.profiles.some((p) => p.fcc_id === "HYQ14AHP" || p.fcc_id === "HYQ14FBC")).toBe(true)
+  })
+
+  it("matches 2022 Toyota Corolla Cross exactly", () => {
+    const r = lookupVehicleKeyProfiles("2022", "Toyota", "Corolla Cross")
+    expect(r).not.toBeNull()
+    expect(r?.match_type).toBe("exact")
+    expect(r?.profiles.some((p) => p.fcc_id === "GQ4-73T" || p.fcc_id === "HYQ14FBC")).toBe(true)
+  })
 })

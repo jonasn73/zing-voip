@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { parseFccidReplacementHtml, pickVariantsForVehicle } from "@/lib/fccid-remote-variants"
+import { parseFccidReplacementHtml, pickVariantsForVehicle, lookupFccRemoteVariants } from "@/lib/fccid-remote-variants"
 
 describe("parseFccidReplacementHtml", () => {
   it("extracts Camry flip and remote head variants from HYQ12BDM page", () => {
@@ -31,5 +31,24 @@ describe("parseFccidReplacementHtml", () => {
     expect(parsed.length).toBeGreaterThan(0)
     const picked = pickVariantsForVehicle(parsed, { year: 2016, make: "TOYOTA", model: "Highlander" })
     expect(picked.some((v) => Boolean(v.image_url))).toBe(true)
+  })
+
+  it("loads bundled cache for 2017 RAV4 when KEY_REFERENCE_CACHE_ONLY is set", async () => {
+    const prev = process.env.KEY_REFERENCE_CACHE_ONLY
+    process.env.KEY_REFERENCE_CACHE_ONLY = "true"
+    try {
+      const result = await lookupFccRemoteVariants({
+        fcc_id: "HYQ12BDM",
+        year: 2017,
+        make: "Toyota",
+        model: "RAV4",
+      })
+      expect(result.source).toBe("lyncr-cache")
+      expect(result.variants.length).toBeGreaterThan(0)
+      expect(result.variants.some((v) => Boolean(v.image_url))).toBe(true)
+    } finally {
+      if (prev === undefined) delete process.env.KEY_REFERENCE_CACHE_ONLY
+      else process.env.KEY_REFERENCE_CACHE_ONLY = prev
+    }
   })
 })

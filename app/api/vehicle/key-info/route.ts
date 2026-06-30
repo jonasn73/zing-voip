@@ -56,7 +56,15 @@ export async function GET(req: NextRequest) {
       })
     )
 
-    const hasReferencePhotos = profile_details.some((detail) =>
+    const anyVariantPhotos = profile_details.some((detail) =>
+      detail.variants.some((variant) => Boolean(variant.image_url))
+    )
+    const visible_profile_details =
+      anyVariantPhotos && profile_details.length > 1
+        ? profile_details.filter((detail) => detail.variants.length > 0)
+        : profile_details
+
+    const hasReferencePhotos = visible_profile_details.some((detail) =>
       detail.variants.some((variant) => variant.reference_image)
     )
 
@@ -64,7 +72,8 @@ export async function GET(req: NextRequest) {
       data: {
         key_info: {
           ...result,
-          profile_details,
+          profiles: visible_profile_details.map((d) => d.profile),
+          profile_details: visible_profile_details,
           photo_disclaimer: hasReferencePhotos
             ? "Some photos are reference images from the same FCC ID — always confirm the key on the vehicle."
             : "Photos and titles come from public FCC ID replacement listings. Always confirm the physical key on the vehicle before ordering.",

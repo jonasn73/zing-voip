@@ -90,7 +90,9 @@ export const DashboardPresenceHost = memo(function DashboardPresenceHost({
         <ActivityWorkspaceView />
       </PresencePane>
       <PresencePane active={activePage === "scheduler"} label="Scheduler" deferUntilVisit>
-        <SchedulerWorkspaceView isActive={activePage === "scheduler"} />
+        <Suspense fallback={<div className="min-h-[40vh] w-full" aria-busy="true" aria-label="Loading scheduler" />}>
+          <SchedulerWorkspaceView isActive={activePage === "scheduler"} />
+        </Suspense>
       </PresencePane>
       <PresencePane active={activePage === "leads"} label="Leads">
         <LeadsWorkspaceView />

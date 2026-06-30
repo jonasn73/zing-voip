@@ -21,6 +21,8 @@ export const LOCKSMITH_COVERAGE_MAKES = [
 /** YMM combos that must always resolve (regression + high-volume jobs). */
 export const MUST_RESOLVE_VEHICLE_KEYS: Array<{ year: number; make: string; model: string }> = [
   { year: 2017, make: "Toyota", model: "RAV4" },
+  { year: 2021, make: "Toyota", model: "C-HR" },
+  { year: 2022, make: "Toyota", model: "Corolla Cross" },
   { year: 2017, make: "CHEVROLET", model: "5500HD" },
   { year: 2014, make: "RAM", model: "1500" },
   { year: 2018, make: "FORD", model: "F-150" },

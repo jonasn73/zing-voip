@@ -240,19 +240,19 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
   }, [callLogId, current, form])
 
   const createJob = useCallback(
-    async (organizationId?: string | null): Promise<boolean> => {
-      if (!current) return false
+    async (organizationId?: string | null): Promise<{ ok: true; leadId: string } | { ok: false }> => {
+      if (!current) return { ok: false }
       const phone = form.phoneNumber.trim() || current.from_number
       const name = form.displayName.trim()
       if (!name) {
         setJobState("error")
         setJobError("Enter the caller name before sending to dispatch.")
-        return false
+        return { ok: false }
       }
       if (!form.serviceAddress || !isCompleteStructuredAddress(form.serviceAddress)) {
         setJobState("error")
         setJobError("Pick a complete service address from the suggestions so we can place a map pin.")
-        return false
+        return { ok: false }
       }
       if (!isIntakeJobTypeComplete(form.jobType, form.keyReplacementMode)) {
         setJobState("error")
@@ -261,7 +261,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
             ? "Select origination or duplication for the key replacement."
             : "Select what the customer needs (key replacement, lockout, ignition, etc.)."
         )
-        return false
+        return { ok: false }
       }
 
       setJobState("creating")
@@ -295,14 +295,19 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
             organization_id: organizationId ?? null,
           }),
         })
-        const json = (await res.json()) as { data?: { customer_sms_sent?: boolean }; error?: string }
+        const json = (await res.json()) as {
+          data?: { lead_id?: string; customer_sms_sent?: boolean }
+          error?: string
+        }
         if (!res.ok) throw new Error(json.error ?? "Job create failed")
+        const leadId = String(json.data?.lead_id ?? "").trim()
+        if (!leadId) throw new Error("Job created but no lead id returned.")
         setJobState("created")
-        return true
+        return { ok: true, leadId }
       } catch (e) {
         setJobState("error")
         setJobError(e instanceof Error ? e.message : "Job create failed")
-        return false
+        return { ok: false }
       }
     },
     [current, form]

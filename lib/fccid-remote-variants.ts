@@ -2,6 +2,7 @@
 // Server-only — used by /api/vehicle/fcc-detail (not bundled to the client).
 
 import { isKeyReferenceCacheOnly } from "@/lib/key-reference-config"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { classifyKeyStyleBucket, extractButtonCount, variantButtonSignature, type KeyStyleBucket } from "@/lib/vehicle-key-variant-labels"
 
@@ -275,7 +276,28 @@ export function pickVariantsForVehicle(
     resultSignatures.add(sig)
   }
 
-  return dedupeByImage(result).slice(0, Math.min(limit, 4))
+  result = dedupeByImage(result).slice(0, Math.min(limit, 4))
+
+  // Last resort: same FCC page photos for this make when YMM filter found nothing.
+  if (result.length === 0) {
+    const makePhotos = sort(
+      parsed.filter(
+        (v) =>
+          v.image_url &&
+          !isJunkListing(v.title) &&
+          rowMatchesMake({ title: v.title, fits: v.fits_text ?? "", alt: v.title }, input.make)
+      )
+    )
+    if (makePhotos.length > 0) {
+      return makePhotos.slice(0, Math.min(limit, 4)).map((v) => ({
+        ...v,
+        reference_image: true,
+        reference_note: "Reference photo (same FCC ID — confirm on vehicle)",
+      }))
+    }
+  }
+
+  return result
 }
 
 /** Fill in missing photos from other listings on the same FCC page (same key family). */
@@ -463,7 +485,7 @@ export async function lookupFccRemoteVariants(
 
   const staticParsed = loadStaticParsedByFcc()[fccClean]
   if (staticParsed?.length) {
-    const filtered = pickVariantsForVehicle(staticParsed, input, 6)
+    let filtered = pickVariantsForVehicle(staticParsed, input, 6)
     if (filtered.length > 0) {
       cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })
     }

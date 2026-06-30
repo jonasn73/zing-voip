@@ -138,6 +138,13 @@ function familyFallbackModels(makeRaw: string, modelRaw: string): string[] {
   if (make === "toyota" && /tundra|tacoma|sequoia/.test(model)) {
     out.push("Tundra", "Tacoma", "Sequoia")
   }
+  // C-HR / Corolla Cross — compact TNGA cousins (locksmith DB often lists under Corolla/Camry).
+  if (make === "toyota" && (model === "chr" || model === "chhr")) {
+    out.push("C-HR", "Corolla", "Camry", "RAV4")
+  }
+  if (make === "toyota" && (model === "corollacross" || model.includes("corollacross"))) {
+    out.push("Corolla Cross", "Corolla", "RAV4", "Camry")
+  }
   if (make === "nissan" && /titan|frontier|nv/.test(model)) out.push("Titan", "Frontier", "NV")
   if (make === "honda" && /ridgeline|pilot/.test(model)) out.push("Ridgeline", "Pilot", "CR-V")
 

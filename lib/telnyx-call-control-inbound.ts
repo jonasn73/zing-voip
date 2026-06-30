@@ -289,7 +289,8 @@ async function handleCallBridged(
   event: NonNullable<ReturnType<typeof parseTelnyxVoiceWebhookEvent>>
 ): Promise<void> {
   const state = event.clientState
-  if (!state || isOutboundDialLegEvent(event)) return
+  if (!state) return
+  // Bridge events usually arrive on the outbound PSTN leg — still map back to the inbound call log row.
   const inboundSid = resolveInboundCallLogSid(event)
   await persistCallControlBridged(inboundSid, state, event.occurredAt)
 }

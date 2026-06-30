@@ -1,14 +1,14 @@
 // Persist Call Control lifecycle into call_logs (answer, talk time, completion).
 
 import { notifyOwnerInboundCallAnswered } from "@/lib/inbound-call-answered-broadcast"
-import { broadcastCallCompletedBySid } from "@/lib/call-telemetry-realtime"
+import { broadcastCallCompleted } from "@/lib/call-telemetry-realtime"
 import { evaluateLowCarrierCreditFromCallUsage } from "@/lib/carrier-credit-alerts"
 import { normalizeTelnyxDurationSeconds, parseTelnyxCallDurationFromPayload } from "@/lib/telnyx-call-duration"
 import type { TelnyxVoiceWebhookEvent } from "@/lib/telnyx-call-control-parse"
 import type { TelnyxCallControlClientState } from "@/lib/telnyx-call-control-state"
 import { maybeSendAdminOverrideDispatchSms } from "@/lib/admin-override-dispatch-sms"
 import { maybeSendPostCallDispositionSms } from "@/lib/post-call-disposition-sms"
-import { getIncomingRoutingForVoiceWebhook, recordCallStatusEvent, updateCallLog } from "@/lib/db"
+import { getIncomingRoutingForVoiceWebhook, getCallLogSnapshotForTelemetry, recordCallStatusEvent, updateCallLog } from "@/lib/db"
 import type { CallType } from "@/lib/types"
 
 /** Inbound caller leg SID — the row created on call.initiated. */
@@ -67,17 +67,34 @@ function resolveRoutedToLabel(
   return "Owner"
 }
 
-function runTerminalCallSideEffects(callSid: string, status: string): void {
+function runTerminalCallSideEffects(
+  callSid: string,
+  status: string,
+  durationSeconds: number
+): void {
   const terminal = ["completed", "busy", "failed", "no-answer", "canceled"].includes(status)
   if (!terminal) return
   void evaluateLowCarrierCreditFromCallUsage(callSid).catch((e) => {
     console.error("[telnyx-cc] carrier credit check failed:", e)
   })
   void (async () => {
-    try {
-      await broadcastCallCompletedBySid(callSid)
-    } catch (e) {
-      console.warn("[telnyx-cc] call-completed broadcast failed:", e)
+    const snapshot = await getCallLogSnapshotForTelemetry(callSid).catch(() => null)
+    if (snapshot) {
+      try {
+        await broadcastCallCompleted({
+          ownerUserId: snapshot.user_id,
+          callSid,
+          organizationId: snapshot.organization_id,
+          toNumber: snapshot.to_number,
+          fromNumber: snapshot.from_number,
+          callLogId: snapshot.id,
+          durationSeconds: Math.max(durationSeconds, snapshot.duration_seconds ?? 0),
+          callType: snapshot.call_type,
+          status: snapshot.status,
+        })
+      } catch (e) {
+        console.warn("[telnyx-cc] call-completed broadcast failed:", e)
+      }
     }
     try {
       await maybeSendPostCallDispositionSms(callSid, status)
@@ -175,7 +192,7 @@ export async function finalizeCallControlCallLog(
         hangupCause: event.hangupCause || null,
       })
     )
-    runTerminalCallSideEffects(inboundCallSid, status)
+    runTerminalCallSideEffects(inboundCallSid, status, duration)
   } catch (e) {
     console.error("[telnyx-cc] finalize call log failed:", e)
   }

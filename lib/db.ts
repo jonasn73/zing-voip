@@ -3633,7 +3633,7 @@ export async function getCallQualitySummary(userId: string, days = 7): Promise<{
 
 /** Today's call HUD metrics for the routing strip (workspace-scoped via business line DIDs). */
 export async function getDailyCallTelemetryForOwner(
-  ownerUserId: string,
+  sessionUserId: string,
   organizationId?: string | null
 ): Promise<{
   daily_calls: number
@@ -3641,14 +3641,22 @@ export async function getDailyCallTelemetryForOwner(
   avg_talk_seconds: number
   daily_talk_seconds: number
   weekly_talk_seconds: number
+  /** Business owner whose call_logs + Pusher channel back these metrics. */
+  telemetry_owner_user_id: string
 }> {
   const sql = getSql()
   const orgUuid =
     organizationId && !organizationId.startsWith("legacy-") ? organizationId.trim() : null
 
+  let telemetryOwnerUserId = sessionUserId
+  if (orgUuid) {
+    const org = await getOrganizationById(orgUuid)
+    if (org?.owner_user_id) telemetryOwnerUserId = org.owner_user_id
+  }
+
   let lineNumbers: string[] | null = null
   if (orgUuid) {
-    const lines = await getPhoneNumbers(ownerUserId, orgUuid)
+    const lines = await getPhoneNumbers(telemetryOwnerUserId, orgUuid)
     lineNumbers = [
       ...new Set(
         lines
@@ -3663,11 +3671,12 @@ export async function getDailyCallTelemetryForOwner(
         avg_talk_seconds: 0,
         daily_talk_seconds: 0,
         weekly_talk_seconds: 0,
+        telemetry_owner_user_id: telemetryOwnerUserId,
       }
     }
   }
 
-  const talkableFilter = sql`
+  const talkableWhere = sql`
     talk_seconds > 0
     AND call_type IS DISTINCT FROM 'missed'
     AND lower(COALESCE(status, '')) NOT IN ('no-answer', 'busy', 'missed', 'canceled', 'cancelled', 'failed')
@@ -3691,8 +3700,8 @@ export async function getDailyCallTelemetryForOwner(
               END
             ) AS talk_seconds
           FROM call_logs
-          WHERE user_id = ${ownerUserId}
-            AND to_number = ANY(${lineNumbers}::text[])
+          WHERE user_id = ${telemetryOwnerUserId}
+            AND to_number = ANY(${lineNumbers})
         )
         SELECT
           COUNT(*) FILTER (WHERE created_at >= date_trunc('day', now()))::int AS daily_calls,
@@ -3705,19 +3714,19 @@ export async function getDailyCallTelemetryForOwner(
           )::int AS missed_calls,
           COALESCE(
             AVG(talk_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableWhere}
             ),
             0
           )::float8 AS avg_talk_seconds,
           COALESCE(
             SUM(talk_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableWhere}
             ),
             0
           )::int AS daily_talk_seconds,
           COALESCE(
             SUM(talk_seconds) FILTER (
-              WHERE created_at >= date_trunc('week', now()) AND ${talkableFilter}
+              WHERE created_at >= date_trunc('week', now()) AND ${talkableWhere}
             ),
             0
           )::int AS weekly_talk_seconds
@@ -3740,7 +3749,7 @@ export async function getDailyCallTelemetryForOwner(
               END
             ) AS talk_seconds
           FROM call_logs
-          WHERE user_id = ${ownerUserId}
+          WHERE user_id = ${telemetryOwnerUserId}
         )
         SELECT
           COUNT(*) FILTER (WHERE created_at >= date_trunc('day', now()))::int AS daily_calls,
@@ -3753,19 +3762,19 @@ export async function getDailyCallTelemetryForOwner(
           )::int AS missed_calls,
           COALESCE(
             AVG(talk_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableWhere}
             ),
             0
           )::float8 AS avg_talk_seconds,
           COALESCE(
             SUM(talk_seconds) FILTER (
-              WHERE created_at >= date_trunc('day', now()) AND ${talkableFilter}
+              WHERE created_at >= date_trunc('day', now()) AND ${talkableWhere}
             ),
             0
           )::int AS daily_talk_seconds,
           COALESCE(
             SUM(talk_seconds) FILTER (
-              WHERE created_at >= date_trunc('week', now()) AND ${talkableFilter}
+              WHERE created_at >= date_trunc('week', now()) AND ${talkableWhere}
             ),
             0
           )::int AS weekly_talk_seconds
@@ -3779,6 +3788,7 @@ export async function getDailyCallTelemetryForOwner(
     avg_talk_seconds: Number(row?.avg_talk_seconds ?? 0),
     daily_talk_seconds: Number(row?.daily_talk_seconds ?? 0),
     weekly_talk_seconds: Number(row?.weekly_talk_seconds ?? 0),
+    telemetry_owner_user_id: telemetryOwnerUserId,
   }
 }
 

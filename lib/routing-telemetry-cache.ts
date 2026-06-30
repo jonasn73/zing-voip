@@ -39,8 +39,8 @@ export function readRoutingTelemetryCache(
   }
 }
 
-/** Best-effort parse legacy cached display strings like "12:05". */
-function parseTalkSecondsFromDisplay(display?: string): number {
+/** Best-effort parse cached display strings like "12:05" or "1:02:03". */
+export function parseTalkSecondsFromDisplay(display?: string): number {
   if (!display?.trim()) return 0
   const parts = display.split(":").map((p) => Number(p))
   if (parts.some((n) => Number.isNaN(n))) return 0

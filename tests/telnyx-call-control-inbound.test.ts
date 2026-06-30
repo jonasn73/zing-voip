@@ -264,13 +264,26 @@ describe("handleTelnyxCallControlVoiceWebhook", () => {
       getIncomingRoutingForVoiceWebhook: vi.fn(),
       getRoutingConfigForNumber: vi.fn(),
       insertCallLog: vi.fn(),
+      getCallLogSnapshotForTelemetry: vi.fn(() =>
+        Promise.resolve({
+          id: "log-1",
+          user_id: "u1",
+          from_number: "+15026558745",
+          to_number: "+15025571219",
+          duration_seconds: 600,
+          call_type: "incoming",
+          status: "completed",
+          answered_at: "2026-06-27T17:20:00.000Z",
+          organization_id: "org-1",
+        })
+      ),
       recordCallStatusEvent,
       updateCallLog,
       isReasonablePstnDialString: (s: string) => s.replace(/\D/g, "").length >= 10,
       normalizePhoneNumberE164: (p: string) => p,
     }))
     vi.doMock("@/lib/call-telemetry-realtime", () => ({
-      broadcastCallCompletedBySid: vi.fn(() => Promise.resolve()),
+      broadcastCallCompleted: vi.fn(() => Promise.resolve()),
     }))
     vi.doMock("@/lib/carrier-credit-alerts", () => ({
       evaluateLowCarrierCreditFromCallUsage: vi.fn(() => Promise.resolve()),

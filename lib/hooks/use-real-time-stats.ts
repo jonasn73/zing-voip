@@ -11,6 +11,7 @@ import {
 } from "@/lib/dashboard-routing-utils"
 import {
   emptyRoutingTelemetrySnapshot,
+  parseTalkSecondsFromDisplay,
   readRoutingTelemetryCache,
   writeRoutingTelemetryCache,
   type RoutingTelemetrySnapshot,
@@ -90,6 +91,8 @@ export function useRealTimeStats(options: UseRealTimeStatsOptions): UseRealTimeS
   const activeSessionsRef = useRef(activeCallSessions)
   activeSessionsRef.current = activeCallSessions
 
+  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const liveLineCount = useMemo(
     () =>
       businessNumbers.filter(
@@ -122,16 +125,26 @@ export function useRealTimeStats(options: UseRealTimeStatsOptions): UseRealTimeS
           missed_calls?: number
           daily_talk_seconds?: number
           weekly_talk_seconds?: number
+          daily_talk_time_display?: string
+          weekly_talk_time_display?: string
           owner_user_id?: string
         }
       }
       const data = json.data
       if (!data) return
+      const parsedDailyTalk =
+        Number(data.daily_talk_seconds ?? 0) > 0
+          ? Number(data.daily_talk_seconds)
+          : parseTalkSecondsFromDisplay(String(data.daily_talk_time_display ?? ""))
+      const parsedWeeklyTalk =
+        Number(data.weekly_talk_seconds ?? 0) > 0
+          ? Number(data.weekly_talk_seconds)
+          : parseTalkSecondsFromDisplay(String(data.weekly_talk_time_display ?? ""))
       const snap: RoutingTelemetrySnapshot = {
         dailyCalls: Number(data.daily_calls ?? 0),
         missedCalls: Number(data.missed_calls ?? 0),
-        dailyTalkSeconds: Number(data.daily_talk_seconds ?? 0),
-        weeklyTalkSeconds: Number(data.weekly_talk_seconds ?? 0),
+        dailyTalkSeconds: parsedDailyTalk,
+        weeklyTalkSeconds: parsedWeeklyTalk,
         ownerUserId: data.owner_user_id ? String(data.owner_user_id) : null,
       }
       applySnapshot(
@@ -143,6 +156,14 @@ export function useRealTimeStats(options: UseRealTimeStatsOptions): UseRealTimeS
       /* Keep last values — avoids flashing zeros on transient network errors. */
     }
   }, [activeOrganizationId])
+
+  const scheduleRefreshBaseline = useCallback(() => {
+    if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current)
+    refreshDebounceRef.current = setTimeout(() => {
+      refreshDebounceRef.current = null
+      void refreshBaseline()
+    }, 500)
+  }, [refreshBaseline])
 
   useEffect(() => {
     const snap = readRoutingTelemetryCache(activeOrganizationId) ?? emptyRoutingTelemetrySnapshot()
@@ -163,6 +184,14 @@ export function useRealTimeStats(options: UseRealTimeStatsOptions): UseRealTimeS
       window.removeEventListener("lyncr-workspace-data-changed", onRoutingSaved)
       window.removeEventListener("zing-porting-orders-changed", onRoutingSaved)
     }
+  }, [refreshBaseline])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshBaseline()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
   }, [refreshBaseline])
 
   useEffect(() => {
@@ -221,6 +250,7 @@ export function useRealTimeStats(options: UseRealTimeStatsOptions): UseRealTimeS
         setDailyTalkSeconds((prev) => prev + talkSec)
         setWeeklyTalkSeconds((prev) => prev + talkSec)
       }
+      scheduleRefreshBaseline()
     }
 
     channel.bind("call-initiated", onCallInitiated)
@@ -231,7 +261,14 @@ export function useRealTimeStats(options: UseRealTimeStatsOptions): UseRealTimeS
       pusher.unsubscribe(channelName)
       setRealtimeConnected(false)
     }
-  }, [ownerUserId, activeOrganizationId, workspaceLineSet])
+  }, [ownerUserId, activeOrganizationId, workspaceLineSet, scheduleRefreshBaseline])
+
+  useEffect(
+    () => () => {
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current)
+    },
+    []
+  )
 
   const activeCallsOnSelectedLine = useMemo(() => {
     if (!selectedLineDigits) return activeCallSessions.length

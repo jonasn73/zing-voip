@@ -236,15 +236,24 @@ export function pickVariantsForVehicle(
   for (const v of ranked) tryPick(v, false)
 
   let result = dedupeByImage(attachReferencePhotos(picked, parsed))
-
-  for (const v of ranked) {
-    if (result.length >= limit) break
-    if (result.some((row) => row.id === v.id)) continue
-    if (v.image_url && result.some((row) => row.image_url === v.image_url)) continue
-    result.push(v)
+  const knownLayouts = result.filter((row) => hasKnownButtonCount(buttonSignature(row))).length
+  if (knownLayouts >= 2) {
+    return result.slice(0, Math.min(limit, 4))
   }
 
-  return dedupeByImage(result).slice(0, limit)
+  const resultSignatures = new Set(result.map((row) => buttonSignature(row)))
+
+  for (const v of ranked) {
+    if (result.length >= Math.min(limit, 4)) break
+    if (result.some((row) => row.id === v.id)) continue
+    if (v.image_url && result.some((row) => row.image_url === v.image_url)) continue
+    const sig = buttonSignature(v)
+    if (resultSignatures.has(sig)) continue
+    result.push(v)
+    resultSignatures.add(sig)
+  }
+
+  return dedupeByImage(result).slice(0, Math.min(limit, 4))
 }
 
 /** Fill in missing photos from other listings on the same FCC page (same key family). */

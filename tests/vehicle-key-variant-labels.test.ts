@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { classifyKeyStyleBucket, variantDisplayLabel } from "@/lib/vehicle-key-variant-labels"
+import { classifyKeyStyleBucket, variantButtonLabel, variantDisplayLabel } from "@/lib/vehicle-key-variant-labels"
 
 describe("vehicle-key-variant-labels", () => {
   it("labels key combo as remote head key, not generic remote", () => {
@@ -21,5 +21,18 @@ describe("vehicle-key-variant-labels", () => {
     expect(variantDisplayLabel("2016 Dodge Dart Keyless Remote Key - Refurbished", null)).toBe(
       "Keyless fob"
     )
+  })
+
+  it("extracts button layout label from listing title", () => {
+    expect(
+      variantButtonLabel("Ford Escape OEM 4 Button Remote Head Key Fob", null, null)
+    ).toBe("4-button")
+    expect(
+      variantButtonLabel(
+        "2011 Ford Expedition 4 Button Keyless Remote Key w/ Engine Start",
+        null,
+        null
+      )
+    ).toBe("4-button + remote start")
   })
 })

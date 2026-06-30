@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
 import { ExternalLink, KeyRound, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { KEY_STYLE_OPTIONS } from "@/lib/vehicle-key-styles"
-import { resolveVariantKeyStyle, variantDisplayLabel } from "@/lib/vehicle-key-variant-labels"
+import { resolveVariantKeyStyle, variantButtonLabel, variantDisplayLabel } from "@/lib/vehicle-key-variant-labels"
 
 export type VehicleKeySelection = {
   profileId: string
@@ -93,7 +93,9 @@ function VariantGrid({
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {variants.map((variant) => {
         const selected = selectedVariantId === variant.id
-        const label = variantDisplayLabel(variant.title, variant.key_type)
+        const styleLabel = variantDisplayLabel(variant.title, variant.key_type)
+        const buttonLabel = variantButtonLabel(variant.title, variant.buttons, variant.fits_text)
+        const cardLabel = buttonLabel ? `${buttonLabel} · ${styleLabel}` : styleLabel
         return (
           <button
             key={variant.id}
@@ -112,7 +114,7 @@ function VariantGrid({
                 // eslint-disable-next-line @next/next/no-img-element -- external fccid.io thumbnails
                 <img
                   src={variant.image_url}
-                  alt={label}
+                  alt={cardLabel}
                   loading="lazy"
                   className="max-h-full max-w-full object-contain"
                 />
@@ -121,8 +123,8 @@ function VariantGrid({
               )}
             </div>
             <div className="grid gap-0.5 p-2">
-              <span className="text-[11px] font-medium leading-tight text-foreground">{label}</span>
-              {variant.buttons ? (
+              <span className="text-[11px] font-medium leading-tight text-foreground">{cardLabel}</span>
+              {variant.buttons && !buttonLabel ? (
                 <span className="text-[10px] text-muted-foreground">{variant.buttons}</span>
               ) : null}
               {variant.battery ? (
@@ -373,7 +375,7 @@ export function VehicleKeyInfoPanel({
 
               <div className="grid gap-1.5">
                 <span className="text-[11px] font-medium text-foreground">
-                  Keys for {p.fcc_id} — tap to match
+                  Keys for {p.fcc_id} — tap the button layout that matches
                 </span>
                 <VariantGrid
                   variants={detail.variants}

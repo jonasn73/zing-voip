@@ -36,6 +36,38 @@ export function variantDisplayLabel(title: string, keyType: string | null): stri
   }
 }
 
+/** Human label for button layout, e.g. "4-button + trunk". */
+export function variantButtonLabel(
+  title: string,
+  buttons: string | null,
+  fitsText?: string | null
+): string | null {
+  const blob = `${title} ${buttons ?? ""} ${fitsText ?? ""}`.toLowerCase()
+  const countMatch = blob.match(/(\d)\s*[- ]?button/)
+  if (!countMatch) return null
+  const parts = [`${countMatch[1]}-button`]
+  if (/remote start|engine start/.test(blob)) parts.push("remote start")
+  if (/trunk|liftgate|hatch/.test(blob)) parts.push("trunk")
+  if (/panic/.test(blob)) parts.push("panic")
+  return parts.join(" + ")
+}
+
+/** Stable signature so we pick one photo per distinct button layout. */
+export function variantButtonSignature(
+  title: string,
+  buttons: string | null,
+  fitsText?: string | null
+): string {
+  const blob = `${title} ${buttons ?? ""} ${fitsText ?? ""}`.toLowerCase()
+  const countMatch = blob.match(/(\d)\s*[- ]?button/)
+  const count = countMatch ? countMatch[1]! : "?"
+  const features: string[] = []
+  if (/trunk|liftgate|hatch/.test(blob)) features.push("trunk")
+  if (/panic/.test(blob)) features.push("panic")
+  if (/remote start|engine start/.test(blob)) features.push("start")
+  return `${count}|${features.sort().join(",")}`
+}
+
 /** Map a variant bucket to the intake form key-style dropdown value. */
 export function bucketToKeyStyleOption(bucket: KeyStyleBucket): string | null {
   switch (bucket) {

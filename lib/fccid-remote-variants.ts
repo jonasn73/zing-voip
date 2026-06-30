@@ -3,7 +3,7 @@
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { classifyKeyStyleBucket, type KeyStyleBucket } from "@/lib/vehicle-key-variant-labels"
+import { classifyKeyStyleBucket, variantButtonSignature, type KeyStyleBucket } from "@/lib/vehicle-key-variant-labels"
 
 export type FccRemoteVariant = {
   /** Stable id for UI selection (hash of title + image). */
@@ -167,25 +167,15 @@ function dedupeByImage(list: FccRemoteVariant[]): FccRemoteVariant[] {
   })
 }
 
-const BUCKET_PICK_LIMIT: Partial<Record<KeyStyleBucket, number>> = {
-  smart: 2,
-  remote_head: 2,
-  flip: 1,
-  keyless_fob: 1,
-  turn_key: 1,
-  other: 1,
+function buttonSignature(v: FccRemoteVariant): string {
+  return variantButtonSignature(v.title, v.buttons, v.fits_text)
 }
 
-const BUCKET_PICK_ORDER: KeyStyleBucket[] = [
-  "smart",
-  "remote_head",
-  "flip",
-  "keyless_fob",
-  "turn_key",
-  "other",
-]
+function hasKnownButtonCount(signature: string): boolean {
+  return !signature.startsWith("?|")
+}
 
-/** Rank and filter parsed listings — one or two clear photos per key style. */
+/** Rank and filter parsed listings — distinct button layouts with unique photos. */
 export function pickVariantsForVehicle(
   parsed: FccRemoteVariant[],
   input: { year: number; make: string; model: string },
@@ -216,61 +206,45 @@ export function pickVariantsForVehicle(
   )
 
   const modelPhotos = modelOnly.filter((v) => Boolean(v.image_url))
-  const candidates = dedupeByImage(
-    dedupeVariants(
-      sort(
-        [...modelPhotos, ...exact, ...modelOnly].filter(
-          (v) => !isJunkListing(v.title) && (v.image_url || classifyKeyStyleBucket(v.title, v.key_type) !== "other")
-        )
+  const candidates = dedupeVariants(
+    sort(
+      [...modelPhotos, ...exact, ...modelOnly].filter(
+        (v) => !isJunkListing(v.title) && (v.image_url || classifyKeyStyleBucket(v.title, v.key_type) !== "other")
       )
     )
   )
 
-  const buckets: Record<KeyStyleBucket, FccRemoteVariant[]> = {
-    smart: [],
-    remote_head: [],
-    flip: [],
-    keyless_fob: [],
-    turn_key: [],
-    other: [],
-  }
-
-  for (const v of candidates) {
-    buckets[classifyKeyStyleBucket(v.title, v.key_type)].push(v)
-  }
-
+  const ranked = sort(candidates)
   const picked: FccRemoteVariant[] = []
-  const seenPick = new Set<string>()
-  for (const bucket of BUCKET_PICK_ORDER) {
-    const cap = BUCKET_PICK_LIMIT[bucket] ?? 1
-    const withPhoto = buckets[bucket].filter((v) => Boolean(v.image_url))
-    const withoutPhoto = buckets[bucket].filter((v) => !v.image_url)
-    const ordered = [...withPhoto, ...withoutPhoto]
+  const seenSignatures = new Set<string>()
+  const seenImages = new Set<string>()
 
-    let taken = 0
-    let gotPhoto = false
-    for (const v of ordered) {
-      if (taken >= cap || picked.length >= limit) break
-      if (gotPhoto && !v.image_url) continue
-      const pickKey = `${bucket}|${v.image_url ?? v.title.slice(0, 48)}`
-      if (seenPick.has(pickKey)) continue
-      seenPick.add(pickKey)
-      picked.push(v)
-      taken++
-      if (v.image_url) gotPhoto = true
-    }
-
-    if (taken === 0 && withoutPhoto.length > 0 && picked.length < limit) {
-      const v = withoutPhoto[0]!
-      const pickKey = `${bucket}|${v.title.slice(0, 48)}`
-      if (!seenPick.has(pickKey)) {
-        seenPick.add(pickKey)
-        picked.push(v)
-      }
-    }
+  const tryPick = (v: FccRemoteVariant, requireKnownButtons: boolean) => {
+    if (picked.length >= limit) return false
+    const sig = buttonSignature(v)
+    if (requireKnownButtons && !hasKnownButtonCount(sig)) return false
+    if (seenSignatures.has(sig)) return false
+    if (v.image_url && seenImages.has(v.image_url)) return false
+    seenSignatures.add(sig)
+    if (v.image_url) seenImages.add(v.image_url)
+    picked.push(v)
+    return true
   }
 
-  return attachReferencePhotos(picked, parsed)
+  // Prefer listings that spell out button count (3-button vs 4-button + trunk, etc.).
+  for (const v of ranked) tryPick(v, true)
+  for (const v of ranked) tryPick(v, false)
+
+  let result = dedupeByImage(attachReferencePhotos(picked, parsed))
+
+  for (const v of ranked) {
+    if (result.length >= limit) break
+    if (result.some((row) => row.id === v.id)) continue
+    if (v.image_url && result.some((row) => row.image_url === v.image_url)) continue
+    result.push(v)
+  }
+
+  return dedupeByImage(result).slice(0, limit)
 }
 
 /** Fill in missing photos from other listings on the same FCC page (same key family). */
@@ -281,14 +255,26 @@ function attachReferencePhotos(
   const photoPool = pool.filter((v) => v.image_url && !isJunkListing(v.title))
   if (photoPool.length === 0) return picked
 
+  const usedImages = new Set(picked.map((v) => v.image_url).filter(Boolean) as string[])
+
   return picked.map((v) => {
     if (v.image_url) return v
+    const sig = buttonSignature(v)
     const bucket = classifyKeyStyleBucket(v.title, v.key_type)
     const fallback =
-      photoPool.find((p) => classifyKeyStyleBucket(p.title, p.key_type) === bucket) ??
-      photoPool.find((p) => bucket === "smart" && classifyKeyStyleBucket(p.title, p.key_type) === "smart") ??
-      photoPool[0]
+      photoPool.find(
+        (p) =>
+          !usedImages.has(p.image_url!) &&
+          hasKnownButtonCount(sig) &&
+          buttonSignature(p) === sig
+      ) ??
+      photoPool.find(
+        (p) =>
+          !usedImages.has(p.image_url!) && classifyKeyStyleBucket(p.title, p.key_type) === bucket
+      ) ??
+      photoPool.find((p) => !usedImages.has(p.image_url!))
     if (!fallback?.image_url) return v
+    usedImages.add(fallback.image_url)
     return { ...v, image_url: fallback.image_url, reference_image: true }
   })
 }
@@ -306,6 +292,7 @@ function scoreVariant(v: FccRemoteVariant, year: number): number {
   if (yearMatchesText(year, v.title, v.fits_text ?? "")) score += 25
   if (v.key_type) score += 10
   if (v.buttons) score += 5
+  if (/\d\s*[- ]?button/.test(v.title.toLowerCase())) score += 12
   if (/\boem\b|new oem|factory oem/.test(blob)) score += 15
   if (/aftermarket/.test(blob)) score += 4
   if (/refurb|used|reconditioned/.test(blob)) score -= 12

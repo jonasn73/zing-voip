@@ -17,6 +17,23 @@ describe("pickVariantsForVehicle photos", () => {
     expect(picked.some((v) => Boolean(v.image_url))).toBe(true)
   })
 
+  it("picks distinct button layouts for 2012 Ford Escape CWTWB1U793", () => {
+    const cache = JSON.parse(
+      readFileSync(join(process.cwd(), "data", "fcc-remote-variants-cache.json"), "utf8")
+    ) as Record<string, Parameters<typeof pickVariantsForVehicle>[0]>
+    const picked = pickVariantsForVehicle(cache["CWTWB1U793"] ?? [], {
+      year: 2012,
+      make: "Ford",
+      model: "Escape",
+    })
+    expect(picked.length).toBeGreaterThanOrEqual(2)
+    const images = picked.map((v) => v.image_url).filter(Boolean)
+    expect(new Set(images).size).toBe(images.length)
+    const buttonTitles = picked.map((v) => v.title.toLowerCase()).join(" ")
+    expect(buttonTitles).toMatch(/3\s*[- ]?button/)
+    expect(buttonTitles).toMatch(/4\s*[- ]?button/)
+  })
+
   it("mergeVariantLists prefers variants with photos from alternate FCC profiles", () => {
     const cache = JSON.parse(
       readFileSync(join(process.cwd(), "data", "fcc-remote-variants-cache.json"), "utf8")

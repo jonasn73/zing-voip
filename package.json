@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "audit:vehicle-keys": "npx tsx scripts/audit-vehicle-key-coverage.ts",
     "build:fcc-cache": "npx tsx scripts/build-fcc-remote-cache.ts",
+    "mirror:fcc-images": "npx tsx scripts/mirror-fcc-key-images.ts",
     "deploy:vercel": "npx vercel@latest deploy --prod --yes"
   },
   "dependencies": {

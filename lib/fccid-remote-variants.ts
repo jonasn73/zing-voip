@@ -1,7 +1,7 @@
 // Fetch and parse replacement-key listings from fccid.io for a given FCC ID + vehicle.
 // Server-only — used by /api/vehicle/fcc-detail (not bundled to the client).
 
-import { readFileSync } from "node:fs"
+import { isKeyReferenceCacheOnly } from "@/lib/key-reference-config"
 import { join } from "node:path"
 import { classifyKeyStyleBucket, extractButtonCount, variantButtonSignature, type KeyStyleBucket } from "@/lib/vehicle-key-variant-labels"
 
@@ -68,6 +68,7 @@ function cellValue(rowHtml: string, label: string): string {
 
 function absoluteImageUrl(src: string): string {
   const clean = src.split("?")[0]!
+  if (clean.startsWith("/key-images/")) return clean
   if (clean.startsWith("http")) return clean
   return `https://fccid.io${clean.startsWith("/") ? clean : `/${clean}`}`
 }
@@ -417,7 +418,7 @@ export type FccRemoteLookupResult = {
   model: string
   variants: FccRemoteVariant[]
   fccid_page_url: string
-  source: "fccid.io" | "fccid.io-cache"
+  source: "fccid.io" | "fccid.io-cache" | "lyncr-cache"
   disclaimer: string
 }
 
@@ -466,7 +467,11 @@ export async function lookupFccRemoteVariants(
     if (filtered.length > 0) {
       cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })
     }
-    return buildLookupResult(input, fccClean, pageUrl, filtered, "fccid.io-cache")
+    return buildLookupResult(input, fccClean, pageUrl, filtered, "lyncr-cache")
+  }
+
+  if (isKeyReferenceCacheOnly()) {
+    return buildLookupResult(input, fccClean, pageUrl, [], "lyncr-cache")
   }
 
   const html = await fetchFccidReplacementHtml(fccClean)
@@ -501,7 +506,7 @@ function buildLookupResult(
     source,
     disclaimer:
       variants.length > 0
-        ? "Photos and titles come from public FCC ID replacement listings. Always confirm the physical key on the vehicle before ordering."
+        ? "Photos and titles come from our bundled key reference library. Always confirm the physical key on the vehicle before ordering."
         : "No matching photos for this vehicle on FCC listings. Use the key style dropdown and supplier links below.",
   }
 }

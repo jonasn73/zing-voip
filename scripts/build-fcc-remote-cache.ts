@@ -1,9 +1,11 @@
 // Build data/fcc-remote-variants-cache.json from fccid.io replacement pages.
+// Downloads key photos into public/key-images/ so we are not dependent on fccid.io hosting.
 // Run: npm run build:fcc-cache
 
-import { readFileSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseFccidReplacementHtml } from "../lib/fccid-remote-variants"
+import { mirrorVariantsForFcc, type MirroredVariantCache } from "../lib/key-reference-image-mirror"
 
 function csvFccIds(): string[] {
   const filePath = join(process.cwd(), "data", "vehicle-key-fcc-reference.csv")
@@ -21,6 +23,15 @@ function csvFccIds(): string[] {
     }
   }
   return [...ids].sort()
+}
+
+function loadExistingCache(path: string): MirroredVariantCache {
+  if (!existsSync(path)) return {}
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as MirroredVariantCache
+  } catch {
+    return {}
+  }
 }
 
 async function fetchHtml(fccId: string): Promise<string | null> {
@@ -42,9 +53,18 @@ async function fetchHtml(fccId: string): Promise<string | null> {
 
 async function main() {
   const fccIds = csvFccIds()
-  const out: Record<string, ReturnType<typeof parseFccidReplacementHtml>> = {}
+  const outPath = join(process.cwd(), "data", "fcc-remote-variants-cache.json")
+  const publicDir = join(process.cwd(), "public")
+  const out: MirroredVariantCache = loadExistingCache(outPath)
+
+  if (existsSync(outPath)) {
+    copyFileSync(outPath, `${outPath}.${Date.now()}.bak`)
+  }
+
   let ok = 0
   let fail = 0
+  let downloaded = 0
+  let mirrorFailed = 0
 
   for (let i = 0; i < fccIds.length; i++) {
     const fccId = fccIds[i]!
@@ -52,20 +72,24 @@ async function main() {
     const html = await fetchHtml(fccId)
     if (!html) {
       fail++
-      console.log("skip")
+      console.log(out[fccId]?.length ? "keep existing" : "skip")
       await new Promise((r) => setTimeout(r, 150))
       continue
     }
     const parsed = parseFccidReplacementHtml(html)
-    out[fccId] = parsed
+    const { variants, stats } = await mirrorVariantsForFcc(fccId, parsed, publicDir)
+    out[fccId] = variants
     ok++
-    console.log(`${parsed.length} variants`)
+    downloaded += stats.downloaded
+    mirrorFailed += stats.failed
+    console.log(`${variants.length} variants, +${stats.downloaded} imgs`)
     await new Promise((r) => setTimeout(r, 150))
   }
 
-  const outPath = join(process.cwd(), "data", "fcc-remote-variants-cache.json")
   writeFileSync(outPath, JSON.stringify(out))
-  console.log(`\nWrote ${outPath} — ${ok} FCC IDs cached, ${fail} skipped`)
+  console.log(
+    `\nWrote ${outPath} — refreshed ${ok} FCC IDs, kept/skipped ${fail}, downloaded ${downloaded} images, mirror failures ${mirrorFailed}`
+  )
 }
 
 void main()

@@ -350,10 +350,20 @@
 
   .sigo-sheet-drawer-panel[data-state="open"] {
     animation-name: sigo-sheet-slide-in-right;
+    transform: translate3d(0, 0, 0);
   }
 
   .sigo-sheet-drawer-panel[data-state="closed"] {
     animation-name: sigo-sheet-slide-out-right;
+  }
+
+  /* Scheduler job editor — above Leaflet panes (z-index ~1000 inside map container). */
+  [data-slot="sheet-portal"]:has(.scheduler-job-detail-sheet) [data-slot="sheet-overlay"] {
+    z-index: 1400 !important;
+  }
+
+  [data-slot="sheet-portal"]:has(.scheduler-job-detail-sheet) [data-slot="sheet-content"] {
+    z-index: 1410 !important;
   }
 
   @keyframes sigo-marketplace-in {

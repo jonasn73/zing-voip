@@ -50,6 +50,7 @@ import type { SchedulerRouteMapHandle, DrivingRouteFocus } from "@/components/sc
 import { PhoneLookupBar } from "@/components/scheduler/phone-lookup-bar"
 import { TechnicianSwimlaneBoard } from "@/components/scheduler/technician-swimlane-board"
 import { SchedulerMobileDispatchShell } from "@/components/scheduler/scheduler-mobile-dispatch-shell"
+import { JobDetailDrawer } from "@/components/scheduler/job-detail-drawer"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { setMainScrollLocked } from "@/lib/mobile-scroll-lock"
 import type {
@@ -86,11 +87,6 @@ const SchedulerRouteMap = dynamic(
     ssr: false,
     loading: MapLoadingSkeleton,
   }
-)
-
-const JobDetailDrawer = dynamic(
-  () => import("@/components/scheduler/job-detail-drawer").then((m) => ({ default: m.JobDetailDrawer })),
-  { ssr: false }
 )
 
 type SchedulerViewMode = "grid" | "map"
@@ -235,8 +231,18 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
     }
   }, [viewMode, drawerPoolJob, drawerScheduledEvent, techLocations])
 
+  /** Clear intake deep-link params so URL focus logic does not override manual job clicks. */
+  const clearSchedulerFocusUrl = useCallback(() => {
+    const hasFocus = searchParams.get("focus") || searchParams.get("schedule")
+    if (!hasFocus) return
+    setScheduleIntentLeadId(null)
+    intakeFocusHandledRef.current = null
+    router.replace("/dashboard/scheduler", { scroll: false })
+  }, [router, searchParams])
+
   /** Open the edit drawer for a pool job, scheduled event, or active pipeline row. */
   function openJobForEdit(job: ActivePipelineJob | SchedulerEvent | UnassignedPoolJob) {
+    clearSchedulerFocusUrl()
     setHighlightId(job.id)
     const scheduled = dayEvents.find((ev) => ev.id === job.id)
     if (scheduled) {
@@ -715,13 +721,13 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
       }
       if (pipelineJob && !poolJob) {
         completeScheduleIntent()
-        focusJobOnMap(pipelineJob)
+        openJobForEdit(pipelineJob)
+        panMapToJob(pipelineJob)
       }
       return
     }
 
     if (!scheduleFromIntake) {
-      setHighlightId(focusLeadId)
       if (scheduled) {
         const eventDay = dayKeyLocal(new Date(scheduled.scheduled_at))
         if (eventDay !== dayKeyLocal(selectedDay)) {
@@ -729,13 +735,13 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
           setSelectedDay(d)
           setVisibleMonth(d)
         }
-        if (viewMode === "grid") openScheduledJobDrawer(scheduled)
-        else focusJobOnMap(scheduled)
+        openJobForEdit(scheduled)
+        if (viewMode === "map") panMapToJob(scheduled)
       } else if (poolJob) {
-        if (viewMode === "grid") openPoolJobDrawer(poolJob)
-        else focusJobOnMap(poolJob as ActivePipelineJob)
+        openJobForEdit(poolJob)
+        if (viewMode === "map") panMapToJob(poolJob as ActivePipelineJob)
       } else if (pipelineJob) {
-        focusJobOnMap(pipelineJob)
+        focusPipelineJob(pipelineJob)
       }
     }
   }, [
@@ -749,6 +755,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
     selectedDay,
     viewMode,
     completeScheduleIntent,
+    dayEvents,
   ])
 
   useEffect(() => {
@@ -1146,7 +1153,8 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
 
       {drawerOpen ? (
         <JobDetailDrawer
-          open={drawerOpen}
+          key={drawerScheduledEvent?.id ?? drawerPoolJob?.id ?? "job-drawer"}
+          open
           poolJob={drawerPoolJob}
           scheduledEvent={drawerScheduledEvent}
           technicians={technicians}

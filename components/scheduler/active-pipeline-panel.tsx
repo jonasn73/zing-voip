@@ -3,7 +3,7 @@
 // Group active pipeline jobs by execution phase for the map split-view left panel.
 
 import { useMemo } from "react"
-import { Car, Clock, MapPin, Phone, User } from "lucide-react"
+import { Car, Clock, MapPin, Pencil, Phone, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { vehicleLabelFromParts } from "@/lib/job-pool"
 import {
@@ -109,15 +109,28 @@ export function ActivePipelinePanel({
                     onClick={() => onFocusJob(job)}
                     className={cn(
                       SCHEDULER_LIST_CARD_SHELL,
-                      "w-full",
+                      "group w-full cursor-pointer text-left",
                       isMobileSheet ? "px-4 py-3" : "px-3 pb-9 pt-3",
                       "motion-safe:active:scale-[0.99]",
                       highlighted && "ring-2 ring-primary ring-offset-1 ring-offset-background"
                     )}
                   >
-                    <p className={cn("font-medium text-zinc-100", isMobileSheet ? "text-base" : "truncate pr-2 text-sm")}>
-                      {displayName}
-                    </p>
+                    <div className="flex items-start justify-between gap-2 pr-1">
+                      <p className={cn("font-medium text-zinc-100", isMobileSheet ? "text-base" : "truncate text-sm")}>
+                        {displayName}
+                      </p>
+                      <span
+                        className={cn(
+                          "inline-flex shrink-0 items-center gap-1 rounded-md border border-zinc-700/80 bg-zinc-900/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 transition-colors",
+                          highlighted
+                            ? "border-primary/50 bg-primary/15 text-primary"
+                            : "group-hover:border-primary/40 group-hover:text-primary"
+                        )}
+                      >
+                        <Pencil className="h-3 w-3" aria-hidden />
+                        Edit
+                      </span>
+                    </div>
 
                     <div className="mt-2 space-y-1.5">
                       <p className="flex items-center gap-1.5 text-xs text-zinc-400">

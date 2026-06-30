@@ -325,7 +325,7 @@ export function JobDetailDrawer({
       <SheetContent
         side="right"
         variant="drawer"
-        className="flex w-full max-w-md flex-col gap-0 p-0 sm:max-w-md [&>button]:hidden"
+        className="scheduler-job-detail-sheet flex w-full max-w-md flex-col gap-0 p-0 sm:max-w-md [&>button]:hidden"
       >
         <header className="relative shrink-0 border-b border-border/60 px-5 py-4 pr-14">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Job details</p>

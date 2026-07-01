@@ -16,6 +16,14 @@ export const LOCKSMITH_COVERAGE_MAKES = [
   "HYUNDAI",
   "KIA",
   "SUBARU",
+  "MAZDA",
+  "VOLKSWAGEN",
+  "BMW",
+  "MERCEDES-BENZ",
+  "LEXUS",
+  "ACURA",
+  "INFINITI",
+  "CHRYSLER",
 ] as const
 
 /** YMM combos that must always resolve (regression + high-volume jobs). */

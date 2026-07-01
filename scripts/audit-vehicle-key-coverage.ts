@@ -14,8 +14,8 @@ import {
   type VehicleKeyCoverageCase,
 } from "@/lib/vehicle-key-coverage-audit"
 
-const YEARS = [2014, 2018, 2022]
-const MODELS_PER_MAKE_YEAR = 20
+const YEARS = [2012, 2014, 2016, 2017, 2018, 2019, 2020, 2022, 2024]
+const MODELS_PER_MAKE_YEAR = 50
 
 async function main() {
   const samples: VehicleKeyCoverageCase[] = []

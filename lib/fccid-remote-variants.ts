@@ -2,6 +2,7 @@
 // Server-only — used by /api/vehicle/fcc-detail (not bundled to the client).
 
 import { isKeyReferenceCacheOnly } from "@/lib/key-reference-config"
+import { attachLocalBundledPhotos } from "@/lib/local-key-images"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { classifyKeyStyleBucket, extractButtonCount, variantButtonSignature, type KeyStyleBucket } from "@/lib/vehicle-key-variant-labels"
@@ -486,6 +487,7 @@ export async function lookupFccRemoteVariants(
   const staticParsed = loadStaticParsedByFcc()[fccClean]
   if (staticParsed?.length) {
     let filtered = pickVariantsForVehicle(staticParsed, input, 6)
+    filtered = attachLocalBundledPhotos(fccClean, filtered, input, join(process.cwd(), "public"))
     if (filtered.length > 0) {
       cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })
     }
@@ -502,7 +504,8 @@ export async function lookupFccRemoteVariants(
   }
 
   const parsed = parseFccidReplacementHtml(html)
-  const filtered = pickVariantsForVehicle(parsed, input, 6)
+  let filtered = pickVariantsForVehicle(parsed, input, 6)
+  filtered = attachLocalBundledPhotos(fccClean, filtered, input, join(process.cwd(), "public"))
 
   if (filtered.length > 0) {
     cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, variants: filtered })

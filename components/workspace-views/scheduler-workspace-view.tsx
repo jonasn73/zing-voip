@@ -50,7 +50,7 @@ import {
 } from "@/lib/hooks/use-job-pool-query"
 import { persistedCacheKey, writePersistedCache } from "@/lib/swr/persisted-cache"
 import { JobPoolPanel } from "@/components/scheduler/job-pool-panel"
-import { DispatchOperationsMetricStrip } from "@/components/scheduler/dispatch-operations-metric-strip"
+import { SchedulerDispatchLiveStatus } from "@/components/scheduler/scheduler-dispatch-live-status"
 import { ActivePipelinePanelStream } from "@/components/scheduler/active-pipeline-panel-stream"
 import { SchedulerCalendarStatsSkeleton } from "@/components/scheduler/scheduler-panel-skeletons"
 import type { SchedulerRouteMapHandle, DrivingRouteFocus } from "@/components/scheduler-route-map"
@@ -376,6 +376,28 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
   function focusScheduledMapJob(ev: SchedulerEvent) {
     editPipelineJob(ev)
   }
+
+  const focusJobById = useCallback(
+    (jobId: string) => {
+      const pipeline = displayPipelineJobs.find((j) => j.id === jobId)
+      if (pipeline) {
+        highlightPipelineJob(pipeline)
+        return
+      }
+      const scheduled = dayEvents.find((ev) => ev.id === jobId)
+      if (scheduled) {
+        setHighlightId(jobId)
+        if (viewMode === "map") panMapToJob(scheduled, false)
+        return
+      }
+      const pool = displayPoolJobs.find((j) => j.id === jobId)
+      if (pool) {
+        setHighlightId(jobId)
+        if (viewMode === "map") panMapToJob(pool, false)
+      }
+    },
+    [displayPipelineJobs, dayEvents, displayPoolJobs, viewMode]
+  )
 
   const canSaveBooking =
     customerName.trim() &&
@@ -940,6 +962,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
           onEditJob={editPipelineJob}
           onSelectEvent={focusScheduledMapJob}
           onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
+          onSelectUpcomingJob={focusJobById}
         />
       ) : (
         <WorkspacePage>
@@ -982,13 +1005,13 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
         <JobPoolPanel jobs={displayPoolJobs} highlightId={highlightId} onSelectJob={openPoolJobDrawer} />
       ) : null}
 
-      {viewMode === "map" ? (
-        <DispatchOperationsMetricStrip
-          poolJobs={displayPoolJobs}
-          activePipelineJobs={displayPipelineJobs}
-          dayEvents={dayEvents}
-        />
-      ) : null}
+      <SchedulerDispatchLiveStatus
+        selectedDay={selectedDay}
+        poolJobs={displayPoolJobs}
+        activePipelineJobs={displayPipelineJobs}
+        dayEvents={dayEvents}
+        onSelectJob={focusJobById}
+      />
 
       {viewMode === "grid" ? (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">

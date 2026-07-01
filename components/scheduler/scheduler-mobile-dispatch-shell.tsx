@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { MOBILE_TAP_TARGET } from "@/lib/mobile-shell"
 import { Button } from "@/components/ui/button"
 import { ActivePipelinePanelStream } from "@/components/scheduler/active-pipeline-panel-stream"
-import { DispatchOperationsMetricStrip } from "@/components/scheduler/dispatch-operations-metric-strip"
+import { SchedulerDispatchLiveStatus } from "@/components/scheduler/scheduler-dispatch-live-status"
 import type { SchedulerRouteMapHandle } from "@/components/scheduler-route-map"
 import type {
   ActivePipelineJob,
@@ -49,6 +49,7 @@ export type SchedulerMobileDispatchShellProps = {
   onEditJob: (job: ActivePipelineJob) => void
   onSelectEvent: (event: SchedulerEvent) => void
   onSelectPoolJob: (job: UnassignedPoolJob | ActivePipelineJob) => void
+  onSelectUpcomingJob?: (jobId: string) => void
 }
 
 /** Mobile dispatch — full-bleed map with a draggable bottom sheet for the job list. */
@@ -70,6 +71,7 @@ export function SchedulerMobileDispatchShell({
   onEditJob,
   onSelectEvent,
   onSelectPoolJob,
+  onSelectUpcomingJob,
 }: SchedulerMobileDispatchShellProps) {
   const [sheetContainer, setSheetContainer] = useState<HTMLElement | null>(null)
   const [sheetSnap, setSheetSnap] = useState<string | number | null>(SHEET_PEEK)
@@ -144,11 +146,13 @@ export function SchedulerMobileDispatchShell({
               <span className="sr-only sm:not-sr-only">Create</span>
             </Button>
           </div>
-          <DispatchOperationsMetricStrip
+          <SchedulerDispatchLiveStatus
             embedded
+            selectedDay={selectedDay}
             poolJobs={poolJobs}
             activePipelineJobs={activePipelineJobs}
             dayEvents={dayEvents}
+            onSelectJob={onSelectUpcomingJob}
             className="w-full"
           />
         </div>

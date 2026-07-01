@@ -17,12 +17,13 @@ export function PhoneLookupBar({ organizationId, onResults, className }: PhoneLo
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onResultsRef = useRef(onResults)
+  onResultsRef.current = onResults
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     const digits = query.replace(/\D/g, "")
     if (digits.length < 7) {
-      onResults(null)
       return
     }
     debounceRef.current = setTimeout(() => {
@@ -33,14 +34,16 @@ export function PhoneLookupBar({ organizationId, onResults, className }: PhoneLo
         cache: "no-store",
       })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("lookup"))))
-        .then((j: { data?: SchedulerPhoneLookupResult }) => onResults(j.data ?? { pool: [], scheduled: [] }))
-        .catch(() => onResults({ pool: [], scheduled: [] }))
+        .then((j: { data?: SchedulerPhoneLookupResult }) =>
+          onResultsRef.current(j.data ?? { pool: [], scheduled: [] })
+        )
+        .catch(() => onResultsRef.current({ pool: [], scheduled: [] }))
         .finally(() => setLoading(false))
     }, 350)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [query, organizationId, onResults])
+  }, [query, organizationId])
 
   return (
     <div className={cn("relative w-full max-w-xs sm:max-w-sm", className)}>

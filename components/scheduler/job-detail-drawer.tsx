@@ -222,6 +222,12 @@ export function JobDetailDrawer({
     onScheduleCommitted,
   ])
 
+  const openedAtRef = useRef(0)
+
+  useEffect(() => {
+    if (open && source) openedAtRef.current = Date.now()
+  }, [open, source])
+
   // Close on Escape.
   useEffect(() => {
     if (!open) return
@@ -330,11 +336,24 @@ export function JobDetailDrawer({
 
   return (
     <>
-      <Dialog open={open && Boolean(source)} onOpenChange={(next) => !next && onClose()}>
+      <Dialog
+        open={open && Boolean(source)}
+        onOpenChange={(next) => {
+          if (next) return
+          if (Date.now() - openedAtRef.current < 400) return
+          onClose()
+        }}
+      >
         <DialogContent
           showCloseButton={false}
           overlayClassName="bg-zinc-950/75"
           className="flex h-[min(92dvh,880px)] w-full max-w-lg flex-col gap-0 overflow-hidden border-border bg-card p-0 sm:max-w-lg"
+          onPointerDownOutside={(event) => {
+            if (Date.now() - openedAtRef.current < 400) event.preventDefault()
+          }}
+          onInteractOutside={(event) => {
+            if (Date.now() - openedAtRef.current < 400) event.preventDefault()
+          }}
         >
           <DialogTitle className="sr-only">Edit job</DialogTitle>
           <header className="relative shrink-0 border-b border-border/60 px-5 py-4 pr-14">

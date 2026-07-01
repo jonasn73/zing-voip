@@ -289,10 +289,22 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
     if (viewMode === "map") panMapToJob(job, false)
   }
 
-  /** Edit button — open the centered job editor dialog. */
+  /** Edit button / card — open the job editor on the next frame (avoids dialog dismissing the opening click). */
   function editPipelineJob(job: ActivePipelineJob | UnassignedPoolJob | SchedulerEvent) {
-    openJobForEdit(job)
+    suppressUrlFocusRef.current = true
+    setHighlightId(job.id)
     if (viewMode === "map") panMapToJob(job, false)
+
+    window.setTimeout(() => {
+      const scheduled = dayEvents.find((ev) => ev.id === job.id)
+      if (scheduled) {
+        setDrawerScheduledEvent(scheduled)
+        setDrawerPoolJob(null)
+      } else {
+        setDrawerPoolJob(job as UnassignedPoolJob)
+        setDrawerScheduledEvent(null)
+      }
+    }, 0)
   }
 
   function focusPipelineJob(job: ActivePipelineJob) {
@@ -539,8 +551,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
   const handlePhoneLookupResults = useCallback(
     (result: SchedulerPhoneLookupResult | null) => {
       if (!result || (result.pool.length === 0 && result.scheduled.length === 0)) {
-        setHighlightId(null)
-        closeJobDrawer()
+        // Empty lookup — do not close an editor the user opened from the job list.
         return
       }
       const poolMatch = result.pool[0]
@@ -560,7 +571,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
         }
       }
     },
-    [selectedDay, viewMode, dayEvents]
+    [selectedDay]
   )
 
   function resolveDropHour(techUserId: string, preferredHour: number, durationMinutes: number): number {

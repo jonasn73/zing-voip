@@ -105,86 +105,87 @@ export function ActivePipelinePanel({
               const displayName = job.customer_name?.trim() || "Unknown customer"
               const phone = formatPhone(job.customer_phone)
               return (
-                <li key={job.id} className="relative w-full">
-                  <button
-                    type="button"
-                    onClick={() => onFocusJob(job)}
+                <li key={job.id}>
+                  <div
                     className={cn(
                       SCHEDULER_LIST_CARD_SHELL,
-                      "group w-full cursor-pointer text-left",
+                      "group relative w-full text-left",
                       isMobileSheet ? "px-4 py-3" : "px-3 pb-9 pt-3",
-                      "motion-safe:active:scale-[0.99]",
                       highlighted && "ring-2 ring-primary ring-offset-1 ring-offset-background"
                     )}
                   >
-                    <div className="flex items-start justify-between gap-2 pr-14">
-                      <p className={cn("font-medium text-zinc-100", isMobileSheet ? "text-base" : "truncate text-sm")}>
-                        {displayName}
-                      </p>
-                    </div>
-
-                    <div className="mt-2 space-y-1.5">
-                      <p className="flex items-center gap-1.5 text-xs text-zinc-400">
-                        <Phone className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
-                        <span className="truncate">{phone}</span>
-                      </p>
-                      <p className="flex items-center gap-1.5 text-xs text-zinc-400">
-                        <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
-                        <span className="truncate">
-                          {formatTime(job.scheduled_at)}
-                          {job.job_type ? ` · ${job.job_type}` : ""}
-                        </span>
-                      </p>
-                      {vehicle ? (
-                        <p className="flex items-center gap-1.5 text-xs text-zinc-400">
-                          <Car className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
-                          <span className="truncate">{vehicle}</span>
-                        </p>
-                      ) : null}
-                      {job.assigned_tech_name ? (
-                        <p className="flex items-center gap-1.5 text-xs text-zinc-400">
-                          <User className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
-                          <span className="truncate">{job.assigned_tech_name}</span>
-                        </p>
-                      ) : null}
-                      {job.location ? (
-                        <p className="flex items-start gap-1.5 text-xs text-zinc-500">
-                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-600" aria-hidden />
-                          <span className={isMobileSheet ? "break-words" : "line-clamp-2"}>{job.location}</span>
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <span
+                    <button
+                      type="button"
+                      aria-label={`Edit job for ${displayName}`}
+                      onClick={() => onEditJob(job)}
                       className={cn(
-                        "rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                        SCHEDULER_BADGE_STYLE[phase],
-                        isMobileSheet ? "mt-3 inline-flex" : "absolute bottom-2.5 right-2.5"
+                        "absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-md border border-zinc-700/80 bg-zinc-900/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/15 hover:text-primary",
+                        highlighted && "border-primary/50 bg-primary/15 text-primary"
                       )}
                     >
-                      {SCHEDULER_STATUS_LABEL[phase]}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Edit job for ${displayName}`}
-                    onPointerDown={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      onEditJob(job)
-                    }}
-                    className={cn(
-                      "absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border border-zinc-700/80 bg-zinc-900/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/15 hover:text-primary",
-                      highlighted && "border-primary/50 bg-primary/15 text-primary"
-                    )}
-                  >
-                    <Pencil className="h-3 w-3" aria-hidden />
-                    Edit
-                  </button>
+                      <Pencil className="h-3 w-3" aria-hidden />
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onEditJob(job)}
+                      className="block w-full cursor-pointer text-left"
+                    >
+                      <div className="flex items-start justify-between gap-2 pr-14">
+                        <p
+                          className={cn(
+                            "font-medium text-zinc-100",
+                            isMobileSheet ? "text-base" : "truncate text-sm"
+                          )}
+                        >
+                          {displayName}
+                        </p>
+                      </div>
+
+                      <div className="mt-2 space-y-1.5">
+                        <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                          <Phone className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                          <span className="truncate">{phone}</span>
+                        </p>
+                        <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                          <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                          <span className="truncate">
+                            {formatTime(job.scheduled_at)}
+                            {job.job_type ? ` · ${job.job_type}` : ""}
+                          </span>
+                        </p>
+                        {vehicle ? (
+                          <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                            <Car className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                            <span className="truncate">{vehicle}</span>
+                          </p>
+                        ) : null}
+                        {job.assigned_tech_name ? (
+                          <p className="flex items-center gap-1.5 text-xs text-zinc-400">
+                            <User className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+                            <span className="truncate">{job.assigned_tech_name}</span>
+                          </p>
+                        ) : null}
+                        {job.location ? (
+                          <p className="flex items-start gap-1.5 text-xs text-zinc-500">
+                            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-600" aria-hidden />
+                            <span className={isMobileSheet ? "break-words" : "line-clamp-2"}>{job.location}</span>
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <span
+                        className={cn(
+                          "rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                          SCHEDULER_BADGE_STYLE[phase],
+                          isMobileSheet ? "mt-3 inline-flex" : "absolute bottom-2.5 right-2.5"
+                        )}
+                      >
+                        {SCHEDULER_STATUS_LABEL[phase]}
+                      </span>
+                    </button>
+                  </div>
                 </li>
               )
             })}

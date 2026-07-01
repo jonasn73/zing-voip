@@ -35,13 +35,13 @@ import {
 /** Every member area you can jump to (includes Help, which is not a bottom tab). */
 const JUMP_PAGES = [
   { id: "dashboard", label: "Routing", href: "/dashboard", icon: Zap },
+  { id: "scheduler", label: "Scheduler", href: "/dashboard/scheduler", icon: CalendarDays },
   { id: "activity", label: "Activity", href: "/dashboard/activity", icon: ClipboardList },
   { id: "leads", label: "Leads", href: "/dashboard/leads", icon: Inbox },
   { id: "customers", label: "Customers", href: "/dashboard/customers", icon: BookUser },
   { id: "contacts", label: "Team", href: "/dashboard/contacts", icon: Users },
   { id: "pay", label: "Pay", href: "/dashboard/pay", icon: BarChart3 },
   { id: "settings", label: "Settings", href: "/dashboard/settings", icon: Settings },
-  { id: "scheduler", label: "Scheduler", href: "/dashboard/scheduler", icon: CalendarDays },
   { id: "help", label: "Help & feedback", href: "/dashboard/help", icon: LifeBuoy },
 ] as const
 

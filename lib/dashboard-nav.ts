@@ -27,11 +27,11 @@ export type DashboardNavItem = {
   icon: LucideIcon
 }
 
-/** Primary command-dock destinations — Scheduler sits between Activity and Leads. */
+/** Primary command-dock destinations — Scheduler directly under Routing; Activity below Scheduler. */
 export const dashboardNavItems: DashboardNavItem[] = [
   { id: "dashboard", label: "Routing", icon: Zap },
-  { id: "activity", label: "Activity", icon: ClipboardList },
   { id: "scheduler", label: "Scheduler", icon: CalendarDays },
+  { id: "activity", label: "Activity", icon: ClipboardList },
   { id: "leads", label: "Leads", icon: Inbox },
   { id: "contacts", label: "Team", icon: Users },
   { id: "pay", label: "Pay", icon: BarChart3 },

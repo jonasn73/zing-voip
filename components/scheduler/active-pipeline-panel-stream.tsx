@@ -12,7 +12,7 @@ type ActivePipelinePanelStreamProps = {
   useStreamedInitialDay: boolean
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
-  onEditJob?: (job: ActivePipelineJob) => void
+  onEditJob: (job: ActivePipelineJob) => void
   layout?: "default" | "mobileSheet"
 }
 

@@ -139,6 +139,8 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
   const [scheduleIntentLeadId, setScheduleIntentLeadId] = useState<string | null>(null)
   const [intakeScheduleJob, setIntakeScheduleJob] = useState<UnassignedPoolJob | null>(null)
   const initialBootstrapDoneRef = useRef(false)
+  /** Prevents URL focus effects from closing a job the user opened manually via Edit. */
+  const suppressUrlFocusRef = useRef(false)
 
   const { focusLeadId, scheduleFromIntake } = useMemo(
     () => parseSchedulerFocusSearch(searchParams.toString()),
@@ -242,7 +244,11 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
   }, [router, searchParams])
 
   /** Open the edit drawer for a pool job, scheduled event, or active pipeline row. */
-  function openJobForEdit(job: ActivePipelineJob | SchedulerEvent | UnassignedPoolJob) {
+  function openJobForEdit(
+    job: ActivePipelineJob | SchedulerEvent | UnassignedPoolJob,
+    opts?: { fromUrl?: boolean }
+  ) {
+    if (!opts?.fromUrl) suppressUrlFocusRef.current = true
     clearSchedulerFocusUrl()
     setHighlightId(job.id)
     const scheduled = dayEvents.find((ev) => ev.id === job.id)
@@ -277,19 +283,16 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
     openJobForEdit(ev)
   }
 
-  /** List card tap — highlight on map only; closes the editor if it was open. */
+  /** List card tap — highlight on map only (does not open or close the editor). */
   function highlightPipelineJob(job: ActivePipelineJob) {
-    if (drawerOpen) {
-      setDrawerPoolJob(null)
-      setDrawerScheduledEvent(null)
-    }
     setHighlightId(job.id)
     if (viewMode === "map") panMapToJob(job, false)
   }
 
-  /** Edit button / map pin — open the job editor. */
+  /** Edit button — open the centered job editor dialog. */
   function editPipelineJob(job: ActivePipelineJob | UnassignedPoolJob | SchedulerEvent) {
     openJobForEdit(job)
+    if (viewMode === "map") panMapToJob(job, false)
   }
 
   function focusPipelineJob(job: ActivePipelineJob) {
@@ -462,14 +465,6 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
 
   const drawerOpen = Boolean(drawerPoolJob || drawerScheduledEvent)
 
-  useEffect(() => {
-    if (!isActive || viewMode !== "map" || !drawerOpen) return
-    const job = drawerScheduledEvent ?? drawerPoolJob
-    if (!job) return
-    const timer = window.setTimeout(() => panMapToJob(job, true), 60)
-    return () => window.clearTimeout(timer)
-  }, [isActive, viewMode, drawerOpen, drawerScheduledEvent?.id, drawerPoolJob?.id])
-
   function openBookingAtHour(hour24: number) {
     setBookingStart(toDatetimeLocalValue(dateAtLocalHour(selectedDay, hour24)))
     setBookingOpen(true)
@@ -505,6 +500,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
 
   function closeJobDrawer() {
     document.body.style.overflow = ""
+    suppressUrlFocusRef.current = false
     setDrawerPoolJob(null)
     setDrawerScheduledEvent(null)
     if (viewMode === "map") setHighlightId(null)
@@ -516,8 +512,10 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
       setIntakeScheduleJob(null)
       router.replace("/dashboard/scheduler", { scroll: false })
       setViewMode("map")
-      setDrawerPoolJob(null)
-      setDrawerScheduledEvent(null)
+      if (!suppressUrlFocusRef.current) {
+        setDrawerPoolJob(null)
+        setDrawerScheduledEvent(null)
+      }
       void mutatePool()
       void mutateActivePipeline()
       if (event) {
@@ -748,7 +746,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
   }, [isActive, focusLeadId, scheduleFromIntake, mutatePool])
 
   useEffect(() => {
-    if (!isActive || !focusLeadId) return
+    if (!isActive || !focusLeadId || suppressUrlFocusRef.current) return
 
     const poolJob = poolJobs.find((j) => j.id === focusLeadId)
     const scheduled = events.find((e) => e.id === focusLeadId)
@@ -766,7 +764,7 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
       }
       if (pipelineJob && !poolJob && !poolLoading) {
         completeScheduleIntent()
-        openJobForEdit(pipelineJob)
+        openJobForEdit(pipelineJob, { fromUrl: true })
         panMapToJob(pipelineJob)
       }
       return
@@ -780,10 +778,10 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
           setSelectedDay(d)
           setVisibleMonth(d)
         }
-        openJobForEdit(scheduled)
+        openJobForEdit(scheduled, { fromUrl: true })
         if (viewMode === "map") panMapToJob(scheduled)
       } else if (poolJob) {
-        openJobForEdit(poolJob)
+        openJobForEdit(poolJob, { fromUrl: true })
         if (viewMode === "map") panMapToJob(poolJob as ActivePipelineJob)
       } else if (pipelineJob) {
         focusPipelineJob(pipelineJob)
@@ -870,7 +868,6 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
           onEditJob={editPipelineJob}
           onSelectEvent={focusScheduledMapJob}
           onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
-          drawerOpen={drawerOpen}
         />
       ) : (
         <WorkspacePage>
@@ -1079,7 +1076,6 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
                     techLocations={techLocations}
                     selectedDayLabel={selectedDayLabel}
                     highlightId={highlightId}
-                    reserveRightForEditor={drawerOpen}
                     routeFocus={null}
                     embedded
                     disableHoverTooltips={false}
@@ -1202,7 +1198,6 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
       ) : null}
 
       <JobDetailDrawer
-        key={drawerScheduledEvent?.id ?? drawerPoolJob?.id ?? "job-drawer"}
         open={drawerOpen}
         poolJob={drawerPoolJob}
         scheduledEvent={drawerScheduledEvent}
@@ -1213,7 +1208,6 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
         onDeleted={handleJobDeleted}
         scheduleIntent={Boolean(scheduleIntentLeadId && drawerPoolJob?.id === scheduleIntentLeadId)}
         onScheduleCommitted={handleScheduleCommitted}
-        placement="fixed"
       />
 
       <IntakeScheduleDialog

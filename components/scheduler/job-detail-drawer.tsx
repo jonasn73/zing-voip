@@ -3,9 +3,9 @@
 // Editable slide-over when you tap a job on the dispatch map or calendar.
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { createPortal } from "react-dom"
 import { Loader2, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -40,8 +40,6 @@ type JobDetailDrawerProps = {
   /** Intake dispatch flow — focus start time and auto-save when a time is picked. */
   scheduleIntent?: boolean
   onScheduleCommitted?: (event: SchedulerEvent) => void
-  /** embedded = slide over the map column; fixed = dock to viewport right (grid view). */
-  placement?: "embedded" | "fixed"
 }
 
 const STATUS_SEGMENTS: {
@@ -83,7 +81,6 @@ export function JobDetailDrawer({
   onDeleted,
   scheduleIntent = false,
   onScheduleCommitted,
-  placement = "fixed",
 }: JobDetailDrawerProps) {
   const source = scheduledEvent ?? poolJob
   const jobId = source?.id ?? ""
@@ -225,7 +222,7 @@ export function JobDetailDrawer({
     onScheduleCommitted,
   ])
 
-  // Close on Escape (no full-page overlay — the app stays usable behind the panel).
+  // Close on Escape.
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -234,13 +231,6 @@ export function JobDetailDrawer({
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [open, onClose])
-
-  if (!open || !source) return null
-
-  const panelPositionClass =
-    placement === "embedded"
-      ? "absolute inset-y-0 right-0 z-[1200] h-full"
-      : "fixed inset-y-0 right-0 z-[9999] h-dvh max-h-dvh"
 
   const canSave = customerName.trim().length > 0 && customerPhone.trim().length > 0
 
@@ -338,18 +328,16 @@ export function JobDetailDrawer({
     }
   }
 
-  const panel = (
+  return (
     <>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Edit job"
-        className={cn(
-          "scheduler-job-detail-panel flex w-full max-w-md flex-col border-l border-border/60 bg-background shadow-2xl",
-          panelPositionClass
-        )}
-      >
-        <header className="relative shrink-0 border-b border-border/60 px-5 py-4 pr-14">
+      <Dialog open={open && Boolean(source)} onOpenChange={(next) => !next && onClose()}>
+        <DialogContent
+          showCloseButton={false}
+          overlayClassName="bg-zinc-950/75"
+          className="flex h-[min(92dvh,880px)] w-full max-w-lg flex-col gap-0 overflow-hidden border-border bg-card p-0 sm:max-w-lg"
+        >
+          <DialogTitle className="sr-only">Edit job</DialogTitle>
+          <header className="relative shrink-0 border-b border-border/60 px-5 py-4 pr-14">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Job details</p>
           <span
             className={cn(
@@ -616,7 +604,8 @@ export function JobDetailDrawer({
             Delete job
           </Button>
         </div>
-      </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
@@ -643,8 +632,4 @@ export function JobDetailDrawer({
       </AlertDialog>
     </>
   )
-
-  if (placement === "embedded") return panel
-
-  return createPortal(panel, document.body)
 }

@@ -45,8 +45,7 @@ type ActivePipelinePanelProps = {
   loading?: boolean
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
-  /** Opens the edit drawer — defaults to onFocusJob when omitted. */
-  onEditJob?: (job: ActivePipelineJob) => void
+  onEditJob: (job: ActivePipelineJob) => void
   layout?: "default" | "mobileSheet"
 }
 
@@ -58,7 +57,6 @@ export function ActivePipelinePanel({
   onEditJob,
   layout = "default",
 }: ActivePipelinePanelProps) {
-  const openEditor = onEditJob ?? onFocusJob
   const isMobileSheet = layout === "mobileSheet"
   const grouped = useMemo(() => {
     const buckets = new Map<SchedulerLifecyclePhase, ActivePipelineJob[]>()
@@ -170,10 +168,14 @@ export function ActivePipelinePanel({
                   <button
                     type="button"
                     aria-label={`Edit job for ${displayName}`}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
+                    onPointerDown={(event) => {
+                      event.preventDefault()
                       event.stopPropagation()
-                      openEditor(job)
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onEditJob(job)
                     }}
                     className={cn(
                       "absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md border border-zinc-700/80 bg-zinc-900/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/15 hover:text-primary",

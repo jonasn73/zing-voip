@@ -46,10 +46,9 @@ export type SchedulerMobileDispatchShellProps = {
   onViewModeChange: (mode: "grid" | "map") => void
   onCreate: () => void
   onFocusJob: (job: ActivePipelineJob) => void
-  onEditJob?: (job: ActivePipelineJob) => void
+  onEditJob: (job: ActivePipelineJob) => void
   onSelectEvent: (event: SchedulerEvent) => void
   onSelectPoolJob: (job: UnassignedPoolJob | ActivePipelineJob) => void
-  drawerOpen?: boolean
 }
 
 /** Mobile dispatch — full-bleed map with a draggable bottom sheet for the job list. */
@@ -71,7 +70,6 @@ export function SchedulerMobileDispatchShell({
   onEditJob,
   onSelectEvent,
   onSelectPoolJob,
-  drawerOpen = false,
 }: SchedulerMobileDispatchShellProps) {
   const [sheetContainer, setSheetContainer] = useState<HTMLElement | null>(null)
   const [sheetSnap, setSheetSnap] = useState<string | number | null>(SHEET_PEEK)
@@ -97,7 +95,6 @@ export function SchedulerMobileDispatchShell({
           techLocations={techLocations}
           selectedDayLabel={selectedDayLabel}
           highlightId={highlightId}
-          reserveRightForEditor={drawerOpen}
           routeFocus={null}
           embedded
           mobileFullBleed

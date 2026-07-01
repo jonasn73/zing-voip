@@ -8,7 +8,7 @@ type ActivePipelineFromPromiseProps = {
   jobsPromise: Promise<ActivePipelineJob[]>
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
-  onEditJob?: (job: ActivePipelineJob) => void
+  onEditJob: (job: ActivePipelineJob) => void
   layout?: "default" | "mobileSheet"
 }
 

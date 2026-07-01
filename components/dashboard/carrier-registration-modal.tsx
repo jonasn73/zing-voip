@@ -141,6 +141,7 @@ export function CarrierRegistrationModal({ open, onOpenChange, initialEdit = fal
               onSubmitted={() => {
                 setForceForm(false)
                 void refreshFromCarrier()
+                onOpenChange(false)
               }}
             />
           )}

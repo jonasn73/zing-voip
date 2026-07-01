@@ -11,8 +11,6 @@ import { VehiclePickerCascade } from "@/components/vehicle-picker-cascade"
 import { JobAddressAutocomplete } from "@/components/job-address-autocomplete"
 import { VehicleIntakeClarificationsPanel } from "@/components/vehicle-intake-clarifications-panel"
 import { VehicleKeyInfoPanel } from "@/components/vehicle-key-info-panel"
-import { INTAKE_LOCKSMITH_JOB_TYPES, KEY_REPLACEMENT_MODES } from "@/lib/intake-job-types"
-import { cn } from "@/lib/utils"
 import { useDashboardWorkspace } from "@/components/dashboard-workspace-context"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -321,7 +319,7 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                   Ask first — year, make &amp; model
                 </legend>
                 <p className="text-[11px] text-primary/90">
-                  Get the vehicle before service type or address. Tap the customer&apos;s answers below.
+                  Get the vehicle before the service address. Tap the customer&apos;s answers below.
                 </p>
                 <VehiclePickerCascade
                   value={{
@@ -362,53 +360,6 @@ export function CallAnsweredModal({ enabled, ownerUserId }: CallAnsweredModalPro
                 <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-primary/90">
                   Job details
                 </legend>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-xs font-medium text-foreground">
-                    What do they need? <span className="text-primary">*</span>
-                  </span>
-                  <select
-                    className={cn(
-                      "h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground",
-                      "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    )}
-                    value={form.jobType}
-                    onChange={(e) =>
-                      patchForm({
-                        jobType: e.target.value,
-                        keyReplacementMode: e.target.value === "Key replacement" ? form.keyReplacementMode : "",
-                      })
-                    }
-                  >
-                    <option value="">Select service type…</option>
-                    {INTAKE_LOCKSMITH_JOB_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {form.jobType === "Key replacement" ? (
-                  <label className="grid gap-1.5 text-sm">
-                    <span className="text-xs font-medium text-foreground">
-                      Key replacement type <span className="text-primary">*</span>
-                    </span>
-                    <select
-                      className={cn(
-                        "h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground",
-                        "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                      )}
-                      value={form.keyReplacementMode}
-                      onChange={(e) => patchForm({ keyReplacementMode: e.target.value })}
-                    >
-                      <option value="">Origination or duplication?</option>
-                      {KEY_REPLACEMENT_MODES.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
                 <div className="space-y-1.5 overflow-visible">
                   <Label className="text-xs">
                     Service address <span className="text-primary">*</span>

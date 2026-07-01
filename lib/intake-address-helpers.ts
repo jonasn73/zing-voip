@@ -45,18 +45,11 @@ export function listIntakeDispatchBlockers(input: {
   serviceAddress: StructuredAddress | null
   addressLine1: string
   city: string
-  jobType: string
-  keyReplacementMode: string
 }): string[] {
   const blockers: string[] = []
   if (!input.displayName.trim()) blockers.push("Caller name")
   if (!isIntakeAddressReady(input)) {
     blockers.push("Service address (street + city, or pick a suggestion)")
-  }
-  if (input.jobType === "Key replacement" && !input.keyReplacementMode.trim()) {
-    blockers.push("Key replacement type (origination or duplication)")
-  } else if (!input.jobType.trim()) {
-    blockers.push("Service type")
   }
   return blockers
 }

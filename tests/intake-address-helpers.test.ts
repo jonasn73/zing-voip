@@ -48,22 +48,7 @@ describe("intake address helpers", () => {
         serviceAddress: null,
         addressLine1: "",
         city: "",
-        jobType: "",
-        keyReplacementMode: "",
       })
-    ).toEqual(["Caller name", "Service address (street + city, or pick a suggestion)", "Service type"])
-  })
-
-  it("requires key replacement mode when job type is Key replacement", () => {
-    expect(
-      listIntakeDispatchBlockers({
-        displayName: "Allen",
-        serviceAddress: null,
-        addressLine1: "5010 Roy William Place",
-        city: "Louisville",
-        jobType: "Key replacement",
-        keyReplacementMode: "",
-      })
-    ).toEqual(["Key replacement type (origination or duplication)"])
+    ).toEqual(["Caller name", "Service address (street + city, or pick a suggestion)"])
   })
 })

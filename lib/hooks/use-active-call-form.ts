@@ -9,17 +9,13 @@ import {
   type StructuredAddress,
 } from "@/lib/structured-address"
 import {
-  formatIntakeJobTypeForDispatch,
-  isIntakeJobTypeComplete,
-} from "@/lib/intake-job-types"
-import type { VehicleClarificationOption } from "@/lib/vehicle-intake-clarifications"
-import {
   buildFlatAddressQuery,
   isIntakeAddressReady,
   listIntakeDispatchBlockers,
   parseLooseAddressQuery,
   resolveStructuredAddressFromQuery,
 } from "@/lib/intake-address-helpers"
+import type { VehicleClarificationOption } from "@/lib/vehicle-intake-clarifications"
 
 export type ActiveCallRow = {
   id: string
@@ -354,15 +350,6 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
         setJobError("Enter a service street address and city (pick a suggestion if you can).")
         return { ok: false }
       }
-      if (!isIntakeJobTypeComplete(form.jobType, form.keyReplacementMode)) {
-        setJobState("error")
-        setJobError(
-          form.jobType === "Key replacement"
-            ? "Select origination or duplication for the key replacement."
-            : "Select what the customer needs (key replacement, lockout, ignition, etc.)."
-        )
-        return { ok: false }
-      }
 
       setJobState("creating")
       setJobError(null)
@@ -385,7 +372,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
             vehicle_year: form.vehicleYear,
             vehicle_make: form.vehicleMake,
             vehicle_model: form.vehicleModel,
-            job_type: formatIntakeJobTypeForDispatch(form.jobType, form.keyReplacementMode),
+            job_type: null,
             key_fcc_id: form.keyFccId || null,
             key_frequency: form.keyFrequency || null,
             key_chipset: form.keyChipset || null,
@@ -414,8 +401,7 @@ export function useActiveCallForm(current: ActiveCallRow | null) {
   )
 
   const addressReady = isIntakeAddressReady(form)
-  const jobTypeReady = isIntakeJobTypeComplete(form.jobType, form.keyReplacementMode)
-  const canDispatch = Boolean(form.displayName.trim() && addressReady && jobTypeReady)
+  const canDispatch = Boolean(form.displayName.trim() && addressReady)
   const dispatchBlockers = listIntakeDispatchBlockers(form)
   const addressSeedQuery =
     buildFlatAddressQuery({

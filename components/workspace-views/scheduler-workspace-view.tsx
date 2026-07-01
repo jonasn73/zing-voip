@@ -59,6 +59,7 @@ import { TechnicianSwimlaneBoard } from "@/components/scheduler/technician-swiml
 import { SchedulerMobileDispatchShell } from "@/components/scheduler/scheduler-mobile-dispatch-shell"
 import { JobDetailDrawer } from "@/components/scheduler/job-detail-drawer"
 import { IntakeScheduleDialog } from "@/components/scheduler/intake-schedule-dialog"
+import { useMarkJobComplete } from "@/lib/hooks/use-mark-job-complete"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { setMainScrollLocked } from "@/lib/mobile-scroll-lock"
 import type {
@@ -571,6 +572,36 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
     refreshSchedulerData()
   }
 
+  const handleJobCompletedFromQuickAction = useCallback(
+    (event: SchedulerEvent) => {
+      setEvents((prev) => {
+        const idx = prev.findIndex((ev) => ev.id === event.id)
+        if (idx === -1) return prev
+        const next = [...prev]
+        next[idx] = event
+        return next
+      })
+      setDrawerPoolJob((prev) => (prev?.id === event.id ? null : prev))
+      setDrawerScheduledEvent((prev) => (prev?.id === event.id ? null : prev))
+      setHighlightId(null)
+      void mutateActivePipeline()
+      void mutatePool()
+      refreshSchedulerData()
+    },
+    [mutateActivePipeline, mutatePool, refreshSchedulerData]
+  )
+
+  const { markComplete, completingId, error: markCompleteError } = useMarkJobComplete(
+    handleJobCompletedFromQuickAction
+  )
+
+  const handleMarkJobComplete = useCallback(
+    (jobId: string) => {
+      void markComplete(jobId)
+    },
+    [markComplete]
+  )
+
   function closeJobDrawer() {
     document.body.style.overflow = ""
     suppressUrlFocusRef.current = false
@@ -963,6 +994,8 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
           onSelectEvent={focusScheduledMapJob}
           onSelectPoolJob={(job) => focusPipelineJob(job as ActivePipelineJob)}
           onSelectUpcomingJob={focusJobById}
+          onMarkComplete={handleMarkJobComplete}
+          completingJobId={completingId}
         />
       ) : (
         <WorkspacePage>
@@ -1011,7 +1044,14 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
         activePipelineJobs={displayPipelineJobs}
         dayEvents={dayEvents}
         onSelectJob={focusJobById}
+        onMarkComplete={handleMarkJobComplete}
+        completingJobId={completingId}
       />
+      {markCompleteError ? (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {markCompleteError}
+        </p>
+      ) : null}
 
       {viewMode === "grid" ? (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr]">
@@ -1161,6 +1201,8 @@ export function SchedulerWorkspaceView({ isActive = true }: { isActive?: boolean
                     highlightId={highlightId}
                     onFocusJob={highlightPipelineJob}
                     onEditJob={editPipelineJob}
+                    onMarkComplete={handleMarkJobComplete}
+                    completingJobId={completingId}
                   />
                 </div>
                 <div className="relative min-h-[320px] min-w-0 flex-1 lg:min-h-0">

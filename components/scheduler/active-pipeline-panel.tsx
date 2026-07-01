@@ -3,9 +3,17 @@
 // Group active pipeline jobs by execution phase for the map split-view left panel.
 
 import { useMemo } from "react"
-import { Car, Clock, MapPin, Pencil, Phone, User } from "lucide-react"
+import { Car, Check, Clock, Loader2, MapPin, Pencil, Phone, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { vehicleLabelFromParts } from "@/lib/job-pool"
+import { useLiveClock } from "@/lib/hooks/use-live-clock"
+import {
+  formatSchedulerJobCountdown,
+  resolveSchedulerJobUrgency,
+  SCHEDULER_URGENCY_CARD_BORDER_CLASS,
+  SCHEDULER_URGENCY_LABEL,
+  SCHEDULER_URGENCY_TIME_CLASS,
+} from "@/lib/scheduler-job-urgency"
 import {
   PIPELINE_PANEL_GROUP_ORDER,
   PIPELINE_PANEL_GROUP_TITLE,
@@ -46,6 +54,8 @@ type ActivePipelinePanelProps = {
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
   onEditJob: (job: ActivePipelineJob) => void
+  onMarkComplete?: (jobId: string) => void
+  completingJobId?: string | null
   layout?: "default" | "mobileSheet"
 }
 
@@ -55,9 +65,12 @@ export function ActivePipelinePanel({
   highlightId,
   onFocusJob,
   onEditJob,
+  onMarkComplete,
+  completingJobId,
   layout = "default",
 }: ActivePipelinePanelProps) {
   const isMobileSheet = layout === "mobileSheet"
+  const now = useLiveClock()
   const grouped = useMemo(() => {
     const buckets = new Map<SchedulerLifecyclePhase, ActivePipelineJob[]>()
     for (const phase of PIPELINE_PANEL_GROUP_ORDER) {
@@ -100,15 +113,23 @@ export function ActivePipelinePanel({
           <ul className={cn("flex flex-col", isMobileSheet ? "gap-3" : "gap-2")}>
             {group.jobs.map((job) => {
               const phase = jobPhase(job)
+              const urgency = resolveSchedulerJobUrgency({
+                now,
+                scheduled_at: job.scheduled_at,
+                phase,
+              })
+              const countdown = formatSchedulerJobCountdown(now, job.scheduled_at)
               const vehicle = vehicleLabelFromParts(job.vehicle_year, job.vehicle_make, job.vehicle_model)
               const highlighted = highlightId === job.id
               const displayName = job.customer_name?.trim() || "Unknown customer"
               const phone = formatPhone(job.customer_phone)
+              const isCompleting = completingJobId === job.id
               return (
                 <li key={job.id}>
                   <div
                     className={cn(
                       SCHEDULER_LIST_CARD_SHELL,
+                      SCHEDULER_URGENCY_CARD_BORDER_CLASS[urgency],
                       "group relative w-full text-left",
                       isMobileSheet ? "px-4 py-3" : "px-3 pb-9 pt-3",
                       highlighted && "ring-2 ring-primary ring-offset-1 ring-offset-background"
@@ -150,11 +171,17 @@ export function ActivePipelinePanel({
                         </p>
                         <p className="flex items-center gap-1.5 text-xs text-zinc-400">
                           <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
-                          <span className="truncate">
+                          <span className={cn("truncate font-medium", SCHEDULER_URGENCY_TIME_CLASS[urgency])}>
                             {formatTime(job.scheduled_at)}
+                            {countdown ? ` · ${countdown}` : ""}
                             {job.job_type ? ` · ${job.job_type}` : ""}
                           </span>
                         </p>
+                        {urgency !== "later" && urgency !== "unscheduled" ? (
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                            {SCHEDULER_URGENCY_LABEL[urgency]}
+                          </p>
+                        ) : null}
                         {vehicle ? (
                           <p className="flex items-center gap-1.5 text-xs text-zinc-400">
                             <Car className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
@@ -185,6 +212,29 @@ export function ActivePipelinePanel({
                         {SCHEDULER_STATUS_LABEL[phase]}
                       </span>
                     </button>
+
+                    {onMarkComplete ? (
+                      <button
+                        type="button"
+                        disabled={isCompleting}
+                        aria-label={`Mark ${displayName} as done`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onMarkComplete(job.id)
+                        }}
+                        className={cn(
+                          "absolute bottom-2.5 left-3 z-20 inline-flex items-center gap-1 rounded-md border border-emerald-600/50 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200 transition-colors hover:bg-emerald-500/25",
+                          isMobileSheet && "static mt-3"
+                        )}
+                      >
+                        {isCompleting ? (
+                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                        ) : (
+                          <Check className="h-3 w-3" aria-hidden />
+                        )}
+                        Done
+                      </button>
+                    ) : null}
                   </div>
                 </li>
               )

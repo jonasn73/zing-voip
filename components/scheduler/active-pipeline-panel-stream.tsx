@@ -14,6 +14,8 @@ type ActivePipelinePanelStreamProps = {
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
   onEditJob: (job: ActivePipelineJob) => void
+  onMarkComplete?: (jobId: string) => void
+  completingJobId?: string | null
   layout?: "default" | "mobileSheet"
 }
 
@@ -24,6 +26,8 @@ export function ActivePipelinePanelStream({
   highlightId,
   onFocusJob,
   onEditJob,
+  onMarkComplete,
+  completingJobId,
   layout = "default",
 }: ActivePipelinePanelStreamProps) {
   if (jobs !== undefined) {
@@ -33,6 +37,8 @@ export function ActivePipelinePanelStream({
         highlightId={highlightId}
         onFocusJob={onFocusJob}
         onEditJob={onEditJob}
+        onMarkComplete={onMarkComplete}
+        completingJobId={completingJobId}
         layout={layout}
       />
     )
@@ -45,6 +51,8 @@ export function ActivePipelinePanelStream({
         highlightId={highlightId}
         onFocusJob={onFocusJob}
         onEditJob={onEditJob}
+        onMarkComplete={onMarkComplete}
+        completingJobId={completingJobId}
         layout={layout}
       />
     </Suspense>

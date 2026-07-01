@@ -50,6 +50,8 @@ export type SchedulerMobileDispatchShellProps = {
   onSelectEvent: (event: SchedulerEvent) => void
   onSelectPoolJob: (job: UnassignedPoolJob | ActivePipelineJob) => void
   onSelectUpcomingJob?: (jobId: string) => void
+  onMarkComplete?: (jobId: string) => void
+  completingJobId?: string | null
 }
 
 /** Mobile dispatch — full-bleed map with a draggable bottom sheet for the job list. */
@@ -72,6 +74,8 @@ export function SchedulerMobileDispatchShell({
   onSelectEvent,
   onSelectPoolJob,
   onSelectUpcomingJob,
+  onMarkComplete,
+  completingJobId,
 }: SchedulerMobileDispatchShellProps) {
   const [sheetContainer, setSheetContainer] = useState<HTMLElement | null>(null)
   const [sheetSnap, setSheetSnap] = useState<string | number | null>(SHEET_PEEK)
@@ -153,6 +157,8 @@ export function SchedulerMobileDispatchShell({
             activePipelineJobs={activePipelineJobs}
             dayEvents={dayEvents}
             onSelectJob={onSelectUpcomingJob}
+            onMarkComplete={onMarkComplete}
+            completingJobId={completingJobId}
             className="w-full"
           />
         </div>
@@ -207,6 +213,8 @@ export function SchedulerMobileDispatchShell({
                 highlightId={highlightId}
                 onFocusJob={onFocusJob}
                 onEditJob={onEditJob}
+                onMarkComplete={onMarkComplete}
+                completingJobId={completingJobId}
                 layout="mobileSheet"
               />
             </div>

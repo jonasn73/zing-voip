@@ -12,10 +12,20 @@ type ActivePipelineListProps = {
   highlightId?: string | null
   onFocusJob: (job: ActivePipelineJob) => void
   onEditJob: (job: ActivePipelineJob) => void
+  onMarkComplete?: (jobId: string) => void
+  completingJobId?: string | null
   layout?: "default" | "mobileSheet"
 }
 
-function ActivePipelineListInner({ dayKey, highlightId, onFocusJob, onEditJob, layout }: ActivePipelineListProps) {
+function ActivePipelineListInner({
+  dayKey,
+  highlightId,
+  onFocusJob,
+  onEditJob,
+  onMarkComplete,
+  completingJobId,
+  layout,
+}: ActivePipelineListProps) {
   const { activeOrganizationId } = useDashboardWorkspace()
   const jobs = useActivePipelineSuspenseQuery(activeOrganizationId, dayKey, true)
   return (
@@ -24,6 +34,8 @@ function ActivePipelineListInner({ dayKey, highlightId, onFocusJob, onEditJob, l
       highlightId={highlightId}
       onFocusJob={onFocusJob}
       onEditJob={onEditJob}
+      onMarkComplete={onMarkComplete}
+      completingJobId={completingJobId}
       layout={layout}
     />
   )

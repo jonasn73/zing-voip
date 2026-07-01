@@ -197,7 +197,7 @@ async function handleCallInitiated(
         status: "ringing",
         duration_seconds: 0,
         routed_to_receptionist_id: routing.selected_receptionist_id,
-        routed_to_name: routing.receptionist_name,
+        routed_to_name: null,
         has_recording: false,
         recording_url: null,
         recording_duration_seconds: null,

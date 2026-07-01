@@ -58,6 +58,8 @@ export async function broadcastCallCompleted(params: {
   callType?: string | null
   status?: string | null
   answeredAt?: string | null
+  endedAt?: string | null
+  routedToName?: string | null
 }): Promise<void> {
   const payload: OwnerCallCompletedPayload = {
     call_sid: params.callSid,
@@ -69,6 +71,8 @@ export async function broadcastCallCompleted(params: {
     call_type: params.callType ?? null,
     status: params.status ?? null,
     answered_at: params.answeredAt ?? null,
+    ended_at: params.endedAt ?? null,
+    routed_to_name: params.routedToName ?? null,
   }
   await publishOwnerEvent(params.ownerUserId, "call-completed", payload)
 }
@@ -105,6 +109,8 @@ export async function broadcastCallCompletedBySid(callSid: string): Promise<void
       callType: snapshot.call_type,
       status: snapshot.status,
       answeredAt: snapshot.answered_at,
+      endedAt: snapshot.ended_at,
+      routedToName: snapshot.routed_to_name,
     })
     return
   }

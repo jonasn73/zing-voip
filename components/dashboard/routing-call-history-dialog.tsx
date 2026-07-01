@@ -131,6 +131,8 @@ function isMissedRow(row: CallHistoryRow): boolean {
     call_type: row.call_type,
     status: row.status,
     answered_at: row.answered_at,
+    ended_at: row.ended_at,
+    routed_to_name: row.routed_to_name,
   })
 }
 

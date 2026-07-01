@@ -92,6 +92,8 @@ function runTerminalCallSideEffects(
           callType: snapshot.call_type,
           status: snapshot.status,
           answeredAt: snapshot.answered_at,
+          endedAt: snapshot.ended_at,
+          routedToName: snapshot.routed_to_name,
         })
       } catch (e) {
         console.warn("[telnyx-cc] call-completed broadcast failed:", e)
@@ -166,14 +168,25 @@ export async function finalizeCallControlCallLog(
   event: TelnyxVoiceWebhookEvent,
   opts?: { callType?: CallType; hadConversation?: boolean }
 ): Promise<void> {
-  const hadConversation = opts?.hadConversation ?? event.clientState?.phase === "recording"
+  const snapshot = await getCallLogSnapshotForTelemetry(inboundCallSid).catch(() => null)
+  const ownerLiveAnswered = Boolean(snapshot?.routed_to_name?.trim())
+  const hadConversation =
+    opts?.hadConversation ??
+    (ownerLiveAnswered || event.clientState?.phase === "recording")
   const duration = parseTelnyxCallDurationFromVoiceEvent(event)
-  const status = mapHangupCauseToStatus(event.hangupCause, hadConversation || duration >= 3)
+  const status = mapHangupCauseToStatus(event.hangupCause, hadConversation)
   let callType: CallType = opts?.callType ?? "incoming"
   if (!opts?.callType) {
     if (status === "no-answer" || status === "busy" || status === "canceled") callType = "missed"
     if (event.clientState?.phase === "recording") callType = "voicemail"
     if (status === "completed" && hadConversation) callType = "incoming"
+    if (
+      (status === "completed" || status === "canceled") &&
+      !ownerLiveAnswered &&
+      event.clientState?.phase !== "recording"
+    ) {
+      callType = "missed"
+    }
   }
 
   try {
@@ -182,6 +195,7 @@ export async function finalizeCallControlCallLog(
       call_type: callType,
       status,
       ...(duration > 0 ? { duration_seconds: duration } : {}),
+      ...(callType === "missed" && !ownerLiveAnswered ? { answered_at: null } : {}),
     })
     console.log(
       JSON.stringify({

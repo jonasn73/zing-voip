@@ -34,6 +34,8 @@ export type OwnerCallCompletedPayload = {
   status?: string | null
   /** When absent on a completed inbound row, the owner never picked up live. */
   answered_at?: string | null
+  ended_at?: string | null
+  routed_to_name?: string | null
 }
 
 export type OwnerCallChannelEvent = "call-initiated" | "call-answered" | "call-completed"
@@ -51,6 +53,8 @@ export function isMissedCallTelemetry(payload: OwnerCallCompletedPayload): boole
     call_type: payload.call_type,
     status: payload.status,
     answered_at: payload.answered_at,
+    ended_at: payload.ended_at,
+    routed_to_name: payload.routed_to_name,
   })
 }
 

@@ -3,8 +3,11 @@
 export type MissedCallRecordInput = {
   call_type?: string | null
   status?: string | null
+  /** Set when owner/receptionist bridged live on the call. */
+  routed_to_name?: string | null
   /** When set, a completed row without answered_at was never picked up live. */
   answered_at?: string | null
+  ended_at?: string | null
 }
 
 function normalizeCallType(raw: string | null | undefined): string {
@@ -18,6 +21,19 @@ function normalizeCallStatus(raw: string | null | undefined): string {
     .trim()
     .toLowerCase()
     .replace(/_/g, "-")
+}
+
+function ownerLiveAnswered(input: MissedCallRecordInput): boolean {
+  const routed = String(input.routed_to_name ?? "").trim()
+  if (routed.length > 0) return true
+
+  const answeredAt = input.answered_at ? Date.parse(input.answered_at) : NaN
+  const endedAt = input.ended_at ? Date.parse(input.ended_at) : NaN
+  if (Number.isFinite(answeredAt) && Number.isFinite(endedAt) && endedAt - answeredAt >= 2000) {
+    return true
+  }
+
+  return false
 }
 
 /**
@@ -34,8 +50,8 @@ export function isMissedCallRecord(input: MissedCallRecordInput): boolean {
   // Carrier marked completed but owner never bridged (early hangup or bad webhook ordering).
   if (
     type === "incoming" &&
-    !input.answered_at &&
-    (status === "completed" || status === "canceled" || status === "cancelled")
+    (status === "completed" || status === "canceled" || status === "cancelled") &&
+    !ownerLiveAnswered(input)
   ) {
     return true
   }

@@ -13,12 +13,14 @@ describe("isMissedCallRecord", () => {
     expect(isMissedCallRecord({ call_type: "incoming", status: "canceled" })).toBe(true)
   })
 
-  it("counts completed inbound rows that never got answered_at", () => {
+  it("counts completed inbound rows that never got bridged to owner", () => {
     expect(
       isMissedCallRecord({
         call_type: "incoming",
         status: "completed",
-        answered_at: null,
+        answered_at: "2026-07-01T03:33:41.866Z",
+        ended_at: "2026-07-01T03:33:41.866Z",
+        routed_to_name: null,
       })
     ).toBe(true)
   })
@@ -29,6 +31,8 @@ describe("isMissedCallRecord", () => {
         call_type: "incoming",
         status: "completed",
         answered_at: "2026-06-27T17:00:00.000Z",
+        ended_at: "2026-06-27T17:01:11.000Z",
+        routed_to_name: "Owner",
       })
     ).toBe(false)
   })
@@ -48,7 +52,9 @@ describe("isMissedCallTelemetry", () => {
         call_sid: "abc",
         call_type: "incoming",
         status: "completed",
-        answered_at: null,
+        answered_at: "2026-07-01T03:33:41.866Z",
+        ended_at: "2026-07-01T03:33:41.866Z",
+        routed_to_name: null,
       })
     ).toBe(true)
     expect(
@@ -57,6 +63,8 @@ describe("isMissedCallTelemetry", () => {
         call_type: "incoming",
         status: "completed",
         answered_at: "2026-06-27T17:00:00.000Z",
+        ended_at: "2026-06-27T17:01:11.000Z",
+        routed_to_name: "Owner",
       })
     ).toBe(false)
   })
